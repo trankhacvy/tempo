@@ -1,0 +1,23 @@
+[package]
+name = "tempo-common"
+version.workspace = true
+edition.workspace = true
+description = "Shared infrastructure (config, telemetry, RPC pool, tx sender, signer) for Tempo off-chain services."
+
+[dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "signal"] }
+solana-client = { workspace = true }
+solana-sdk = { workspace = true }
+solana-commitment-config = { workspace = true }
+solana-compute-budget-interface = "3"
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+figment = { version = "0.10", features = ["env", "toml"] }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+[lints]
+workspace = true

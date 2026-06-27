@@ -1,0 +1,24 @@
+# Templated keeper unit: run >=2 for redundancy (D5), e.g.
+#   systemctl enable --now tempo-keeper@a tempo-keeper@b
+# Each instance reads its own env file (/etc/tempo/keeper-%i.env) carrying
+# TEMPO_RPC_URL, TEMPO_MARKET, TEMPO_KEYPAIR, TEMPO_HEALTH_ADDR, ...
+[Unit]
+Description=Tempo keeper (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tempo
+EnvironmentFile=/etc/tempo/keeper-%i.env
+ExecStart=/usr/local/bin/tempo-keeper
+Restart=always
+RestartSec=2
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

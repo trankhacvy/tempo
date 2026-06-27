@@ -1,0 +1,105 @@
+# Tempo off-chain stack for devnet: redundant keeper + liquidator (Decision D5 —
+# the services are stateless and commutative-safe, so racing replicas are free),
+# the read API, the reference market maker, and a Prometheus + Grafana pair.
+#
+# Secrets arrive at runtime only: keypairs are read-only mounts under ./keys, RPC
+# + market come from ./.env (both git-ignored). NEVER point this at mainnet — the
+# devnet RPC belongs in .env; the mainnet pool stays commented out (see CLAUDE.md).
+#
+#   cp .env.example .env        # then fill in TEMPO_RPC_URL + TEMPO_MARKETS
+#   docker compose up -d
+name: tempo
+
+x-build: &build
+  context: ../..
+  dockerfile: ops/docker/Dockerfile
+
+x-svc: &svc
+  restart: unless-stopped
+  env_file: [.env]
+  volumes:
+    - ./keys:/keys:ro
+  networks: [tempo]
+
+services:
+  keeper-a:
+    <<: *svc
+    image: tempo/keeper:latest
+    build:
+      <<: *build
+      args: { BIN: tempo-keeper }
+    environment:
+      TEMPO_KEYPAIR: /keys/keeper-a.json
+      TEMPO_HEALTH_ADDR: 0.0.0.0:8080
+
+  keeper-b:
+    <<: *svc
+    image: tempo/keeper:latest
+    environment:
+      TEMPO_KEYPAIR: /keys/keeper-b.json
+      TEMPO_HEALTH_ADDR: 0.0.0.0:8080
+
+  liquidator-a:
+    <<: *svc
+    image: tempo/liquidator:latest
+    build:
+      <<: *build
+      args: { BIN: tempo-liquidator }
+    environment:
+      TEMPO_KEYPAIR: /keys/liquidator-a.json
+      TEMPO_HEALTH_ADDR: 0.0.0.0:8081
+
+  liquidator-b:
+    <<: *svc
+    image: tempo/liquidator:latest
+    environment:
+      TEMPO_KEYPAIR: /keys/liquidator-b.json
+      TEMPO_HEALTH_ADDR: 0.0.0.0:8081
+
+  mm-bot:
+    <<: *svc
+    image: tempo/mm-bot:latest
+    build:
+      <<: *build
+      args: { BIN: tempo-mm-bot }
+    environment:
+      TEMPO_KEYPAIR: /keys/mm-bot.json
+      TEMPO_HEALTH_ADDR: 0.0.0.0:8082
+
+  api:
+    <<: *svc
+    image: tempo/api:latest
+    build:
+      <<: *build
+      args: { BIN: tempo-api }
+    environment:
+      TEMPO_API_BIND_ADDR: 0.0.0.0:8088
+    ports:
+      - "8088:8088"
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    networks: [tempo]
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks: [tempo]
+
+networks:
+  tempo:
+    driver: bridge

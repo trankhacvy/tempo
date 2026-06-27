@@ -1,0 +1,27 @@
+{
+    "name": "tempo-program",
+    "version": "0.0.1",
+    "description": "Tempo — open-source Dual Flow Batch Auction perpetuals DEX on Solana",
+    "license": "MIT",
+    "scripts": {
+        "generate-idl": "cd program && cargo check --features idl",
+        "generate-clients": "tsx ./scripts/generate-clients.ts",
+        "build": "cd clients/typescript && tsc",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "typecheck": "cd clients/typescript && tsc --noEmit"
+    },
+    "devDependencies": {
+        "@codama/renderers-js": "^2.2.0",
+        "@codama/renderers-rust": "^3.1.0",
+        "@solana/kit": "^6.10.0",
+        "@solana/program-client-core": "^6.10.0",
+        "@types/node": "^22.0.0",
+        "codama": "^1.7.0",
+        "esbuild": "^0.28.1",
+        "prettier": "^3.4.0",
+        "tsx": "^4.19.0",
+        "typescript": "^5.7.0"
+    },
+    "packageManager": "pnpm@10.15.1"
+}

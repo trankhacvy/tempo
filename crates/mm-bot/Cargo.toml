@@ -1,0 +1,25 @@
+[package]
+name = "tempo-mm-bot"
+version.workspace = true
+edition.workspace = true
+description = "The Tempo reference market maker: a permissionless bot that keeps a two-sided maker-quote ladder in the book each Collect window."
+
+[[bin]]
+name = "tempo-mm-bot"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+tempo-common = { path = "../common" }
+tempo-sdk = { path = "../sdk" }
+tempo-math = { path = "../tempo-math" }
+solana-sdk = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+axum = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }

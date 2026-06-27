@@ -1,0 +1,50 @@
+{
+    "name": "@tempo/web",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "description": "Tempo devnet dApp — wallet connect, market view, collateral, and order entry",
+    "scripts": {
+        "bundle-client": "esbuild ../../clients/typescript/src/generated/index.ts --bundle --format=esm --platform=browser --packages=external --outfile=src/vendor/tempo-client.mjs",
+        "predev": "pnpm bundle-client",
+        "prebuild": "pnpm bundle-client",
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint",
+        "devnet-read": "tsx scripts/devnet-read.ts"
+    },
+    "dependencies": {
+        "@solana-program/token": "^0.14.0",
+        "@solana/kit": "^6.10.0",
+        "@solana/wallet-adapter-base": "^0.9.27",
+        "@solana/wallet-adapter-react": "^0.15.39",
+        "@solana/wallet-adapter-react-ui": "^0.9.39",
+        "@solana/wallet-adapter-wallets": "^0.19.37",
+        "@solana/web3.js": "^1.98.0",
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.1",
+        "lightweight-charts": "^5.2.0",
+        "lucide-react": "^0.469.0",
+        "next": "^15.1.0",
+        "radix-ui": "^1.6.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "shadcn": "^4.12.0",
+        "tailwind-merge": "^2.6.0",
+        "tw-animate-css": "^1.4.0"
+    },
+    "devDependencies": {
+        "@solana/program-client-core": "^6.10.0",
+        "@tailwindcss/postcss": "^4.0.0",
+        "@types/node": "^22.0.0",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "autoprefixer": "^10.4.20",
+        "esbuild": "^0.28.1",
+        "postcss": "^8.4.49",
+        "tailwindcss": "^4.0.0",
+        "tsx": "^4.19.0",
+        "typescript": "^5.7.0"
+    }
+}

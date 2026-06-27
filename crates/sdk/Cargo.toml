@@ -1,0 +1,49 @@
+[package]
+name = "tempo-sdk"
+version.workspace = true
+edition.workspace = true
+description = "High-level typed client for the Tempo program: ids, PDAs, decoders, ergonomic instruction builders, and off-chain preflight checks."
+
+[dependencies]
+tempo-math = { path = "../tempo-math" }
+thiserror = { workspace = true }
+
+# Always-on core (decoders, PDAs, ids, ix builders, preflight). Lightweight: no
+# RPC, no async runtime.
+borsh = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+solana-pubkey = "3"
+solana-instruction = "3"
+solana-account-info = "3"
+solana-cpi = "3"
+solana-program-error = "3"
+solana-program = "3"
+solana-address = { workspace = true }
+
+# `client` feature only: RPC reads + signed sends.
+tempo-common = { path = "../common", optional = true }
+solana-client = { workspace = true, optional = true }
+base64 = { version = "0.22", optional = true }
+solana-keypair = { version = "3", optional = true }
+solana-signature = { version = "3", optional = true }
+solana-signer = { version = "3", optional = true }
+
+[features]
+default = ["client"]
+client = [
+  "dep:tempo-common",
+  "dep:solana-client",
+  "dep:base64",
+  "dep:solana-keypair",
+  "dep:solana-signature",
+  "dep:solana-signer",
+]
+# Stub features referenced by the codama-generated module; we don't enable them.
+fetch = []
+serde = []
+anchor = []
+anchor-idl-build = []
+
+[lints]
+workspace = true

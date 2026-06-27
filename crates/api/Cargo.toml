@@ -1,0 +1,35 @@
+[package]
+name = "tempo-api"
+version.workspace = true
+edition.workspace = true
+description = "The Tempo read API: a chain-backed axum REST + WebSocket service serving live market, auction, histogram, and position state."
+
+[[bin]]
+name = "tempo-api"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+tempo-common = { path = "../common" }
+tempo-sdk = { path = "../sdk" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+axum = { workspace = true, features = ["ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-br", "timeout", "limit"] }
+tower_governor = "0.4"
+utoipa = { version = "5", features = ["axum_extras"] }
+arc-swap = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+solana-commitment-config = { workspace = true }

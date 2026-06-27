@@ -1,0 +1,9 @@
+sweep,param,ns_per_call
+ticks,64,3970
+ticks,256,14511
+ticks,1024,46199
+ticks,4096,171138
+orders,256,11356
+orders,1024,11145
+orders,4096,11062
+orders,16384,11031

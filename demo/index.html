@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tempo — perps batch auction, visualized</title>
+
+<!-- Fully self-contained: no build step. The ONLY network call is an optional
+     live Pyth SOL price (graceful fallback to a simulated price when offline). -->
+<style>
+  :root{
+    --bg:#0a0f1e; --panel:#111a30; --panel2:#0d1426; --ink:#e8edf7; --muted:#8a96b3;
+    --line:#22304f; --buy:#34d399; --sell:#fb7185; --maker:#60a5fa; --taker:#fbbf24;
+    --you:#f59e0b; --accent:#a78bfa; --bidline:#34d399; --askline:#fb7185; --warn:#f97316;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,sans-serif;font-size:15px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px}
+  .soft{background:var(--panel2)} .muted{color:var(--muted)}
+  .pill{display:inline-flex;align-items:center;gap:.3rem;padding:.1rem .5rem;border-radius:999px;font-size:11px;font-weight:700;line-height:1.7}
+  .btn{cursor:pointer;border:1px solid var(--line);background:#16213c;color:var(--ink);padding:.5rem .8rem;border-radius:10px;font-weight:600;font-size:13px;transition:.15s}
+  .btn:hover{background:#1d2c4d;border-color:#33456f} .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.primary{background:linear-gradient(180deg,#7c5cff,#6d28d9);border-color:#7c5cff} .btn.primary:hover{filter:brightness(1.08)}
+  .btn.ghost{background:transparent}
+  .seg{display:inline-flex;background:#0e1528;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{border:0;background:transparent;color:var(--muted);padding:.45rem .7rem;font-weight:700;font-size:13px;cursor:pointer}
+  .seg button.on{background:#1d2c4d;color:#fff}
+  input[type=number]{width:74px;background:#0e1528;border:1px solid var(--line);border-radius:8px;color:#fff;padding:.45rem .5rem;font-weight:700}
+  select{background:#0e1528;border:1px solid var(--line);border-radius:8px;color:#fff;padding:.45rem .5rem;font-weight:700;font-size:13px}
+  input[type=range]{accent-color:var(--accent)}
+  .kpi{font-variant-numeric:tabular-nums} .help{cursor:help;border-bottom:1px dotted #54618a}
+  .scroll{overflow:auto;scrollbar-width:thin;scrollbar-color:#2a3a60 transparent}
+  .scroll::-webkit-scrollbar{width:8px;height:8px}.scroll::-webkit-scrollbar-thumb{background:#2a3a60;border-radius:8px}
+
+  /* RAILWAY */
+  .railway{position:relative;height:132px;overflow:hidden;border-radius:14px;background:radial-gradient(120% 140% at 10% 0%,#16213e 0,#0b1224 60%)}
+  .zones{position:absolute;inset:0;display:grid;grid-template-columns:140px 1fr 1fr 1fr 1fr;pointer-events:none}
+  .zone{border-right:1px dashed #243254;display:flex;flex-direction:column;align-items:center;padding-top:7px;font-size:11px;font-weight:800;letter-spacing:.07em;color:#5d6c92;text-transform:uppercase}
+  .zone .num{color:#3f4d72;font-size:9px}
+  .platform{position:absolute;left:0;top:0;bottom:0;width:140px;background:linear-gradient(180deg,#101a33,#0b1326);border-right:2px solid #2a3a60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+  .rail-line{position:absolute;left:0;right:0;bottom:26px;height:5px;background:repeating-linear-gradient(90deg,#2a3a60 0 14px,#1a2742 14px 22px)}
+  .car{position:absolute;bottom:33px;left:140px;width:118px;height:64px;border-radius:12px;background:linear-gradient(180deg,#26406f,#1a2c4f);border:2px solid #3a5790;box-shadow:0 8px 22px rgba(0,0,0,.45);transition:left 1.0s cubic-bezier(.5,.1,.3,1);display:flex;align-items:center;justify-content:center;gap:5px}
+  .car .win{width:16px;height:18px;border-radius:4px;background:#9fc2ff;opacity:.85}
+  .car .label{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:800;color:#cfe0ff;white-space:nowrap}
+  .wheel{position:absolute;bottom:-8px;width:14px;height:14px;border-radius:50%;background:#0e1528;border:3px solid #4a6aa3}.wheel.l{left:16px}.wheel.r{right:16px}
+  .loco{position:absolute;bottom:33px;width:48px;height:56px;border-radius:10px 14px 10px 10px;background:linear-gradient(180deg,#6d28d9,#4c1d95);border:2px solid #8b5cf6;transition:left 1.0s cubic-bezier(.5,.1,.3,1);display:flex;align-items:center;justify-content:center;font-size:20px}
+  .loco.loco-off{opacity:0;transform:translateY(8px)}
+  .hist-car{position:absolute;bottom:37px;width:54px;height:40px;border-radius:8px;background:#16223d;border:1px solid #2a3a60;display:flex;align-items:center;justify-content:center;font-size:10px;color:#6c7ba3;font-weight:800;opacity:.5;transition:left 1.0s linear}
+
+  /* DUAL LADDER */
+  .ladder{display:flex;flex-direction:column-reverse;gap:2px}
+  .mrow{display:grid;grid-template-columns:1fr 78px 1fr;align-items:center;gap:6px;height:20px;border-radius:6px;padding:0 3px;position:relative}
+  .mrow .price{text-align:center;font-size:11px;font-weight:800;color:#b9c4de}
+  .bidcell{display:flex;justify-content:flex-end} .askcell{display:flex;justify-content:flex-start}
+  .bar{height:13px;border-radius:4px;display:flex;overflow:hidden;transition:width .35s cubic-bezier(.4,0,.2,1)}
+  .seg-mk-buy{background:var(--buy)} .seg-tk-buy{background:repeating-linear-gradient(45deg,#0f5132,#0f5132 3px,#1c7a52 3px,#1c7a52 6px)}
+  .seg-mk-sell{background:var(--sell)} .seg-tk-sell{background:repeating-linear-gradient(45deg,#7f1d1d,#7f1d1d 3px,#b3414a 3px,#b3414a 6px)}
+  .bar.bid{flex-direction:row-reverse}
+  .qlab{font-size:10px;font-weight:800;color:#aab6d4;padding:0 5px;align-self:center;white-space:nowrap}
+  .mrow.cb{box-shadow:inset 3px 0 0 var(--bidline)} .mrow.ca{box-shadow:inset -3px 0 0 var(--askline)}
+  .mrow.cb.ca{box-shadow:inset 3px 0 0 var(--bidline),inset -3px 0 0 var(--askline)}
+  .clab{position:absolute;font-size:9px;font-weight:800;padding:0 4px;border-radius:4px;top:50%;transform:translateY(-50%)}
+  .clab.b{left:-2px;background:#06351f;color:#7ef0b5} .clab.a{right:-2px;background:#3a1015;color:#ffc2c9}
+  .mrow.pulse{animation:rp .5s ease}@keyframes rp{0%{background:rgba(96,165,250,.3)}100%{}}
+
+  /* CARDS / TABLES */
+  .ocard{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:8px;background:#101a31;border:1px solid #1f2c49;font-size:12px;transition:.25s}
+  .ocard.you{border-color:var(--you);box-shadow:0 0 0 1px var(--you) inset}
+  .ocard.accum{opacity:.5;filter:grayscale(.4)} .ocard.consumed{opacity:.35}
+  .ava{width:30px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0}
+  .status{margin-left:auto;font-size:10px;font-weight:700;padding:.05rem .4rem;border-radius:6px}
+  .st-resting{background:#1e293b;color:#93b4ff}.st-accumulated{background:#172554;color:#7aa2ff}
+  .st-consumed{background:#052e1b;color:#34d399}.st-filled{background:#064e3b;color:#a7f3d0}.st-nofill{background:#3a1015;color:#fda4af}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:right;color:var(--muted);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:4px 8px;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  td{text-align:right;padding:5px 8px;border-bottom:1px solid #16213a;font-variant-numeric:tabular-nums}
+  tr.me td{background:rgba(245,158,11,.07)} tr.liq{animation:liqflash 1s ease}
+  @keyframes liqflash{0%,40%{background:rgba(249,115,22,.5)}100%{}}
+  .liqbar{height:5px;border-radius:3px;background:#1c2540;overflow:hidden;min-width:48px}
+  .liqbar > div{height:100%;border-radius:3px}
+  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1a2747;border:1px solid #33456f;padding:.7rem 1rem;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 12px 30px rgba(0,0,0,.5);opacity:0;transition:.3s;pointer-events:none;z-index:50;max-width:600px}
+  .toast.show{opacity:1}
+  .glow{animation:glow 1.2s ease}@keyframes glow{0%{box-shadow:0 0 0 0 rgba(245,158,11,.6)}100%{box-shadow:0 0 0 16px rgba(245,158,11,0)}}
+  .blink{animation:blink 1.4s ease-in-out infinite}@keyframes blink{50%{opacity:.45}}
+
+  /* utilities */
+  .wrap{max-width:1240px;margin:0 auto;padding:14px}
+  .flex{display:flex}.grid{display:grid}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}
+  .items-center{align-items:center}.items-end{align-items:flex-end}.justify-between{justify-content:space-between}
+  .ml-auto{margin-left:auto}.hidden{display:none}
+  .gA{display:grid;grid-template-columns:1fr;gap:12px}
+  .g3{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:900px){.g3{grid-template-columns:.85fr 1.25fr 1fr}}
+  .gap-1{gap:.25rem}.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-5{gap:1.25rem}
+  .text-left{text-align:left}.text-center{text-align:center}
+  .t10{font-size:10px}.t11{font-size:11px}.tsm{font-size:12px}.tmd{font-size:14px}.tlg{font-size:18px}.txl{font-size:22px}.t3xl{font-size:30px;line-height:1.1}
+  .fn{font-weight:400}.fm{font-weight:500}.fb{font-weight:700}.fx{font-weight:800}
+  .mb1{margin-bottom:.25rem}.mb2{margin-bottom:.5rem}.mb3{margin-bottom:.75rem}.mb4{margin-bottom:1rem}
+  .mt1{margin-top:.25rem}.mt2{margin-top:.5rem}.mt3{margin-top:.75rem}.mt8{margin-top:2rem}
+  .p2{padding:.5rem}.p3{padding:.75rem}.px3{padding:0 .9rem}.py2{padding:.5rem 0}
+  .rounded{border-radius:.5rem}.roundedx{border-radius:.75rem}.border-t{border-top:1px solid var(--line)}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+  <header class="flex items-center justify-between gap-3 mb3 flex-wrap">
+    <div class="flex items-center gap-3">
+      <div class="txl fx">🚆 Tempo</div>
+      <div class="muted tsm">perps batch auction — how the dual auction works</div>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="seg" id="modeTabs"><button data-mode="story" class="on">Story</button><button data-mode="sandbox">Sandbox</button><button data-mode="dev">Dev</button></div>
+      <label class="muted t11 flex items-center gap-1">round&nbsp;
+        <select id="roundLen"><option value="4">4s</option><option value="8" selected>8s</option><option value="15">15s</option><option value="30">30s</option></select>
+      </label>
+      <button class="btn ghost" id="helpBtn">？ Help</button>
+    </div>
+  </header>
+
+  <div class="panel soft px3 py2 mb3 tsm">
+    <b>The idea:</b> instead of matching trades the instant they arrive (fast bots win), Tempo <b>collects orders for a short window and matches them at one fair price</b>.
+    It runs <b>two auctions at once</b> — a <span style="color:var(--bidline)">BID auction</span> (makers buy × takers sell) and an
+    <span style="color:var(--askline)">ASK auction</span> (takers buy × makers sell) — so <b>makers never trade makers and takers never trade takers</b>.
+  </div>
+
+  <!-- STATUS -->
+  <div class="panel px3 py2 mb3 flex items-center gap-5 flex-wrap tsm">
+    <div>🛰 <span class="muted">SOL oracle</span> <b class="kpi" id="oraclePx">$—</b> <span id="oracleArrow"></span> <span class="pill" id="srcBadge" style="background:#1e293b;color:#9fc2ff">…</span></div>
+    <div>🚃 <span class="muted">Round</span> <b id="roundNo">#1</b></div>
+    <div>🔖 <span class="muted">Phase</span> <b id="phaseName" style="color:var(--accent)">Collect</b></div>
+    <div id="cdWrap">⏱ <span class="muted">doors close in</span> <b id="countdown">—</b></div>
+    <div class="ml-auto flex items-center gap-3 t11">
+      <span class="pill" style="background:#0e2a4d;color:#9fc2ff">■ maker</span>
+      <span class="pill" style="background:#3a2c08;color:#fbbf24">▦ taker</span>
+      <span class="pill" style="background:#3a2607;color:#f59e0b">● you</span>
+    </div>
+  </div>
+
+  <!-- RAILWAY -->
+  <div class="railway panel mb3" id="railway">
+    <div class="zones">
+      <div class="zone" style="border-right:2px solid #2a3a60">🚉 Platform<span class="num">doors open</span></div>
+      <div class="zone">Collect<span class="num">time-gated</span></div>
+      <div class="zone">Accumulate<span class="num">cranker folds</span></div>
+      <div class="zone">Discover<span class="num">2 prices</span></div>
+      <div class="zone">Settle<span class="num">pull fills</span></div>
+    </div>
+    <div class="platform"><div class="t11 muted">boarding</div><div class="tlg" id="platAv">🧑‍🤝‍🧑</div><div class="t10 muted" id="platNote"></div></div>
+    <div class="rail-line"></div>
+    <div id="histCars"></div>
+    <div class="loco loco-off" id="loco">🤖</div>
+    <div class="car" id="car"><div class="label" id="carLabel">Round #1 · Collect</div><div class="win"></div><div class="win"></div><div class="win"></div><div class="wheel l"></div><div class="wheel r"></div></div>
+  </div>
+
+  <!-- 3-COLUMN: stack | dual ladder | auctions+you -->
+  <div class="g3 mb3">
+
+    <!-- ORDER STACK -->
+    <div class="panel p3 flex flex-col" style="min-height:360px">
+      <div class="flex items-center justify-between mb2"><div class="fb tsm">📚 Order stack <span class="muted fn">(the slab)</span></div><div class="t11 muted">orders: <b id="orderCount" class="kpi">0</b></div></div>
+      <div class="t11 muted mb2">Each order rests, then <b>folds</b> into a mailbox during Accumulate.</div>
+      <div class="scroll flex flex-col gap-1" id="stack" style="flex:1;max-height:320px"></div>
+    </div>
+
+    <!-- DUAL LADDER -->
+    <div class="panel p3 flex flex-col" style="min-height:360px">
+      <div class="flex items-center justify-between mb1"><div class="fb tsm">📬 Mailboxes — the two auctions</div><div class="t11 muted">ticks: <b class="kpi" id="tickCount">21</b> <span class="help" title="Fixed number of price mailboxes — it never grows with the number of orders. That is what makes the auction fit on Solana.">(fixed)</span></div></div>
+      <div class="t10 muted mb2 flex justify-between"><span>◀ buys (bid)</span><span>price</span><span>sells (ask) ▶</span></div>
+      <div class="ladder" id="ladder" style="flex:1"></div>
+      <div class="t10 muted mt2 flex gap-3 flex-wrap items-center">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--buy);border-radius:2px"></span> maker buy</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#0f5132,#0f5132 2px,#1c7a52 2px,#1c7a52 4px);border-radius:2px"></span> taker buy</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--sell);border-radius:2px"></span> maker sell</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#7f1d1d,#7f1d1d 2px,#b3414a 2px,#b3414a 4px);border-radius:2px"></span> taker sell</span>
+      </div>
+    </div>
+
+    <!-- AUCTIONS + YOU -->
+    <div class="flex flex-col gap-3">
+      <div class="panel p3">
+        <div class="fb tsm mb2">🎯 Two auctions this round</div>
+        <div id="auctionCard" class="grid gap-2" style="grid-template-columns:1fr 1fr">
+          <div class="soft rounded p2 text-center" style="box-shadow:inset 0 -2px 0 var(--bidline)">
+            <div class="t10 muted">BID auction</div><div class="t10 muted">maker buy × taker sell</div>
+            <div class="tlg fx" id="bidPx" style="color:var(--bidline)">—</div><div class="t10 muted" id="bidVol">no cross</div>
+          </div>
+          <div class="soft rounded p2 text-center" style="box-shadow:inset 0 -2px 0 var(--askline)">
+            <div class="t10 muted">ASK auction</div><div class="t10 muted">taker buy × maker sell</div>
+            <div class="tlg fx" id="askPx" style="color:var(--askline)">—</div><div class="t10 muted" id="askVol">no cross</div>
+          </div>
+        </div>
+        <div class="t10 muted text-center mt2">spread = <b id="spread">—</b> · takers buy in the ask auction, sell in the bid auction</div>
+      </div>
+      <div class="panel p3 flex flex-col" style="flex:1">
+        <div class="fb tsm mb1">💼 Your trade</div>
+        <div id="meResult" class="soft rounded p2 tsm" style="flex:1;min-height:120px"><div class="muted text-center mt3">Submit an order below to join a train.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERP POSITIONS (the perps DEX part) -->
+  <div class="panel p3 mb3">
+    <div class="flex items-center justify-between mb2">
+      <div class="fb tsm">📈 Open positions <span class="muted fn">— leverage & liquidation (perps)</span></div>
+      <div class="t11 muted" id="liqNote"></div>
+    </div>
+    <div class="scroll" style="max-height:220px"><table id="posTable"><thead><tr>
+      <th>Trader</th><th>Side</th><th>Size (SOL)</th><th>Lev</th><th>Entry</th><th>Liq price</th><th>→ liq</th><th>uPnL</th>
+    </tr></thead><tbody id="posBody"></tbody></table></div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="panel p3 mb3">
+    <div class="flex items-end gap-3 flex-wrap">
+      <div>
+        <div class="t11 muted mb1 fb">YOU (a taker) — open a leveraged position</div>
+        <div class="flex items-end gap-2 flex-wrap">
+          <div><div class="t10 muted mb1">size (SOL)</div><input type="number" id="qty" value="2" step="0.5" min="0.1"></div>
+          <div><div class="t10 muted mb1">leverage</div><input type="number" id="lev" value="5" step="1" min="1" max="20"></div>
+          <div class="seg" id="sideSeg"><button data-side="buy" class="on">▲ Buy / Long</button><button data-side="sell">▼ Sell / Short</button></div>
+          <button class="btn primary" id="submitBtn">Submit →</button>
+        </div>
+        <div class="t10 muted mt1" id="meHint"></div>
+      </div>
+      <div class="ml-auto flex items-end gap-2 flex-wrap">
+        <button class="btn" id="liveBtn">🛰 Live Pyth: on</button>
+        <button class="btn" id="pauseBtn">⏸ Pause</button>
+        <button class="btn" id="crankBtn">🤖 I'll crank</button>
+        <button class="btn" id="spamBtn" title="scaling trick">＋150 orders</button>
+        <button class="btn" id="cheatBtn" title="security">😈 Try to cheat</button>
+      </div>
+    </div>
+    <div id="manualBar" class="hidden mt3 mb1 border-t" style="padding-top:.75rem">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="t11 muted fb">CRANKER:</span>
+        <button class="btn" id="mFold">① Fold (process_chunk)</button>
+        <button class="btn" id="mFin">② Find prices (finalize_clear)</button>
+        <button class="btn" id="mSet">③ Settle (settle_fill)</button>
+        <button class="btn" id="mRoll">④ Next round (start_auction)</button>
+        <span class="t11 muted" id="mHint"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel soft px3 py2 mb3 flex items-center gap-3"><div class="tlg">🗣️</div><div id="narration" class="tsm fm">Loading the live SOL price…</div></div>
+
+  <div class="panel p3 mb4 hidden" id="devPanel">
+    <div class="grid gap-3" style="grid-template-columns:1fr 1fr">
+      <div><div class="fb tsm mb1">🧾 Transaction log <span class="muted fn">(real instruction names + discriminators)</span></div><div class="scroll mono soft rounded p2 t11" id="txlog" style="height:210px;line-height:1.5"></div></div>
+      <div><div class="fb tsm mb1">🔬 Under the hood — dual find_cross</div><div class="mono soft rounded p2 t11" id="devState" style="height:210px;overflow:auto;line-height:1.5"></div></div>
+    </div>
+    <div class="t10 muted mt2">find_cross (ported faithfully from program/src/clearing.rs): two-pass — pass 1 finds V = max·min(D,S); pass 2 picks the lowest plateau tick where neither side's strictly-better quantity exceeds V, so settlement conserves (Σ buy fills = Σ sell fills = V). Run once per auction (bid + ask).</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+/* ============================================================================
+   Tempo perps batch-auction demo — vanilla JS, no build, no libraries.
+   Clearing math is a faithful port of program/src/clearing.rs (the NEW two-pass
+   find_cross). Optional live SOL price from Pyth Hermes (graceful offline fallback).
+   ============================================================================ */
+
+/* ---- Pyth (SOL/USD) ---- */
+const SOL_FEED = "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
+const HERMES = `https://hermes.pyth.network/v2/updates/price/latest?ids[]=${SOL_FEED}&parsed=true`;
+async function fetchPyth(){
+  try{
+    const r = await fetch(HERMES,{cache:"no-store"});
+    if(!r.ok) throw 0;
+    const j = await r.json();
+    const p = j.parsed?.[0]?.price; if(!p) throw 0;
+    const px = Number(p.price)*Math.pow(10, Number(p.expo));
+    if(!isFinite(px)||px<=0) throw 0;
+    return px;
+  }catch(_){ return null; }
+}
+
+/* ---- perp params ---- */
+const CPS = 10;                 // contracts per SOL (0.1 SOL granularity → integer clearing math)
+const MMR = 0.005;              // maintenance margin rate (0.5%)
+const MAKERS = ['MM·Jane','MM·Kai','MM·Rho','MM·Sol','MM·Vega'];
+const TAKERS = ['Alice','Bob','Carol','Dan'];
+
+/* ---- clearing math: faithful port of clearing.rs ---- */
+const R_DEMAND=0,R_SUPPLY=1,R_NONE=2;
+function findCross(demand, supply){
+  const n=demand.length; const total=demand.reduce((a,b)=>a+b,0);
+  // pass 1: V
+  let V=0,s=0,db=0;
+  for(let t=0;t<n;t++){ s+=supply[t]; const d=total-db; V=Math.max(V,Math.min(d,s)); db+=demand[t]; }
+  if(V===0) return {crossed:false,clearingTick:0,V:0,volAlloc:0,totalQty:0,rationed:R_NONE};
+  // pass 2: lowest plateau tick where strictly-better <= V (else lowest plateau tick)
+  let chosen=null,fallback=null; s=0; db=0;
+  for(let t=0;t<n;t++){ s+=supply[t]; const d=total-db; const m=Math.min(d,s);
+    if(m===V){ if(!fallback) fallback=[t,s,d];
+      if(d-demand[t]<=V && s-supply[t]<=V){ chosen=[t,s,d]; break; } }
+    db+=demand[t]; }
+  const [t,sAtBelow,dAtAbove] = chosen||fallback||[0,0,0];
+  let volAlloc,totalQty,rationed;
+  if(dAtAbove>sAtBelow){ volAlloc=Math.max(0,V-(dAtAbove-demand[t])); totalQty=demand[t]; rationed=R_DEMAND; }
+  else if(sAtBelow>dAtAbove){ volAlloc=Math.max(0,V-(sAtBelow-supply[t])); totalQty=supply[t]; rationed=R_SUPPLY; }
+  else { volAlloc=demand[t]; totalQty=demand[t]; rationed=R_NONE; }
+  return {crossed:true,clearingTick:t,V,volAlloc,totalQty,rationed};
+}
+function computeFill(rem,better,atMarg,onRationed,volAlloc,totalQty){
+  if(better) return rem; if(!atMarg) return 0; if(!onRationed) return rem;
+  if(totalQty===0) return 0; return Math.floor(rem*volAlloc/totalQty);
+}
+function computeMarginalFill(cumBefore,qty,volAlloc,totalQty){
+  if(totalQty===0) return 0;
+  return Math.floor((cumBefore+qty)*volAlloc/totalQty)-Math.floor(cumBefore*volAlloc/totalQty);
+}
+
+/* ============================================================================
+   STATE
+   ============================================================================ */
+const PHASE={COLLECT:'Collect',ACCUM:'Accumulating',DISCOVER:'Discovered',SETTLE:'Settling'};
+let S, oracleTimer=null, phaseTimer=null;
+const NUM_TICKS=21;
+function tickSizeFor(px){ const raw=px*0.0012; const steps=[0.05,0.1,0.2,0.25,0.5,1,2]; return steps.find(x=>x>=raw)||5; }
+
+function freshState(){
+  return {
+    mode:'story', round:1, phase:PHASE.COLLECT,
+    oracle:172, oraclePrev:172, live:true, liveOK:false,
+    tickSize:0.2, low:170,                 // window: tick i price = low + i*tickSize
+    orders:[], nextId:1,
+    H:{mb:z(),ts:z(),tb:z(),ms:z()},       // maker-buy, taker-sell, taker-buy, maker-sell (per tick)
+    accumulated:0, bid:null, ask:null,
+    positions:{},                          // owner -> {side:'long'/'short', size(contracts), entry, lev}
+    liqEvents:[], tx:[],
+    roundLen:8000, paused:false, manual:false, skipCheat:false,
+  };
+}
+const z=()=>Array(NUM_TICKS).fill(0);
+const activeCount=()=>S.orders.filter(o=>o.status!=='consumed').length;
+const resting=()=>S.orders.filter(o=>o.status==='resting');
+const priceOf=t=>S.low + t*S.tickSize;
+const tickOf=p=>Math.round((p-S.low)/S.tickSize);
+const inWin=t=>t>=0&&t<NUM_TICKS;
+const sol=c=>(c/CPS);
+const fmtSol=c=>sol(c).toFixed(1);
+
+/* ============================================================================
+   DOM helpers
+   ============================================================================ */
+const $=id=>document.getElementById(id);
+const el=(t,c,h)=>{const e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e;};
+function toast(m,ms=2800){const t=$('toast');t.innerHTML=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),ms);}
+function narrate(t){$('narration').innerHTML=t;}
+function tx(name,disc,detail){ S.tx.unshift(`<span style="color:#a78bfa">#${S.round}</span> <b>${name}</b><span class="muted">(${disc})</span> ${detail||''}`); if(S.tx.length>90)S.tx.pop(); if(S.mode==='dev')renderDev(); }
+
+/* ============================================================================
+   PRICE FEED (live Pyth or simulated)
+   ============================================================================ */
+async function pollPrice(){
+  if(S.live){
+    const px=await fetchPyth();
+    if(px){ S.liveOK=true; setOracle(px); }
+    else { S.liveOK=false; simStep(); }    // fall back this tick
+  } else { simStep(); }
+  renderStatus(); checkLiquidations();
+  oracleTimer=setTimeout(pollPrice, 4000);
+}
+function simStep(){ const d=(Math.random()-0.5)*S.oracle*0.004; setOracle(S.oracle+d); }
+function setOracle(px){ S.oraclePrev=S.oracle; S.oracle=px; }
+
+/* ============================================================================
+   MARKETS: makers quote around oracle; takers cross
+   ============================================================================ */
+function recenter(){
+  S.tickSize=tickSizeFor(S.oracle);
+  const mid=S.oracle, half=Math.floor(NUM_TICKS/2);
+  S.low=Math.round((mid/S.tickSize))*S.tickSize - half*S.tickSize;
+}
+function addOrder(o){ if(!inWin(o.tick)) return null; const ord={id:S.nextId++,remaining:o.qty,status:'resting',fill:0,...o}; S.orders.push(ord); return ord; }
+
+function seedRound(){
+  recenter();
+  const midT=tickOf(Math.round(S.oracle/S.tickSize)*S.tickSize);
+  // makers: a ladder of buys below mid + sells above mid
+  for(const m of MAKERS){
+    for(let k=1;k<=3;k++){ addOrder({owner:m,side:'buy', maker:true, tick:midT-k, qty:ri(8,28)}); }
+    for(let k=1;k<=3;k++){ addOrder({owner:m,side:'sell',maker:true, tick:midT+k, qty:ri(8,28)}); }
+  }
+  // taker bots: a couple cross each side so both auctions clear
+  shuffle(TAKERS).slice(0, ri(2, TAKERS.length)).forEach(tk=>{
+    const buy=Math.random()<0.5;
+    addOrder({owner:tk, side:buy?'buy':'sell', maker:false, tick:midT+(buy?ri(0,2):-ri(0,2)), qty:ri(6,55), lev:ri(2,12)});
+  });
+}
+function ri(a,b){return a+Math.floor(Math.random()*(b-a+1));}
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+/* region of an order: maker-buy=mb, taker-sell=ts (bid auction); taker-buy=tb, maker-sell=ms (ask auction) */
+function regionOf(o){ return o.side==='buy' ? (o.maker?'mb':'tb') : (o.maker?'ms':'ts'); }
+function auctionOf(o){ return (o.maker===(o.side==='buy')) ? 'bid' : 'ask'; }  // maker-buy/taker-sell→bid
+
+/* ============================================================================
+   PHASE MACHINE
+   ============================================================================ */
+function clearPhase(){ if(phaseTimer){clearTimeout(phaseTimer);phaseTimer=null;} }
+function sched(fn,ms){ clearPhase(); phaseTimer=setTimeout(fn,Math.max(40,ms)); }
+
+function enterCollect(){
+  S.phase=PHASE.COLLECT; S.H={mb:z(),ts:z(),tb:z(),ms:z()}; S.accumulated=0; S.bid=null; S.ask=null;
+  S.orders=[]; seedRound();
+  S.cdEnd=Date.now()+S.roundLen;
+  $('loco').classList.add('loco-off');
+  tx('start_auction',6,`round ${S.round} · Collect opens · buckets zeroed`);
+  narrate(`<b>Round #${S.round} — doors open.</b> Makers post buys & sells around SOL $${S.oracle.toFixed(2)}; takers cross the spread. Boarding first gives no advantage.`);
+  render();
+  if(!S.manual) tickCollect();
+}
+function tickCollect(){
+  if(S.paused) return;
+  const left=S.cdEnd-Date.now();
+  if(left<=0){ enterAccum(); return; }
+  if(left>1200 && Math.random()<0.10){ // a little late flow
+    const midT=tickOf(Math.round(S.oracle/S.tickSize)*S.tickSize);
+    if(Math.random()<0.6){ const m=MAKERS[ri(0,MAKERS.length-1)],buy=Math.random()<0.5; addOrder({owner:m,side:buy?'buy':'sell',maker:true,tick:midT+(buy?-ri(1,3):ri(1,3)),qty:ri(6,20)}); }
+    else { const tk=TAKERS[ri(0,TAKERS.length-1)],buy=Math.random()<0.5; addOrder({owner:tk,side:buy?'buy':'sell',maker:false,tick:midT+(buy?ri(0,2):-ri(0,2)),qty:ri(6,40),lev:ri(2,12)}); }
+    renderStack();
+  }
+  renderStatus(); sched(tickCollect,120);
+}
+function enterAccum(){ S.phase=PHASE.ACCUM; $('loco').classList.remove('loco-off');
+  narrate(`<b>Doors closed.</b> The cranker 🤖 <b>folds</b> every order into its price mailbox — the stack empties, the mailboxes grow. Order doesn't matter (just addition), so any cranker gets the same result.`);
+  render(); if(!S.manual) sched(foldStep,420);
+}
+function foldOne(o){ S.H[regionOf(o)][o.tick]+=o.remaining; o.status='accumulated'; S.accumulated++; pulse(o.tick); }
+function foldStep(){ if(S.paused)return; const r=resting(); if(!r.length){enterDiscover();return;}
+  const k=r.length>40?18:2; r.slice(0,k).forEach(foldOne);
+  tx('process_chunk',3,`folded ${Math.min(k,r.length)} → histogram (${S.accumulated}/${activeCount()})`);
+  renderStack();renderLadder();renderStatus(); sched(foldStep,420);
+}
+function enterDiscover(){
+  if(S.accumulated!==activeCount()){ narrate(`⛔ <b>Finalize blocked:</b> only ${S.accumulated}/${activeCount()} folded. Anyone can fold the rest — no censorship.`); return false; }
+  S.phase=PHASE.DISCOVER;
+  S.bid=findCross(S.H.mb,S.H.ts);   // BID auction: maker buys × taker sells
+  S.ask=findCross(S.H.tb,S.H.ms);   // ASK auction: taker buys × maker sells
+  const bp=S.bid.crossed?priceOf(S.bid.clearingTick):0, ap=S.ask.crossed?priceOf(S.ask.clearingTick):0;
+  tx('finalize_clear',4,`BID ${bp?'$'+bp.toFixed(2):'—'} (${fmtSol(S.bid.V)}) · ASK ${ap?'$'+ap.toFixed(2):'—'} (${fmtSol(S.ask.V)})`);
+  narrate(`<b>Two prices found.</b> <span style="color:var(--bidline)">BID auction</span> (takers sold to makers) ${bp?'cleared at $'+bp.toFixed(2):'no cross'}; <span style="color:var(--askline)">ASK auction</span> (takers bought from makers) ${ap?'cleared at $'+ap.toFixed(2):'no cross'}. Makers never touched makers.`);
+  render(); if(!S.manual) sched(enterSettle,1500); return true;
+}
+function enterSettle(){ S.phase=PHASE.SETTLE; narrate(`<b>Settling.</b> Each order pulls its own fill at its auction's one price. Taker fills open leveraged positions — watch the liquidation prices.`); render(); if(!S.manual) sched(settleStep,300); }
+
+function cumBefore(o){ let s=0; const reg=regionOf(o); for(const x of S.orders){ if(regionOf(x)===reg && x.tick===o.tick && x.id<o.id && (x.status==='accumulated'||x.status==='consumed')) s+=x.qty; } return s; }
+function settleOne(o){
+  const a = auctionOf(o)==='bid'?S.bid:S.ask; let fill=0;
+  if(a&&a.crossed){
+    const t=o.tick,m=a.clearingTick;
+    const onR = o.side==='buy' ? a.rationed===R_DEMAND : a.rationed===R_SUPPLY;
+    let better,atM,can;
+    if(o.side==='buy'){ better=t>m; atM=t===m; can=t>=m; } else { better=t<m; atM=t===m; can=t<=m; }
+    if(can) fill = (atM&&onR) ? computeMarginalFill(cumBefore(o),o.qty,a.volAlloc,a.totalQty)
+                              : computeFill(o.remaining,better,atM,onR,a.volAlloc,a.totalQty);
+  }
+  o.fill=fill; o.remaining-=fill; o.status='consumed';
+  if(fill>0 && !o.maker){ applyToPosition(o, fill, priceOf(a.clearingTick)); }
+  return fill;
+}
+function settleStep(){ if(S.paused)return; const nx=S.orders.filter(o=>o.status==='accumulated');
+  if(!nx.length){ sched(()=>{ S.round++; recenter(); enterCollect(); }, 1100); narrate(`<b>Round complete.</b> The car rolls into history; a fresh train arrives — the mailboxes reset to the same fixed size.`); return; }
+  const o=nx[0],f=settleOne(o);
+  if(o.owner==='YOU') showYourFill(o,f, auctionOf(o)==='bid'?S.bid:S.ask);
+  tx('settle_fill',5,`${o.owner} ${o.side} → filled ${fmtSol(f)} SOL`);
+  renderStack();renderStatus();renderPositions(); sched(settleStep,300);
+}
+
+/* ============================================================================
+   PERP POSITIONS  +  LIQUIDATION
+   ============================================================================ */
+function liqPrice(side,entry,lev){ return side==='long' ? entry*(1-1/lev)/(1-MMR) : entry*(1+1/lev)/(1+MMR); }
+function applyToPosition(o, qtyC, price){
+  const owner=o.owner; let p=S.positions[owner];
+  const signed = o.side==='buy'? qtyC : -qtyC;
+  if(!p){ p={side:signed>0?'long':'short', size:Math.abs(signed), entry:price, lev:o.lev||5, owner}; S.positions[owner]=p; recalc(p); return; }
+  const cur = p.side==='long'? p.size : -p.size;
+  const nw = cur+signed;
+  if(cur===0 || (cur>0)===(o.side==='buy')){ const a=Math.abs(cur),add=qtyC; p.entry=(a*p.entry+add*price)/(a+add); }
+  else if(Math.abs(signed)>Math.abs(cur)){ p.entry=price; }   // flip
+  p.size=Math.abs(nw); p.side = nw>=0?'long':'short';
+  if(o.lev) p.lev=o.lev;
+  if(p.size===0){ delete S.positions[owner]; return; }
+  recalc(p);
+}
+function recalc(p){ p.liq=liqPrice(p.side,p.entry,p.lev); }
+function checkLiquidations(){
+  for(const owner of Object.keys(S.positions)){
+    const p=S.positions[owner];
+    const hit = p.side==='long' ? S.oracle<=p.liq : S.oracle>=p.liq;
+    if(hit){
+      S.liqEvents.unshift(`🔥 ${owner} liquidated — ${p.side.toUpperCase()} ${fmtSol(p.size)} SOL @ entry $${p.entry.toFixed(2)} (SOL hit $${S.oracle.toFixed(2)})`);
+      tx('liquidate',14,`${owner} ${p.side} ${fmtSol(p.size)} SOL · oracle $${S.oracle.toFixed(2)}`);
+      delete S.positions[owner]; p._liq=true;
+      if(owner==='YOU') toast(`🔥 You were liquidated! SOL hit your liq price $${p.liq.toFixed(2)}. Higher leverage = closer liq.`,4000);
+    }
+  }
+  renderPositions();
+}
+function uPnL(p){ const d = p.side==='long'? (S.oracle-p.entry):(p.entry-S.oracle); return d*sol(p.size); }
+function showYourFill(o,fill,a){
+  const px=a&&a.crossed?priceOf(a.clearingTick):0; const box=$('meResult');
+  if(fill<=0){ box.innerHTML=`<div class="text-center"><div class="t3xl">😕</div><div class="fb">Did not fill</div><div class="muted t11 mt1">Your ${o.side} sat on the wrong side of the ${auctionOf(o)} clearing price${px?` $${px.toFixed(2)}`:''}. Try again next train.</div></div>`; return; }
+  const saved = o.side==='buy'? (priceOf(o.tick)-px)*sol(fill) : (px-priceOf(o.tick))*sol(fill);
+  const p=S.positions['YOU'];
+  box.innerHTML=`<div class="text-center"><div class="t3xl">✅</div>
+    <div class="fb">Filled ${fmtSol(fill)} SOL @ <span style="color:var(--accent)">$${px.toFixed(2)}</span></div>
+    <div class="t10 muted mt1">in the <b>${auctionOf(o)} auction</b> (you ${o.side==='buy'?'bought from makers':'sold to makers'})</div>
+    ${saved>0?`<div class="pill mt2" style="background:#064e3b;color:#a7f3d0">🎉 saved $${saved.toFixed(2)} vs your limit</div>`:''}
+    ${p?`<div class="t11 mt2">now <b style="color:${p.side==='long'?'var(--buy)':'var(--sell)'}">${p.side.toUpperCase()} ${fmtSol(p.size)} SOL ${p.lev}×</b> · liq <b>$${p.liq.toFixed(2)}</b></div>`:''}</div>`;
+}
+
+/* ============================================================================
+   RENDER
+   ============================================================================ */
+const ZONE={[PHASE.COLLECT]:0,[PHASE.ACCUM]:1,[PHASE.DISCOVER]:2,[PHASE.SETTLE]:3};
+function render(){ renderStatus();renderTrain();renderStack();renderLadder();renderAuctions();renderPositions(); if(S.mode==='dev')renderDev(); }
+function renderStatus(){
+  $('oraclePx').textContent='$'+S.oracle.toFixed(2);
+  const a=S.oracle-S.oraclePrev; const arr=$('oracleArrow'); arr.textContent=a>0.001?'▲':a<-0.001?'▼':'·'; arr.style.color=a>0?'var(--buy)':a<0?'var(--sell)':'var(--muted)';
+  const b=$('srcBadge'); if(S.live&&S.liveOK){b.textContent='Pyth live';b.style.background='#06351f';b.style.color='#7ef0b5';} else if(S.live){b.textContent='connecting…';b.style.background='#3a2607';b.style.color='#fbbf24';} else {b.textContent='simulated';b.style.background='#1e293b';b.style.color='#9fc2ff';}
+  $('roundNo').textContent='#'+S.round; $('phaseName').textContent=S.phase; $('orderCount').textContent=S.orders.length; $('tickCount').textContent=NUM_TICKS;
+  const cd=S.phase===PHASE.COLLECT; $('cdWrap').style.visibility=cd?'visible':'hidden';
+  if(cd) $('countdown').textContent=Math.max(0,(S.cdEnd-Date.now())/1000).toFixed(1)+'s';
+}
+function renderTrain(){
+  const car=$('car'),loco=$('loco'),railW=$('railway').clientWidth-140,z=ZONE[S.phase];
+  const left=140+railW*(z/4)+railW/8-59; car.style.left=left+'px'; loco.style.left=(left-52)+'px';
+  $('carLabel').textContent=`Round #${S.round} · ${S.phase}`;
+  const hc=$('histCars');hc.innerHTML=''; for(let i=1;i<=4;i++){const r=S.round-i;if(r<1)break;const c=el('div','hist-car','#'+r);c.style.left=(140+railW+i*58)+'px';hc.appendChild(c);}
+}
+function renderStack(){
+  const w=$('stack');w.innerHTML=''; const cap=70;
+  S.orders.slice(0,cap).forEach(o=>{
+    const me=o.owner==='YOU'; const cls='ocard'+(me?' you':'')+(o.status==='accumulated'?' accum':'')+(o.status==='consumed'?' consumed':'');
+    const c=el('div',cls);
+    const dir=o.side==='buy'?'<span class="fx" style="color:var(--buy)">▲</span>':'<span class="fx" style="color:var(--sell)">▼</span>';
+    let st = o.status==='consumed' ? (o.fill>0?`<span class="status st-filled">${fmtSol(o.fill)}</span>`:`<span class="status st-nofill">no fill</span>`) : `<span class="status st-${o.status}">${o.status}</span>`;
+    const av=o.maker?['#0e2a4d','#9fc2ff']:(me?['#3a2607','#f59e0b']:['#3a2c08','#fbbf24']);
+    c.id='ord-'+o.id;
+    c.innerHTML=`<div class="ava" style="background:${av[0]};color:${av[1]}">${me?'YOU':o.owner.replace('MM·','')}</div>${dir} <b>${fmtSol(o.qty)}</b> @ <b>$${priceOf(o.tick).toFixed(2)}</b> <span class="pill" style="background:${o.maker?'#0e2a4d':'#3a2c08'};color:${o.maker?'#9fc2ff':'#fbbf24'}">${o.maker?'maker':'taker'}</span>${st}`;
+    w.appendChild(c);
+  });
+  if(S.orders.length>cap) w.appendChild(el('div','text-center t10 muted py2',`+ ${S.orders.length-cap} more (mailboxes still ${NUM_TICKS}!)`));
+  if(!S.orders.length) w.appendChild(el('div','muted tsm text-center mt3','No orders yet.'));
+}
+function renderLadder(){
+  const lad=$('ladder');lad.innerHTML='';
+  let max=1; for(let t=0;t<NUM_TICKS;t++){ max=Math.max(max, S.H.mb[t]+S.H.tb[t], S.H.ms[t]+S.H.ts[t]); }
+  const bt=S.bid&&S.bid.crossed?S.bid.clearingTick:-1, at=S.ask&&S.ask.crossed?S.ask.clearingTick:-1;
+  for(let t=0;t<NUM_TICKS;t++){
+    const row=el('div','mrow'+(t===bt?' cb':'')+(t===at?' ca':'')); row.id='mr-'+t;
+    const bid=el('div','bidcell'),ask=el('div','askcell');
+    const mb=S.H.mb[t],tb=S.H.tb[t],ms=S.H.ms[t],ts=S.H.ts[t];
+    // Bar is anchored to the PRICE side and grows outward; the quantity number
+    // sits at the bar's outer tip (capped at 92% so the number always has room).
+    if(mb+tb>0){ const bar=el('div','bar bid'); bar.style.width=((mb+tb)/max*92)+'%';
+      if(mb>0){const s=el('div','seg-mk-buy');s.style.flex=mb;bar.appendChild(s);} if(tb>0){const s=el('div','seg-tk-buy');s.style.flex=tb;bar.appendChild(s);}
+      const q=el('div','qlab',fmtSol(mb+tb)); bid.appendChild(q); bid.appendChild(bar); }   // qty (left) · bar touches price (right)
+    if(ms+ts>0){ const bar=el('div','bar ask'); bar.style.width=((ms+ts)/max*92)+'%';
+      if(ms>0){const s=el('div','seg-mk-sell');s.style.flex=ms;bar.appendChild(s);} if(ts>0){const s=el('div','seg-tk-sell');s.style.flex=ts;bar.appendChild(s);}
+      const q=el('div','qlab',fmtSol(ms+ts)); ask.appendChild(bar); ask.appendChild(q); }   // bar touches price (left) · qty (right)
+    const pr=el('div','price','$'+priceOf(t).toFixed(2));
+    row.appendChild(bid);row.appendChild(pr);row.appendChild(ask);
+    if(t===bt) row.appendChild(el('div','clab b','BID')); if(t===at) row.appendChild(el('div','clab a','ASK'));
+    lad.appendChild(row);
+  }
+}
+function pulse(t){const r=$('mr-'+t);if(r){r.classList.remove('pulse');void r.offsetWidth;r.classList.add('pulse');}}
+function renderAuctions(){
+  const setSide=(pre,a)=>{ const px=$(pre+'Px'),vol=$(pre+'Vol');
+    if(a&&a.crossed){ px.textContent='$'+priceOf(a.clearingTick).toFixed(2); vol.textContent='matched '+fmtSol(a.V)+' SOL'; }
+    else { px.textContent='—'; vol.textContent='no cross'; } };
+  setSide('bid',S.bid); setSide('ask',S.ask);
+  let sp='—'; if(S.bid&&S.bid.crossed&&S.ask&&S.ask.crossed){ sp='$'+Math.abs(priceOf(S.ask.clearingTick)-priceOf(S.bid.clearingTick)).toFixed(2); }
+  $('spread').textContent=sp;
+}
+function renderPositions(){
+  const body=$('posBody');body.innerHTML='';
+  const rows=Object.values(S.positions).sort((a,b)=>(b.owner==='YOU')-(a.owner==='YOU')||b.size-a.size);
+  if(!rows.length){ body.innerHTML=`<tr><td colspan="8" class="muted text-center" style="padding:14px">No open positions yet — takers open leveraged longs/shorts when they fill.</td></tr>`; }
+  for(const p of rows){
+    const me=p.owner==='YOU'; const pnl=uPnL(p);
+    const dist=p.side==='long'?(S.oracle-p.liq)/S.oracle:(p.liq-S.oracle)/S.oracle; // fraction to liq
+    const dpct=Math.max(0,Math.min(1,dist/0.15)); const dcol=dpct<.33?'var(--sell)':dpct<.66?'var(--warn)':'var(--buy)';
+    const tr=el('tr',me?'me':'');
+    tr.innerHTML=`<td>${me?'<b style="color:var(--you)">YOU</b>':p.owner}</td>
+      <td style="color:${p.side==='long'?'var(--buy)':'var(--sell)'};font-weight:700">${p.side.toUpperCase()}</td>
+      <td>${fmtSol(p.size)}</td><td>${p.lev}×</td><td>$${p.entry.toFixed(2)}</td>
+      <td style="color:var(--warn)">$${p.liq.toFixed(2)}</td>
+      <td><div class="liqbar"><div style="width:${(dpct*100).toFixed(0)}%;background:${dcol}"></div></div></td>
+      <td style="color:${pnl>=0?'var(--buy)':'var(--sell)'}">${pnl>=0?'+':''}$${pnl.toFixed(2)}</td>`;
+    body.appendChild(tr);
+  }
+  $('liqNote').innerHTML = S.liqEvents.length? S.liqEvents[0] : `maintenance margin ${(MMR*100).toFixed(1)}% · liquidation is oracle-priced (the program's <span class="mono">liquidate</span> ix)`;
+}
+function renderDev(){
+  $('txlog').innerHTML=S.tx.map(t=>`<div>${t}</div>`).join('');
+  const f=a=>'['+a.map(x=>fmtSol(x)).join(',')+']';
+  $('devState').innerHTML=
+   `phase ${S.phase} · round ${S.round} · SOL $${S.oracle.toFixed(2)} ${S.live?(S.liveOK?'(pyth)':'(connecting)'):'(sim)'}\n`+
+   `active/folded ${activeCount()}/${S.accumulated} ${S.accumulated===activeCount()?'(complete ✓)':''}\n\n`+
+   `BID auction  demand=maker buys  supply=taker sells\n  mb ${f(S.H.mb)}\n  ts ${f(S.H.ts)}\n`+
+   (S.bid? `  → ${S.bid.crossed?'$'+priceOf(S.bid.clearingTick).toFixed(2)+' V='+fmtSol(S.bid.V)+' rationed='+['demand','supply','none'][S.bid.rationed]:'no cross'}\n`:'')+
+   `\nASK auction  demand=taker buys  supply=maker sells\n  tb ${f(S.H.tb)}\n  ms ${f(S.H.ms)}\n`+
+   (S.ask? `  → ${S.ask.crossed?'$'+priceOf(S.ask.clearingTick).toFixed(2)+' V='+fmtSol(S.ask.V)+' rationed='+['demand','supply','none'][S.ask.rationed]:'no cross'}`:'');
+}
+
+/* ============================================================================
+   INTERACTIONS
+   ============================================================================ */
+let curSide='buy';
+$('sideSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;[...$('sideSeg').children].forEach(x=>x.classList.remove('on'));b.classList.add('on');curSide=b.dataset.side; updateMeHint();};
+function updateMeHint(){ const sz=+$('qty').value||0, lev=+$('lev').value||1; const side=curSide==='buy'?'long':'short';
+  const entry=S.oracle; const liq=liqPrice(side,entry,lev);
+  $('meHint').innerHTML=`≈ ${side} ${sz} SOL · notional $${(sz*entry).toFixed(0)} · margin $${(sz*entry/lev).toFixed(0)} · est. liq <b style="color:var(--warn)">$${liq.toFixed(2)}</b>`; }
+$('qty').oninput=updateMeHint; $('lev').oninput=updateMeHint;
+$('submitBtn').onclick=()=>{
+  const solSz=Math.max(0.1,+$('qty').value||1), lev=Math.max(1,Math.min(20,Math.floor(+$('lev').value||1)));
+  const qtyC=Math.round(solSz*CPS); const midT=tickOf(Math.round(S.oracle/S.tickSize)*S.tickSize);
+  const tick=curSide==='buy'?Math.min(NUM_TICKS-1,midT+2):Math.max(0,midT-2); // cross the spread (taker)
+  if(S.phase===PHASE.COLLECT){
+    const o=addOrder({owner:'YOU',side:curSide,maker:false,tick,qty:qtyC,lev});
+    tx('submit_order',1,`YOU ${curSide} ${solSz} SOL ${lev}× @ $${priceOf(tick).toFixed(2)}`);
+    narrate(`<b>You boarded train #${S.round}</b> as a taker ${curSide} (joins the <b>${curSide==='buy'?'ASK':'BID'} auction</b>, vs makers ${curSide==='buy'?'selling':'buying'}). Wait for the clear.`);
+    renderStack();renderStatus(); const c=$('ord-'+o.id); if(c){c.classList.add('glow');c.scrollIntoView({block:'nearest'});}
+  } else { toast(`🚉 That train already left — your order waits for the next one. That's the batch window (no time advantage).`); }
+};
+$('roundLen').onchange=e=>{ S.roundLen=(+e.target.value)*1000; };
+$('liveBtn').onclick=()=>{ S.live=!S.live; $('liveBtn').textContent=`🛰 Live Pyth: ${S.live?'on':'off'}`; $('liveBtn').classList.toggle('primary',S.live); if(!S.live){S.liveOK=false;} renderStatus(); };
+$('pauseBtn').onclick=()=>{ S.paused=!S.paused; $('pauseBtn').textContent=S.paused?'▶ Resume':'⏸ Pause'; if(!S.paused) resume(); };
+function resume(){ if(S.manual)return; if(S.phase===PHASE.COLLECT)tickCollect(); else if(S.phase===PHASE.ACCUM)foldStep(); else if(S.phase===PHASE.SETTLE)settleStep(); }
+$('crankBtn').onclick=()=>{ S.manual=!S.manual; clearPhase(); $('crankBtn').classList.toggle('primary',S.manual); $('crankBtn').textContent=S.manual?'🤖 Auto crank':'🤖 I\'ll crank'; $('manualBar').classList.toggle('hidden',!S.manual); if(S.manual)narrate(`<b>You're the cranker.</b> Fold → find prices → settle. Try finalizing early to see the completeness check block you.`); else {narrate('Auto cranker on.');resume();} renderManual(); };
+function renderManual(){ if(!S.manual)return; const r=resting().length;
+  $('mFold').disabled=!(S.phase===PHASE.COLLECT||S.phase===PHASE.ACCUM)||r===0;
+  $('mFin').disabled=S.phase!==PHASE.ACCUM&&S.phase!==PHASE.COLLECT;
+  $('mSet').disabled=S.phase!==PHASE.SETTLE&&S.phase!==PHASE.DISCOVER;
+  $('mRoll').disabled=!(S.phase===PHASE.SETTLE&&S.orders.every(o=>o.status==='consumed'));
+  $('mHint').textContent=S.phase===PHASE.ACCUM?`${S.accumulated}/${activeCount()} folded`:''; }
+$('mFold').onclick=()=>{ if(S.phase===PHASE.COLLECT)enterAccum(); const r=resting().slice(0,S.skipCheat?Math.max(0,resting().length-1):4); r.forEach(foldOne); tx('process_chunk',3,`YOU folded ${r.length} (${S.accumulated}/${activeCount()})`); renderStack();renderLadder();renderStatus();renderManual(); };
+$('mFin').onclick=()=>{ const ok=enterDiscover(); if(!ok)toast(`⛔ Completeness: ${S.accumulated}/${activeCount()} folded. Can't finalize until all orders are in.`); else S.skipCheat=false; render();renderManual(); };
+$('mSet').onclick=()=>{ if(S.phase===PHASE.DISCOVER)enterSettle(); const nx=S.orders.filter(o=>o.status==='accumulated').slice(0,4); nx.forEach(o=>{const f=settleOne(o); if(o.owner==='YOU')showYourFill(o,f,auctionOf(o)==='bid'?S.bid:S.ask); tx('settle_fill',5,`${o.owner} filled ${fmtSol(f)}`);}); renderStack();renderPositions();renderManual(); };
+$('mRoll').onclick=()=>{ S.round++; recenter(); enterCollect(); renderManual(); };
+
+$('spamBtn').onclick=()=>{ if(S.phase!==PHASE.COLLECT){toast('Add orders during Collect (doors open).');return;}
+  const midT=tickOf(Math.round(S.oracle/S.tickSize)*S.tickSize);
+  for(let i=0;i<150;i++){const buy=Math.random()<0.5;addOrder({owner:MAKERS[ri(0,MAKERS.length-1)],side:buy?'buy':'sell',maker:true,tick:midT+(buy?-ri(1,4):ri(1,4)),qty:ri(2,8)});}
+  toast(`Added 150 orders — the stack exploded, but there are still only <b>${NUM_TICKS}</b> mailboxes. Cost is O(ticks), not O(orders). That's why it fits on Solana.`,4200); renderStack();renderStatus(); };
+$('cheatBtn').onclick=()=>{ toast(`<div class="text-left"><b>😈 Can a cheating cranker win?</b><br>• Reorder folding → same mailboxes (addition is commutative).<br>• Skip an order → finalize gets blocked.</div>`,4500);
+  setTimeout(()=>{ if(S.phase===PHASE.ACCUM||S.phase===PHASE.COLLECT){ S.skipCheat=true; if(!S.manual)$('crankBtn').click(); narrate(`<b>Cheat armed.</b> As cranker, click <b>Fold</b> (it now skips one order), then <b>Find prices</b> — you'll be blocked by the completeness check.`); renderManual(); } else toast('Try it during a fresh Collect/Accumulate phase.'); },400); };
+
+$('helpBtn').onclick=()=>toast(`<div class="text-left"><b>🚆 Railway</b> = the round's life: Collect → Accumulate → Discover → Settle.<br><b>📬 Mailboxes</b> = orders added up per price; two cross lines = the two auction prices.<br><b>📈 Positions</b> = takers' leveraged longs/shorts with liquidation prices (it's a perps DEX).<br>SOL price is live from Pyth when online.</div>`,7000);
+
+$('modeTabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;[...$('modeTabs').children].forEach(x=>x.classList.remove('on'));b.classList.add('on');S.mode=b.dataset.mode;$('devPanel').classList.toggle('hidden',S.mode!=='dev');
+  if(S.mode==='story'){S.roundLen=Math.max(S.roundLen,8000);$('roundLen').value=String(S.roundLen/1000);narrate(`<b>Story mode.</b> Watch one full round; the narration explains the two auctions step by step.`);}
+  if(S.mode==='sandbox')narrate(`<b>Sandbox.</b> Open leveraged positions, change the round length, become the cranker, or stress it with +150 orders.`);
+  if(S.mode==='dev'){narrate(`<b>Dev.</b> Real instruction names + discriminators, and the live dual find_cross (both auctions' buckets + results).`);renderDev();}
+  render(); };
+
+/* ============================================================================
+   BOOT
+   ============================================================================ */
+async function boot(){
+  S=freshState();
+  const px=await fetchPyth(); if(px){S.oracle=px;S.oraclePrev=px;S.liveOK=true;} else {S.live=false;}
+  $('liveBtn').textContent=`🛰 Live Pyth: ${S.live?'on':'off'}`; $('liveBtn').classList.toggle('primary',S.live);
+  window.addEventListener('resize',renderTrain);
+  updateMeHint(); recenter(); enterCollect(); pollPrice();
+  // keep the collect countdown ticking smoothly even if no other render fires
+  setInterval(()=>{ if(S.phase===PHASE.COLLECT) renderStatus(); },200);
+}
+boot();
+window._tempo={get s(){return S;},findCross,liqPrice};
+</script>
+</body>
+</html>
+</content>

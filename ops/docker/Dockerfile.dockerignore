@@ -1,0 +1,22 @@
+# Scoped to ops/docker/Dockerfile (BuildKit). The build context is the repo root;
+# these are excluded from the image build to keep it small and secret-free. Kept
+# conservative on purpose — only paths the cargo workspace build never needs.
+target/
+**/target/
+node_modules/
+**/node_modules/
+.git/
+.github/
+docs/
+apps/
+tools/
+trident-tests/
+percolator/
+percolator-prog/
+*.so
+.env
+**/.env
+ops/compose/keys/
+**/*keypair*.json
+.sim-keys/
+**/.sim-keys/

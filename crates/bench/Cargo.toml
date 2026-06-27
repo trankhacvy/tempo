@@ -1,0 +1,30 @@
+[package]
+name = "tempo-bench"
+version.workspace = true
+edition.workspace = true
+description = "Reproducible benchmark + evidence harness for the Tempo clearing engine (host micro-benchmarks; the O(ticks) headline)."
+
+[[bin]]
+name = "tempo-bench"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+tempo-math = { path = "../tempo-math" }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "clearing"
+harness = false
+
+[[bench]]
+name = "marginal_fill"
+harness = false
+
+[[bench]]
+name = "wide_math"
+harness = false

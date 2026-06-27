@@ -1,0 +1,24 @@
+[package]
+name = "tempo-keeper"
+version.workspace = true
+edition.workspace = true
+description = "The Tempo keeper: a stateless, replica-safe crank/funding/roll service that drives the clearing protocol live."
+
+[[bin]]
+name = "tempo-keeper"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+tempo-common = { path = "../common" }
+tempo-sdk = { path = "../sdk" }
+solana-sdk = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+tracing = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+thiserror = { workspace = true }
+axum = { workspace = true }
+futures = { workspace = true }

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "pinocchio-development": {
+      "source": "sendaifun/skills",
+      "sourceType": "github",
+      "skillPath": "skills/pinocchio-development/SKILL.md",
+      "computedHash": "1f4be856ae79aff085b4cdf8100afea6dad8c2f6644ac573a1359256f85ff9c4"
+    },
+    "solana-dev": {
+      "source": "solana-foundation/solana-dev-skill",
+      "sourceType": "github",
+      "skillPath": "skill/SKILL.md",
+      "computedHash": "51ba37080e2377cd57f278db8702dc9cfcd1f7520a42cbcca8f83924d59b0560"
+    }
+  }
+}

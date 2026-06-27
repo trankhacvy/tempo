@@ -1,0 +1,3 @@
+# Place per-service keypair files here (read-only mounted into the containers):
+#   keeper-a.json keeper-b.json liquidator-a.json liquidator-b.json mm-bot.json
+# These are git-ignored (see /.gitignore). Never commit a keypair.

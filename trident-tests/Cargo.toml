@@ -1,0 +1,21 @@
+# Trident transaction-level fuzz target — standalone, excluded from the
+# main workspace. Built and run by the Trident CLI against the compiled SBF
+# program via the `trident-svm` backend (Pinocchio-compatible).
+[package]
+name = "tempo-trident-tests"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[dependencies]
+trident-fuzz = "0.10.0"
+tempo-program = { path = "../program", features = ["no-entrypoint"] }
+solana-sdk = "2"
+arbitrary = { version = "1", features = ["derive"] }
+
+[[bin]]
+name = "conservation"
+path = "fuzz_tests/conservation/main.rs"
+
+[profile.release]
+overflow-checks = true

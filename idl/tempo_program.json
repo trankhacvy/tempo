@@ -1,0 +1,6279 @@
+{
+  "additionalPrograms": [],
+  "kind": "rootNode",
+  "program": {
+    "accounts": [
+      {
+        "data": {
+          "fields": [],
+          "kind": "structTypeNode"
+        },
+        "kind": "accountNode",
+        "name": "eventAuthority",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "eventAuthority"
+        }
+      },
+      {
+        "data": {
+          "fields": [
+            {
+              "defaultValue": {
+                "kind": "numberValueNode",
+                "number": 3
+              },
+              "kind": "structFieldTypeNode",
+              "name": "discriminator",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "auctionIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidClearingPriceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askClearingPriceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidMatchedVolumeLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askMatchedVolumeLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidVolumeAllocatedToMarginalTickLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidTotalQtyAtMarginalTickLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askVolumeAllocatedToMarginalTickLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askTotalQtyAtMarginalTickLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidMarginalTickLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askMarginalTickLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidRationedSide",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askRationedSide",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "accountNode",
+        "name": "clearingResult",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "clearingResult"
+        }
+      },
+      {
+        "data": {
+          "fields": [
+            {
+              "defaultValue": {
+                "kind": "numberValueNode",
+                "number": 2
+              },
+              "kind": "structFieldTypeNode",
+              "name": "discriminator",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "auctionIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "accumulatedCountLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "numTicksLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "accountNode",
+        "name": "auctionHistogramHeader",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "auctionHistogramHeader"
+        }
+      },
+      {
+        "data": {
+          "fields": [
+            {
+              "defaultValue": {
+                "kind": "numberValueNode",
+                "number": 8
+              },
+              "kind": "structFieldTypeNode",
+              "name": "discriminator",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "maker",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "delegate",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "quoteIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "sequenceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "midTickLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "lastUpdateSlotLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "expirySlotsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "foldedAuctionIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "settledAuctionIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "numBids",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "numAsks",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "status",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidLevelsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 80
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askLevelsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 80
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidSnapshotsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 64
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askSnapshotsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 64
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "accountNode",
+        "name": "makerQuote",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "makerQuote"
+        }
+      },
+      {
+        "data": {
+          "fields": [
+            {
+              "defaultValue": {
+                "kind": "numberValueNode",
+                "number": 1
+              },
+              "kind": "structFieldTypeNode",
+              "name": "discriminator",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "currentAuctionIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "phaseDeadlineSlotLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "tickSizeLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "lastBidFillPriceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "lastAskFillPriceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "accumulatedOrderCountLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "activeOrderCountLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "ordersPerAuctionCapLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "numTicksLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "authority",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "marketSeed",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "oracle",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "phase",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "fundingIndexLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "lastFundingTsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "oracleFeedId",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 32
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "maintenanceMarginBpsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "liquidationPenaltyBpsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "makerFeeBpsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "takerFeeBpsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "integratorShareBpsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "crankFeeLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "collateralMint",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "nextQuoteIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "activeMakerQuoteCountLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "foldedMakerQuoteCountLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "oiLongLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "oiShortLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "socialLossIndexLongLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "socialLossIndexShortLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "effectivePrice1E8Le",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "effectivePriceSlotLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "lastGoodOracleSlotLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "maxPriceMoveBpsPerSlotLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "softStaleSlotsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "windowFloorPriceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "initialMarginBpsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "maxPositionNotionalLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "accountNode",
+        "name": "market",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "market"
+        }
+      },
+      {
+        "data": {
+          "fields": [
+            {
+              "defaultValue": {
+                "kind": "numberValueNode",
+                "number": 4
+              },
+              "kind": "structFieldTypeNode",
+              "name": "discriminator",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "auctionIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "nextOrderIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "capacityLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "countLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "nextFreeHintLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "accountNode",
+        "name": "orderSlabHeader",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "orderSlabHeader"
+        }
+      },
+      {
+        "data": {
+          "fields": [
+            {
+              "defaultValue": {
+                "kind": "numberValueNode",
+                "number": 5
+              },
+              "kind": "structFieldTypeNode",
+              "name": "discriminator",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "owner",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "sizeLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "entryPriceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "collateralLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "realizedPnlLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "lastFundingIndexLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "lastSocialIndexLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "marginMode",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "accountNode",
+        "name": "position",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "position"
+        }
+      },
+      {
+        "data": {
+          "fields": [
+            {
+              "defaultValue": {
+                "kind": "numberValueNode",
+                "number": 7
+              },
+              "kind": "structFieldTypeNode",
+              "name": "discriminator",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "owner",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "balanceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "lockedLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "accountNode",
+        "name": "userCollateral",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "userCollateral"
+        }
+      },
+      {
+        "data": {
+          "fields": [
+            {
+              "defaultValue": {
+                "kind": "numberValueNode",
+                "number": 6
+              },
+              "kind": "structFieldTypeNode",
+              "name": "discriminator",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "collateralMint",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "vaultTokenAccount",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "insuranceBalanceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "authorityBump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bump",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "accountNode",
+        "name": "vault",
+        "pda": {
+          "kind": "pdaLinkNode",
+          "name": "vault"
+        }
+      }
+    ],
+    "definedTypes": [
+      {
+        "kind": "definedTypeNode",
+        "name": "chunkProcessedEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "cranker",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "auctionId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "folded",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "accumulatedTotal",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "clearingFinalizedEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "auctionId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidClearingPrice",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "bidMatchedVolume",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askClearingPrice",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "askMatchedVolume",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "fillSettledEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "trader",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "orderId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "auctionId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "fill",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "side",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "isMaker",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "fundingUpdatedEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "fundingIndex",
+              "type": {
+                "endian": "le",
+                "format": "i128",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "mark",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "oraclePrice1E8",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "marketInitializedEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "authority",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "tickSize",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "numTicks",
+              "type": {
+                "endian": "le",
+                "format": "u32",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "ordersPerAuctionCap",
+              "type": {
+                "endian": "le",
+                "format": "u32",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "oraclePriceReadEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "oraclePrice1E8",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "exponent",
+              "type": {
+                "endian": "le",
+                "format": "i32",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "publishTime",
+              "type": {
+                "endian": "le",
+                "format": "i64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "markPrice",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "orderCancelledEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "trader",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "orderId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "auctionId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "orderSubmittedEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "trader",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "orderId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "auctionId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "price",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "quantity",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "slot",
+              "type": {
+                "endian": "le",
+                "format": "u32",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "side",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "isMaker",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "positionLiquidatedEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "owner",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "mark",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "equity",
+              "type": {
+                "endian": "le",
+                "format": "i128",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "penalty",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "badDebt",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "order",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "price",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "quantity",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "remaining",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "orderId",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "trader",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "side",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "isMaker",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "status",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "padding",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 5
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "cumBefore",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "reservedMargin",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      }
+    ],
+    "errors": [
+      {
+        "code": 0,
+        "kind": "errorNode",
+        "message": "Market account is invalid or does not match expected PDA",
+        "name": "invalidMarket"
+      },
+      {
+        "code": 1,
+        "kind": "errorNode",
+        "message": "Authority invalid or does not match the market authority",
+        "name": "invalidAuthority"
+      },
+      {
+        "code": 2,
+        "kind": "errorNode",
+        "message": "Market is paused",
+        "name": "marketPaused"
+      },
+      {
+        "code": 3,
+        "kind": "errorNode",
+        "message": "The auction is not in the phase required for this instruction",
+        "name": "auctionWrongPhase"
+      },
+      {
+        "code": 4,
+        "kind": "errorNode",
+        "message": "The order slab is full (orders-per-auction cap reached)",
+        "name": "orderSlabFull"
+      },
+      {
+        "code": 5,
+        "kind": "errorNode",
+        "message": "Order not found in the slab",
+        "name": "orderNotFound"
+      },
+      {
+        "code": 6,
+        "kind": "errorNode",
+        "message": "Order price is invalid (zero, or not aligned to the tick size)",
+        "name": "invalidPrice"
+      },
+      {
+        "code": 7,
+        "kind": "errorNode",
+        "message": "Order quantity is invalid",
+        "name": "invalidQuantity"
+      },
+      {
+        "code": 8,
+        "kind": "errorNode",
+        "message": "Order quantity is zero",
+        "name": "zeroQuantity"
+      },
+      {
+        "code": 9,
+        "kind": "errorNode",
+        "message": "Completeness check failed: not every active order has been accumulated",
+        "name": "auctionNotComplete"
+      },
+      {
+        "code": 10,
+        "kind": "errorNode",
+        "message": "Order has already been accumulated into the histogram",
+        "name": "orderAlreadyAccumulated"
+      },
+      {
+        "code": 11,
+        "kind": "errorNode",
+        "message": "Clearing has not been finalized yet (no ClearingResult available)",
+        "name": "clearingNotFinalized"
+      },
+      {
+        "code": 12,
+        "kind": "errorNode",
+        "message": "Price does not fall on a valid tick within the histogram range",
+        "name": "invalidTick"
+      },
+      {
+        "code": 13,
+        "kind": "errorNode",
+        "message": "Event authority PDA is invalid",
+        "name": "invalidEventAuthority"
+      },
+      {
+        "code": 14,
+        "kind": "errorNode",
+        "message": "Order side byte is invalid (must be 0 = buy or 1 = sell)",
+        "name": "invalidOrderSide"
+      },
+      {
+        "code": 15,
+        "kind": "errorNode",
+        "message": "Order does not belong to the provided trader",
+        "name": "invalidOrderOwner"
+      },
+      {
+        "code": 16,
+        "kind": "errorNode",
+        "message": "Auction id mismatch between accounts",
+        "name": "auctionIdMismatch"
+      },
+      {
+        "code": 17,
+        "kind": "errorNode",
+        "message": "Order is in an invalid state for this operation",
+        "name": "invalidOrderStatus"
+      },
+      {
+        "code": 18,
+        "kind": "errorNode",
+        "message": "Arithmetic overflow during clearing math",
+        "name": "mathOverflow"
+      },
+      {
+        "code": 19,
+        "kind": "errorNode",
+        "message": "Provided account does not belong to this market",
+        "name": "accountMarketMismatch"
+      },
+      {
+        "code": 20,
+        "kind": "errorNode",
+        "message": "Oracle account is not a valid Pyth price update",
+        "name": "oracleInvalidAccount"
+      },
+      {
+        "code": 21,
+        "kind": "errorNode",
+        "message": "Oracle feed id does not match the expected feed",
+        "name": "oracleFeedMismatch"
+      },
+      {
+        "code": 22,
+        "kind": "errorNode",
+        "message": "Oracle price update is stale",
+        "name": "oracleStale"
+      },
+      {
+        "code": 23,
+        "kind": "errorNode",
+        "message": "Oracle reported a non-positive price",
+        "name": "oracleNegativePrice"
+      },
+      {
+        "code": 24,
+        "kind": "errorNode",
+        "message": "Not enough free collateral",
+        "name": "insufficientCollateral"
+      },
+      {
+        "code": 25,
+        "kind": "errorNode",
+        "message": "Position is not liquidatable",
+        "name": "notLiquidatable"
+      },
+      {
+        "code": 26,
+        "kind": "errorNode",
+        "message": "Token account or mint does not match the vault",
+        "name": "invalidCollateralAccount"
+      },
+      {
+        "code": 27,
+        "kind": "errorNode",
+        "message": "Settle with a non-zero fill is missing required position/collateral accounts",
+        "name": "missingSettleAccounts"
+      },
+      {
+        "code": 28,
+        "kind": "errorNode",
+        "message": "Oracle confidence interval is too wide",
+        "name": "oracleConfidenceTooWide"
+      },
+      {
+        "code": 29,
+        "kind": "errorNode",
+        "message": "Order quantity is below the minimum order size",
+        "name": "orderBelowMinimum"
+      },
+      {
+        "code": 30,
+        "kind": "errorNode",
+        "message": "Per-trader order cap reached for this auction",
+        "name": "traderOrderCapReached"
+      },
+      {
+        "code": 31,
+        "kind": "errorNode",
+        "message": "Market configuration parameter is out of range",
+        "name": "marketConfigOutOfRange"
+      },
+      {
+        "code": 32,
+        "kind": "errorNode",
+        "message": "Collection window is still open; accumulation cannot start yet",
+        "name": "auctionWindowOpen"
+      },
+      {
+        "code": 33,
+        "kind": "errorNode",
+        "message": "Insurance pool is insolvent for this payout",
+        "name": "insuranceInsolvent"
+      },
+      {
+        "code": 34,
+        "kind": "errorNode",
+        "message": "Liquidation made no progress",
+        "name": "liquidationNoProgress"
+      },
+      {
+        "code": 35,
+        "kind": "errorNode",
+        "message": "Oracle is soft-stale; extraction is blocked",
+        "name": "oracleSoftStale"
+      },
+      {
+        "code": 36,
+        "kind": "errorNode",
+        "message": "Cross-margin group is full",
+        "name": "marginGroupFull"
+      },
+      {
+        "code": 37,
+        "kind": "errorNode",
+        "message": "Position is already in the cross-margin group",
+        "name": "marginMemberDuplicate"
+      },
+      {
+        "code": 38,
+        "kind": "errorNode",
+        "message": "Cross-margin instruction is missing member positions",
+        "name": "incompletePortfolio"
+      },
+      {
+        "code": 39,
+        "kind": "errorNode",
+        "message": "Cross-margin member market is stale (reserved)",
+        "name": "marginMarketStale"
+      },
+      {
+        "code": 40,
+        "kind": "errorNode",
+        "message": "Account is not at the expected pre-migration layout",
+        "name": "notMigratable"
+      },
+      {
+        "code": 41,
+        "kind": "errorNode",
+        "message": "Position is not a member of the cross-margin group",
+        "name": "marginMemberNotFound"
+      },
+      {
+        "code": 42,
+        "kind": "errorNode",
+        "message": "Oracle publish time is in the future",
+        "name": "oracleFutureTimestamp"
+      },
+      {
+        "code": 43,
+        "kind": "errorNode",
+        "message": "Cross-margin collateral ledger drift",
+        "name": "collateralLedgerDrift"
+      },
+      {
+        "code": 44,
+        "kind": "errorNode",
+        "message": "Order would exceed the market's max position notional",
+        "name": "positionLimitExceeded"
+      }
+    ],
+    "events": [],
+    "instructions": [
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Pays for account creation"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "payer"
+          },
+          {
+            "docs": [
+              "Market authority / admin"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "authority"
+          },
+          {
+            "docs": [
+              "Random keypair seed for the market PDA"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "marketSeed"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "market"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "marketSeed",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "marketSeed"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "Market PDA to be created"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "auctionHistogramHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "AuctionHistogram PDA (the mailboxes) to be created"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "histogram"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab PDA (bounded resting-order slots) to be created"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "docs": [
+              "Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "oracle"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 0
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "market"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "marketBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "histogram"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "histogramBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "orderSlab"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "orderSlabBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "tickSize",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "numTicks",
+            "type": {
+              "endian": "le",
+              "format": "u32",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "ordersPerAuctionCap",
+            "type": {
+              "endian": "le",
+              "format": "u32",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "oracleFeedId",
+            "type": {
+              "count": {
+                "kind": "fixedCountNode",
+                "value": 32
+              },
+              "item": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              },
+              "kind": "arrayTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "maintenanceMarginBps",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "liquidationPenaltyBps",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "makerFeeBps",
+            "type": {
+              "endian": "le",
+              "format": "i16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "takerFeeBps",
+            "type": {
+              "endian": "le",
+              "format": "i16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "integratorShareBps",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "crankFee",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "collateralMint",
+            "type": {
+              "count": {
+                "kind": "fixedCountNode",
+                "value": 32
+              },
+              "item": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              },
+              "kind": "arrayTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "maxPriceMoveBpsPerSlot",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "softStaleSlots",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "initialMarginBps",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "maxPositionNotional",
+            "type": {
+              "endian": "le",
+              "format": "u128",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "initializeMarket"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Order owner"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "trader"
+          },
+          {
+            "docs": [
+              "Market the order belongs to"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab to insert into"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          },
+          {
+            "docs": [
+              "(Optional) trader's Position; required on a money-path market to reserve margin"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          },
+          {
+            "docs": [
+              "(Optional) trader's collateral ledger; locks the order's worst-case initial margin"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 1
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "side",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "price",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "quantity",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "reduceOnly",
+            "type": {
+              "kind": "booleanTypeNode",
+              "size": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "submitOrder"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Order owner"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "trader"
+          },
+          {
+            "docs": [
+              "Market the order belongs to"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab to remove from"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          },
+          {
+            "docs": [
+              "(Optional) trader's collateral ledger; releases the order's reserved margin"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 2
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "orderId",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "slotHint",
+            "type": {
+              "endian": "le",
+              "format": "u32",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "cancelOrder"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market being cleared"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab to scan"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "auctionHistogramHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "AuctionHistogram to fold into"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "histogram"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 3
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "startIndex",
+            "type": {
+              "endian": "le",
+              "format": "u32",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "maxCount",
+            "type": {
+              "endian": "le",
+              "format": "u32",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "processChunk"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller (paid a fee)"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market being cleared"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "auctionHistogramHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "AuctionHistogram to scan"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "histogram"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab scanned for the completeness gate"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "clearingResult"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "ClearingResult PDA to be created/written"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "clearingResult"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          },
+          {
+            "docs": [
+              "(Optional) cranker's collateral ledger to receive the crank fee"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "crankerCollateral"
+          },
+          {
+            "docs": [
+              "(Optional) fee/insurance pool the crank fee is drawn from"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 4
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "clearingResult"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "clearingBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "finalizeClear"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market being settled"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab holding the order"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "clearingResult"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "Published clearing result"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "clearingResult"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          },
+          {
+            "docs": [
+              "(Optional) order owner's Position to apply the fill to"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          },
+          {
+            "docs": [
+              "(Optional) owner's collateral ledger; locks initial margin on the fill"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          },
+          {
+            "docs": [
+              "(Optional) supplies the maintenance-margin bps"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "(Optional) integrator ledger to receive a share of a positive fee"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "integratorCollateral"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 5
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "orderId",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "slotHint",
+            "type": {
+              "endian": "le",
+              "format": "u32",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "settleFill"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market to roll forward"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "auctionHistogramHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "AuctionHistogram to zero"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "histogram"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab to clear"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "docs": [
+              "Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward."
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "oracle"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 6
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "startAuction"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Pays for the position account"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "payer"
+          },
+          {
+            "docs": [
+              "Trader the position belongs to"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "docs": [
+              "Market the position trades"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "position"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                },
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "owner",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "owner"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "Position PDA to create"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 7
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "position"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "positionBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "initPosition"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market whose bound oracle is read"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "Pyth PriceUpdateV2 account bound to the market"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "oracle"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 8
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "readOracle"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Pays for the vault account"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "payer"
+          },
+          {
+            "docs": [
+              "Vault admin"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "admin"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "vault"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "collateralMint",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "collateralMint"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "Per-collateral vault PDA to create"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "SPL token account owned by the vault authority PDA"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vaultTokenAccount"
+          },
+          {
+            "docs": [
+              "Collateral mint"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "collateralMint"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 9
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "vault"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "vaultBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "authorityBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "initVault"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Pays for the ledger account"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "payer"
+          },
+          {
+            "docs": [
+              "Trader the ledger belongs to"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "userCollateral"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "owner",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "owner"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "UserCollateral PDA to create"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 10
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "userCollateral"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "bump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "initCollateral"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Depositing trader"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "userCollateral"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "owner",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "owner"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "Owner's collateral ledger"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          },
+          {
+            "docs": [
+              "Per-collateral vault (pass the mint-derived PDA)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "Vault token account (transfer destination)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vaultTokenAccount"
+          },
+          {
+            "docs": [
+              "Owner token account (transfer source)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userTokenAccount"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            "docs": [
+              "SPL token program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tokenProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 11
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "amount",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "deposit"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Withdrawing trader"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "userCollateral"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "owner",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "owner"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "Owner's collateral ledger"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          },
+          {
+            "docs": [
+              "Per-collateral vault (pass the mint-derived PDA)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "Vault authority PDA (signs the withdrawal)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vaultAuthority"
+          },
+          {
+            "docs": [
+              "Vault token account (transfer source)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vaultTokenAccount"
+          },
+          {
+            "docs": [
+              "Owner token account (transfer destination)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userTokenAccount"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            "docs": [
+              "SPL token program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tokenProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 12
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "amount",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "withdraw"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market whose funding is updated"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "Pyth PriceUpdateV2 account bound to the market"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "oracle"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 13
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "updateFunding"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller (paid the penalty)"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "liquidator"
+          },
+          {
+            "docs": [
+              "Market the position trades (writable: advances the braked mark + OI/social indices)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "Pyth PriceUpdateV2 account bound to the market"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "oracle"
+          },
+          {
+            "docs": [
+              "Position being liquidated"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          },
+          {
+            "docs": [
+              "Position owner's collateral ledger"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          },
+          {
+            "docs": [
+              "Per-collateral vault (pass the mint-derived PDA)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "Liquidator's collateral ledger (paid the penalty)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "liquidatorCollateral"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 14
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "liquidate"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Market authority / admin"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "authority"
+          },
+          {
+            "docs": [
+              "Market to reset"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "auctionHistogramHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "AuctionHistogram to zero"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "histogram"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab to clear"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 15
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "forceReset"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Maker (pays rent, owns the quote)"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "maker"
+          },
+          {
+            "docs": [
+              "Market the quote belongs to"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "makerQuote"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                },
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "maker",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "maker"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "MakerQuote PDA to create"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "makerQuote"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 16
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "makerQuote"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "makerQuoteBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "expirySlots",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "delegate",
+            "type": {
+              "count": {
+                "kind": "fixedCountNode",
+                "value": 32
+              },
+              "item": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              },
+              "kind": "arrayTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "initMakerQuote"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Maker or its delegate"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "writer"
+          },
+          {
+            "docs": [
+              "Market (supplies num_ticks)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "MakerQuote to update"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "makerQuote"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 17
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "sequence",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "midTick",
+            "type": {
+              "endian": "le",
+              "format": "u32",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "updateMakerQuoteMid"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Maker or its delegate"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "writer"
+          },
+          {
+            "docs": [
+              "Market (supplies num_ticks)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "MakerQuote to update"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "makerQuote"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 18
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "sequence",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "midTick",
+            "type": {
+              "endian": "le",
+              "format": "u32",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "numBids",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "numAsks",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "bidLevels",
+            "type": {
+              "count": {
+                "kind": "fixedCountNode",
+                "value": 80
+              },
+              "item": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              },
+              "kind": "arrayTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "askLevels",
+            "type": {
+              "count": {
+                "kind": "fixedCountNode",
+                "value": 80
+              },
+              "item": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              },
+              "kind": "arrayTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "updateMakerQuoteLevels"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Maker or its delegate"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "writer"
+          },
+          {
+            "docs": [
+              "Market (decrements active count)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "MakerQuote to clear"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "makerQuote"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 19
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "sequence",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "clearMakerQuote"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market being accumulated"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "auctionHistogramHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "AuctionHistogram fold target"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "histogram"
+          },
+          {
+            "docs": [
+              "MakerQuote to fold"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "makerQuote"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 20
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "processMakerQuote"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market being settled"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "clearingResult"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "Published clearing result"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "clearingResult"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab (scanned for marginal-tick orders)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "docs": [
+              "MakerQuote to settle"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "makerQuote"
+          },
+          {
+            "docs": [
+              "Maker's Position"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          },
+          {
+            "docs": [
+              "(Optional) maker's collateral ledger"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          },
+          {
+            "docs": [
+              "(Optional) fee/insurance pool"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 21
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "settleMakerQuote"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Pays for the group account"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "payer"
+          },
+          {
+            "docs": [
+              "Owner the group belongs to"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "docs": [
+              "MarginAccount PDA to create"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "marginAccount"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 22
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "marginBump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "initMarginAccount"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Owner of both the group and position"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "docs": [
+              "Group to extend"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "marginAccount"
+          },
+          {
+            "docs": [
+              "Flat position to bind (mode set to cross)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          },
+          {
+            "docs": [
+              "The position's market"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab scanned to reject an in-flight order"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 23
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "addPositionToMargin"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Withdrawing owner"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "docs": [
+              "Owner's group (member set)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "marginAccount"
+          },
+          {
+            "docs": [
+              "Shared ledger to debit"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          },
+          {
+            "docs": [
+              "Per-collateral vault"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "Vault authority PDA (signs)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vaultAuthority"
+          },
+          {
+            "docs": [
+              "Vault token account (source)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vaultTokenAccount"
+          },
+          {
+            "docs": [
+              "Owner token account (dest)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userTokenAccount"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            "docs": [
+              "SPL token program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tokenProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 24
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "amount",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "liveMask",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "withdrawCross"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller (paid the penalty)"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "liquidator"
+          },
+          {
+            "docs": [
+              "Owner's group"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "marginAccount"
+          },
+          {
+            "docs": [
+              "Owner's shared ledger"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          },
+          {
+            "docs": [
+              "Per-collateral vault"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "Liquidator's ledger"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "liquidatorCollateral"
+          },
+          {
+            "docs": [
+              "Event authority PDA"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program (self-CPI)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 25
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "liveMask",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "liquidateCross"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Market authority (admin)"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "authority"
+          },
+          {
+            "docs": [
+              "Market account to upgrade"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "Funds the grown-account rent"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "payer"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 26
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "maxPriceMoveBpsPerSlot",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "softStaleSlots",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "migrateMarket"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Position owner (pays rent)"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "docs": [
+              "Position account to upgrade"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          },
+          {
+            "docs": [
+              "The position's v5 market (OI rebuilt)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "OrderSlab; must be settled (quiescence gate for the OI rebuild)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 27
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "migratePosition"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Owner of both the group and position"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "docs": [
+              "Group to shrink"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "marginAccount"
+          },
+          {
+            "docs": [
+              "Flat member position to unbind (mode set to isolated)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 28
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "removePositionFromMargin"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Quote maker; receives reclaimed rent"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "maker"
+          },
+          {
+            "docs": [
+              "Inactive MakerQuote PDA to close"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "makerQuote"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 29
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "closeMakerQuote"
+      }
+    ],
+    "kind": "programNode",
+    "name": "tempoProgram",
+    "pdas": [
+      {
+        "kind": "pdaNode",
+        "name": "eventAuthority",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "event_authority"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "pdaNode",
+        "name": "clearingResult",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "clearing"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "market",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "pdaNode",
+        "name": "auctionHistogramHeader",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "histogram"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "market",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "pdaNode",
+        "name": "makerQuote",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "maker_quote"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "market",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "maker",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "pdaNode",
+        "name": "market",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "market"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "marketSeed",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "pdaNode",
+        "name": "orderSlabHeader",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "order_slab"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "market",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "pdaNode",
+        "name": "position",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "position"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "market",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "owner",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "pdaNode",
+        "name": "userCollateral",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "collateral"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "owner",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          }
+        ]
+      },
+      {
+        "kind": "pdaNode",
+        "name": "vault",
+        "seeds": [
+          {
+            "kind": "constantPdaSeedNode",
+            "type": {
+              "encoding": "utf8",
+              "kind": "stringTypeNode"
+            },
+            "value": {
+              "kind": "stringValueNode",
+              "string": "vault"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "collateralMint",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          }
+        ]
+      }
+    ],
+    "publicKey": "8gpzMDNnKNz422jW3hs54TRmZK2H5uEwgfEQbjWAwnJD",
+    "version": "0.0.1"
+  },
+  "standard": "codama",
+  "version": "1.0.0"
+}

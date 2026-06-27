@@ -1,0 +1,21 @@
+name: solana-toolchain
+description: Install the Anza/Solana CLI (provides cargo-build-sbf) for on-chain builds.
+inputs:
+  version:
+    description: Solana CLI release channel or version.
+    required: false
+    default: "v3.1.10"
+runs:
+  using: composite
+  steps:
+    - name: Install Solana CLI
+      shell: bash
+      run: |
+        sh -c "$(curl -sSfL https://release.anza.xyz/${{ inputs.version }}/install)"
+        echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+    - name: Verify
+      shell: bash
+      run: |
+        export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+        solana --version
+        cargo-build-sbf --version

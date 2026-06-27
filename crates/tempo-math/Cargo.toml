@@ -1,0 +1,11 @@
+[package]
+name = "tempo-math"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+std = []
+
+[lints]
+workspace = true

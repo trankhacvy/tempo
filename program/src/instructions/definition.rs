@@ -1,0 +1,804 @@
+use codama::CodamaInstructions;
+
+/// Instructions for the Tempo Program (clearing engine).
+///
+/// Uses the canonical Codama `#[codama(account(...))]` style.
+/// The clearing engine has no token transfers and no CPI event emission, so there is
+/// no event authority / token program plumbing here.
+#[allow(clippy::large_enum_variant)]
+#[repr(C, u8)]
+#[derive(Clone, Debug, PartialEq, CodamaInstructions)]
+pub enum TempoProgramInstruction {
+    /// Create a Market plus its empty AuctionHistogram and OrderSlab.
+    #[codama(account(name = "payer", docs = "Pays for account creation", signer, writable))]
+    #[codama(account(name = "authority", docs = "Market authority / admin", signer))]
+    #[codama(account(
+        name = "market_seed",
+        docs = "Random keypair seed for the market PDA",
+        signer
+    ))]
+    #[codama(account(
+        name = "market",
+        docs = "Market PDA to be created",
+        writable,
+        default_value = pda("market", [seed("marketSeed", account("marketSeed"))])
+    ))]
+    #[codama(account(
+        name = "histogram",
+        docs = "AuctionHistogram PDA (the mailboxes) to be created",
+        writable,
+        default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab PDA (bounded resting-order slots) to be created",
+        writable,
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "oracle",
+        docs = "Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation"
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    InitializeMarket {
+        /// Bump for the market PDA
+        #[codama(default_value = account_bump("market"))]
+        market_bump: u8,
+        /// Bump for the histogram PDA
+        #[codama(default_value = account_bump("histogram"))]
+        histogram_bump: u8,
+        /// Bump for the order slab PDA
+        #[codama(default_value = account_bump("order_slab"))]
+        order_slab_bump: u8,
+        /// Price tick size
+        tick_size: u64,
+        /// Number of price ticks the histogram covers
+        num_ticks: u32,
+        /// Orders-per-auction cap (order slab capacity)
+        orders_per_auction_cap: u32,
+        /// Pyth feed id the market's oracle account must carry
+        oracle_feed_id: [u8; 32],
+        /// Maintenance margin requirement (bps)
+        maintenance_margin_bps: u16,
+        /// Liquidation penalty (bps)
+        liquidation_penalty_bps: u16,
+        /// Maker fee on each settled fill (bps, signed — negative = rebate)
+        maker_fee_bps: i16,
+        /// Taker fee on each settled fill (bps, signed — negative = rebate)
+        taker_fee_bps: i16,
+        /// Integrator revenue share (bps of the positive fee, 0..=10_000)
+        integrator_share_bps: u16,
+        /// Flat fee paid to the finalize cranker from the fee pool
+        crank_fee: u64,
+        /// Collateral mint this market settles in (binds it to the per-mint vault);
+        /// all-zero for a market with no declared money path
+        collateral_mint: [u8; 32],
+        /// Meltdown-brake cap, bps per slot (0 = disabled)
+        max_price_move_bps_per_slot: u16,
+        /// Soft-stale window before the oracle is treated hard-stale, slots (0 = disabled)
+        soft_stale_slots: u64,
+        /// Initial-margin requirement (bps) — the buffer above maintenance; must be ≥ maintenance_margin_bps
+        initial_margin_bps: u16,
+        /// Max notional (|size|·entry) a single position may hold (0 = disabled)
+        max_position_notional: u128,
+    } = 0,
+
+    /// Submit a resting order into the slab (phase must be Collect).
+    #[codama(account(name = "trader", docs = "Order owner", signer, writable))]
+    #[codama(account(name = "market", docs = "Market the order belongs to", writable))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab to insert into",
+        writable,
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    #[codama(account(
+        name = "position",
+        docs = "(Optional) trader's Position; required on a money-path market to reserve margin",
+        writable,
+        optional
+    ))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "(Optional) trader's collateral ledger; locks the order's worst-case initial margin",
+        writable,
+        optional
+    ))]
+    SubmitOrder {
+        /// Side: 0 = buy, 1 = sell
+        side: u8,
+        /// Limit price (must be tick-aligned and non-zero)
+        price: u64,
+        /// Order quantity (must be non-zero). Taker-only: maker liquidity is
+        /// posted through the MakerQuote book, not submit_order (§1.3).
+        quantity: u64,
+        /// Reduce-only: 1 = the order may only reduce an opposite position, so only
+        /// the portion that would open new exposure reserves margin (missing-features
+        /// §1.1/§2.2). 0 = a normal order (reserves the full worst case).
+        reduce_only: bool,
+    } = 1,
+
+    /// Cancel a resting order before clearing begins.
+    #[codama(account(name = "trader", docs = "Order owner", signer))]
+    #[codama(account(name = "market", docs = "Market the order belongs to", writable))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab to remove from",
+        writable,
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "(Optional) trader's collateral ledger; releases the order's reserved margin",
+        writable,
+        optional
+    ))]
+    CancelOrder {
+        /// Id of the order to cancel
+        order_id: u64,
+        /// Slab slot index `order_id` is expected at (from the `OrderSubmitted`
+        /// event); O(1) hint, validated and scan-fallback (known-issues §2.7)
+        slot_hint: u32,
+    } = 2,
+
+    /// Phase 1 ACCUMULATE (permissionless): fold a bounded slice of resting
+    /// orders into the histogram and mark them accumulated.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer, writable))]
+    #[codama(account(name = "market", docs = "Market being cleared", writable))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab to scan",
+        writable,
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "histogram",
+        docs = "AuctionHistogram to fold into",
+        writable,
+        default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    ProcessChunk {
+        /// First slab slot index to process in this chunk
+        start_index: u32,
+        /// Maximum number of slots to process in this chunk (bounds CU)
+        max_count: u32,
+    } = 3,
+
+    /// Phase 2 DISCOVER (permissionless): one pass over the buckets to find the
+    /// clearing price and write the ClearingResult. Requires completeness.
+    #[codama(account(
+        name = "cranker",
+        docs = "Permissionless caller (paid a fee)",
+        signer,
+        writable
+    ))]
+    #[codama(account(name = "market", docs = "Market being cleared", writable))]
+    #[codama(account(
+        name = "histogram",
+        docs = "AuctionHistogram to scan",
+        default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab scanned for the completeness gate",
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "clearing_result",
+        docs = "ClearingResult PDA to be created/written",
+        writable,
+        default_value = pda("clearingResult", [seed("market", account("market"))])
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    #[codama(account(
+        name = "cranker_collateral",
+        docs = "(Optional) cranker's collateral ledger to receive the crank fee",
+        writable,
+        optional
+    ))]
+    #[codama(account(
+        name = "vault",
+        docs = "(Optional) fee/insurance pool the crank fee is drawn from",
+        writable,
+        optional
+    ))]
+    FinalizeClear {
+        /// Bump for the clearing result PDA
+        #[codama(default_value = account_bump("clearing_result"))]
+        clearing_bump: u8,
+    } = 4,
+
+    /// Phase 3 SETTLE (permissionless to trigger): caller self-computes ONE
+    /// order's fill from the ClearingResult and marks it consumed.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market being settled", writable))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab holding the order",
+        writable,
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "clearing_result",
+        docs = "Published clearing result",
+        default_value = pda("clearingResult", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    #[codama(account(
+        name = "position",
+        docs = "(Optional) order owner's Position to apply the fill to",
+        writable,
+        optional
+    ))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "(Optional) owner's collateral ledger; locks initial margin on the fill",
+        writable,
+        optional
+    ))]
+    #[codama(account(
+        name = "vault",
+        docs = "(Optional) supplies the maintenance-margin bps",
+        optional
+    ))]
+    #[codama(account(
+        name = "integrator_collateral",
+        docs = "(Optional) integrator ledger to receive a share of a positive fee",
+        writable,
+        optional
+    ))]
+    SettleFill {
+        /// Id of the order to settle
+        order_id: u64,
+        /// Slab slot index `order_id` is expected at (from the `OrderSubmitted`
+        /// event); O(1) hint, validated and scan-fallback (known-issues §2.7)
+        slot_hint: u32,
+    } = 5,
+
+    /// Roll the market into its next round (permissionless; only succeeds once
+    /// the prior round is fully settled). Zeroes the histogram + slab.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market to roll forward", writable))]
+    #[codama(account(
+        name = "histogram",
+        docs = "AuctionHistogram to zero",
+        writable,
+        default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab to clear",
+        writable,
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "oracle",
+        docs = "Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward."
+    ))]
+    StartAuction {} = 6,
+
+    /// Create a trader's Position account for a market.
+    #[codama(account(
+        name = "payer",
+        docs = "Pays for the position account",
+        signer,
+        writable
+    ))]
+    #[codama(account(name = "owner", docs = "Trader the position belongs to", signer))]
+    #[codama(account(name = "market", docs = "Market the position trades"))]
+    #[codama(account(
+        name = "position",
+        docs = "Position PDA to create",
+        writable,
+        default_value = pda("position", [seed("market", account("market")), seed("owner", account("owner"))])
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    InitPosition {
+        /// Bump for the position PDA
+        #[codama(default_value = account_bump("position"))]
+        position_bump: u8,
+    } = 7,
+
+    /// Read the market's bound Pyth oracle, derive the mark price, emit it.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market whose bound oracle is read"))]
+    #[codama(account(
+        name = "oracle",
+        docs = "Pyth PriceUpdateV2 account bound to the market"
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    ReadOracle {} = 8,
+
+    /// Admin: create the global collateral `Vault` singleton.
+    #[codama(account(name = "payer", docs = "Pays for the vault account", signer, writable))]
+    #[codama(account(name = "admin", docs = "Vault admin", signer))]
+    #[codama(account(
+        name = "vault",
+        docs = "Per-collateral vault PDA to create",
+        writable,
+        default_value = pda("vault", [seed("collateralMint", account("collateralMint"))])
+    ))]
+    #[codama(account(
+        name = "vault_token_account",
+        docs = "SPL token account owned by the vault authority PDA"
+    ))]
+    #[codama(account(name = "collateral_mint", docs = "Collateral mint"))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    InitVault {
+        /// Bump for the vault PDA
+        #[codama(default_value = account_bump("vault"))]
+        vault_bump: u8,
+        /// Bump for the vault authority PDA
+        authority_bump: u8,
+    } = 9,
+
+    /// Trader: create their `UserCollateral` ledger.
+    #[codama(account(name = "payer", docs = "Pays for the ledger account", signer, writable))]
+    #[codama(account(name = "owner", docs = "Trader the ledger belongs to", signer))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "UserCollateral PDA to create",
+        writable,
+        default_value = pda("userCollateral", [seed("owner", account("owner"))])
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    InitCollateral {
+        /// Bump for the user collateral PDA
+        #[codama(default_value = account_bump("user_collateral"))]
+        bump: u8,
+    } = 10,
+
+    /// Trader: deposit collateral into the vault.
+    #[codama(account(name = "owner", docs = "Depositing trader", signer))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "Owner's collateral ledger",
+        writable,
+        default_value = pda("userCollateral", [seed("owner", account("owner"))])
+    ))]
+    #[codama(account(
+        name = "vault",
+        docs = "Per-collateral vault (pass the mint-derived PDA)"
+    ))]
+    #[codama(account(
+        name = "vault_token_account",
+        docs = "Vault token account (transfer destination)",
+        writable
+    ))]
+    #[codama(account(
+        name = "user_token_account",
+        docs = "Owner token account (transfer source)",
+        writable
+    ))]
+    #[codama(account(name = "token_program", docs = "SPL token program", default_value = program("token")))]
+    Deposit {
+        /// Collateral base units to deposit
+        amount: u64,
+    } = 11,
+
+    /// Trader: withdraw free collateral from the vault.
+    #[codama(account(name = "owner", docs = "Withdrawing trader", signer))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "Owner's collateral ledger",
+        writable,
+        default_value = pda("userCollateral", [seed("owner", account("owner"))])
+    ))]
+    #[codama(account(
+        name = "vault",
+        docs = "Per-collateral vault (pass the mint-derived PDA)"
+    ))]
+    #[codama(account(
+        name = "vault_authority",
+        docs = "Vault authority PDA (signs the withdrawal)"
+    ))]
+    #[codama(account(
+        name = "vault_token_account",
+        docs = "Vault token account (transfer source)",
+        writable
+    ))]
+    #[codama(account(
+        name = "user_token_account",
+        docs = "Owner token account (transfer destination)",
+        writable
+    ))]
+    #[codama(account(name = "token_program", docs = "SPL token program", default_value = program("token")))]
+    Withdraw {
+        /// Collateral base units to withdraw
+        amount: u64,
+    } = 12,
+
+    /// Permissionless: advance the market's funding index.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market whose funding is updated", writable))]
+    #[codama(account(
+        name = "oracle",
+        docs = "Pyth PriceUpdateV2 account bound to the market"
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    UpdateFunding {} = 13,
+
+    /// Permissionless: liquidate a position below maintenance margin.
+    #[codama(account(
+        name = "liquidator",
+        docs = "Permissionless caller (paid the penalty)",
+        signer
+    ))]
+    #[codama(account(
+        name = "market",
+        docs = "Market the position trades (writable: advances the braked mark + OI/social indices)",
+        writable
+    ))]
+    #[codama(account(
+        name = "oracle",
+        docs = "Pyth PriceUpdateV2 account bound to the market"
+    ))]
+    #[codama(account(name = "position", docs = "Position being liquidated", writable))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "Position owner's collateral ledger",
+        writable
+    ))]
+    #[codama(account(
+        name = "vault",
+        docs = "Per-collateral vault (pass the mint-derived PDA)",
+        writable
+    ))]
+    #[codama(account(
+        name = "liquidator_collateral",
+        docs = "Liquidator's collateral ledger (paid the penalty)",
+        writable
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    Liquidate {} = 14,
+
+    /// Authority-gated escape hatch: abandon a wedged round and reopen `Collect`
+    /// regardless of phase or unsettled orders (an operational backstop, not a
+    /// normal path). Zeroes the histogram + slab and bumps the auction id.
+    #[codama(account(name = "authority", docs = "Market authority / admin", signer))]
+    #[codama(account(name = "market", docs = "Market to reset", writable))]
+    #[codama(account(
+        name = "histogram",
+        docs = "AuctionHistogram to zero",
+        writable,
+        default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab to clear",
+        writable,
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    ForceReset {} = 15,
+
+    /// Maker: create a persistent parametric quote PDA (parametric maker book).
+    #[codama(account(
+        name = "maker",
+        docs = "Maker (pays rent, owns the quote)",
+        signer,
+        writable
+    ))]
+    #[codama(account(name = "market", docs = "Market the quote belongs to", writable))]
+    #[codama(account(
+        name = "maker_quote",
+        docs = "MakerQuote PDA to create",
+        writable,
+        default_value = pda("makerQuote", [seed("market", account("market")), seed("maker", account("maker"))])
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    InitMakerQuote {
+        /// Bump for the maker_quote PDA
+        #[codama(default_value = account_bump("maker_quote"))]
+        maker_quote_bump: u8,
+        /// Slots of inactivity before the quote is skipped (0 = never)
+        expiry_slots: u64,
+        /// Optional delegate allowed to write the ladder (all-zero for none)
+        delegate: [u8; 32],
+    } = 16,
+
+    /// Maker: re-anchor the ladder by moving its mid (the O(1) hot path).
+    #[codama(account(name = "writer", docs = "Maker or its delegate", signer))]
+    #[codama(account(name = "market", docs = "Market (supplies num_ticks)"))]
+    #[codama(account(name = "maker_quote", docs = "MakerQuote to update", writable))]
+    UpdateMakerQuoteMid {
+        /// Monotonic nonce (must strictly increase)
+        sequence: u64,
+        /// New ladder anchor tick
+        mid_tick: u32,
+    } = 17,
+
+    /// Maker: rewrite the full ladder (fixed-size padded level regions).
+    #[codama(account(name = "writer", docs = "Maker or its delegate", signer))]
+    #[codama(account(name = "market", docs = "Market (supplies num_ticks)"))]
+    #[codama(account(name = "maker_quote", docs = "MakerQuote to update", writable))]
+    UpdateMakerQuoteLevels {
+        /// Monotonic nonce (must strictly increase)
+        sequence: u64,
+        /// New ladder anchor tick
+        mid_tick: u32,
+        /// Number of valid bid levels
+        num_bids: u8,
+        /// Number of valid ask levels
+        num_asks: u8,
+        /// Bid ladder: 8 × (u16 offset, u64 size), zero-padded
+        bid_levels: [u8; 80],
+        /// Ask ladder: 8 × (u16 offset, u64 size), zero-padded
+        ask_levels: [u8; 80],
+    } = 18,
+
+    /// Maker: zero the ladder and deactivate the quote.
+    #[codama(account(name = "writer", docs = "Maker or its delegate", signer))]
+    #[codama(account(name = "market", docs = "Market (decrements active count)", writable))]
+    #[codama(account(name = "maker_quote", docs = "MakerQuote to clear", writable))]
+    ClearMakerQuote {
+        /// Monotonic nonce (must strictly increase)
+        sequence: u64,
+    } = 19,
+
+    /// Permissionless crank: fold one active maker quote into the histogram.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market being accumulated", writable))]
+    #[codama(account(
+        name = "histogram",
+        docs = "AuctionHistogram fold target",
+        writable,
+        default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(name = "maker_quote", docs = "MakerQuote to fold", writable))]
+    ProcessMakerQuote {} = 20,
+
+    /// Permissionless: settle one maker quote's fills into the maker's position.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market being settled", writable))]
+    #[codama(account(
+        name = "clearing_result",
+        docs = "Published clearing result",
+        default_value = pda("clearingResult", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab (scanned for marginal-tick orders)",
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(name = "maker_quote", docs = "MakerQuote to settle", writable))]
+    #[codama(account(name = "position", docs = "Maker's Position", writable))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "(Optional) maker's collateral ledger",
+        writable,
+        optional
+    ))]
+    #[codama(account(
+        name = "vault",
+        docs = "(Optional) fee/insurance pool",
+        writable,
+        optional
+    ))]
+    SettleMakerQuote {} = 21,
+
+    /// Create a cross-margin group for an owner.
+    #[codama(account(name = "payer", docs = "Pays for the group account", signer, writable))]
+    #[codama(account(name = "owner", docs = "Owner the group belongs to", signer))]
+    #[codama(account(
+        name = "margin_account",
+        docs = "MarginAccount PDA to create",
+        writable
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    InitMarginAccount {
+        /// Bump for the margin account PDA
+        margin_bump: u8,
+    } = 22,
+
+    /// Bind a flat, owner-matched position into the cross-margin group.
+    #[codama(account(name = "owner", docs = "Owner of both the group and position", signer))]
+    #[codama(account(name = "margin_account", docs = "Group to extend", writable))]
+    #[codama(account(
+        name = "position",
+        docs = "Flat position to bind (mode set to cross)",
+        writable
+    ))]
+    #[codama(account(name = "market", docs = "The position's market"))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab scanned to reject an in-flight order",
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    AddPositionToMargin {} = 23,
+
+    /// Cross-margin withdraw against the combined member health. One trailing entry
+    /// per member follows the fixed accounts, in `live_mask` order: a *live* member is
+    /// a `(position, market, oracle)` triple; a *flat* member (size 0) is a bare
+    /// `position` account (no market/oracle — known-issues §2.4). Health is priced off
+    /// each live leg's raw oracle, not the braked mark (§2.2).
+    #[codama(account(name = "owner", docs = "Withdrawing owner", signer))]
+    #[codama(account(name = "margin_account", docs = "Owner's group (member set)"))]
+    #[codama(account(name = "user_collateral", docs = "Shared ledger to debit", writable))]
+    #[codama(account(name = "vault", docs = "Per-collateral vault"))]
+    #[codama(account(name = "vault_authority", docs = "Vault authority PDA (signs)"))]
+    #[codama(account(
+        name = "vault_token_account",
+        docs = "Vault token account (source)",
+        writable
+    ))]
+    #[codama(account(
+        name = "user_token_account",
+        docs = "Owner token account (dest)",
+        writable
+    ))]
+    #[codama(account(name = "token_program", docs = "SPL token program", default_value = program("token")))]
+    WithdrawCross {
+        /// Collateral base units to withdraw
+        amount: u64,
+        /// Per-member shape bitmap: bit `i` set ⇒ member `i` is a (position, market,
+        /// oracle) live triple; clear ⇒ a bare flat position account (§2.4)
+        live_mask: u8,
+    } = 24,
+
+    /// Account-level liquidation — close one member of a combined-unhealthy
+    /// group. One trailing entry per member follows, in `live_mask` order: a *live*
+    /// member is a `(position, market, oracle)` triple, a *flat* member (size 0) is a
+    /// bare `position` account (§2.4). The close target is the first non-flat member;
+    /// solvency is priced off each live leg's raw oracle, not the braked mark (§2.2).
+    #[codama(account(
+        name = "liquidator",
+        docs = "Permissionless caller (paid the penalty)",
+        signer
+    ))]
+    #[codama(account(name = "margin_account", docs = "Owner's group"))]
+    #[codama(account(name = "user_collateral", docs = "Owner's shared ledger", writable))]
+    #[codama(account(name = "vault", docs = "Per-collateral vault", writable))]
+    #[codama(account(name = "liquidator_collateral", docs = "Liquidator's ledger", writable))]
+    #[codama(account(name = "event_authority", docs = "Event authority PDA", signer = false))]
+    #[codama(account(name = "tempo_program", docs = "Tempo program (self-CPI)"))]
+    LiquidateCross {
+        /// Per-member shape bitmap: bit `i` set ⇒ member `i` is a (position, market,
+        /// oracle) live triple; clear ⇒ a bare flat position account (§2.4)
+        live_mask: u8,
+    } = 25,
+
+    /// Migrate a VERSION-4 `Market` account in place to the VERSION-5 layout
+    /// (admin-gated): grows the account, zero-inits the appended risk block, and
+    /// sets the two brake/soft-stale config values.
+    #[codama(account(name = "authority", docs = "Market authority (admin)", signer))]
+    #[codama(account(name = "market", docs = "Market account to upgrade", writable))]
+    #[codama(account(
+        name = "payer",
+        docs = "Funds the grown-account rent",
+        signer,
+        writable
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    MigrateMarket {
+        /// Meltdown-brake cap, bps per slot (0 = disabled)
+        max_price_move_bps_per_slot: u16,
+        /// Soft-stale window, slots (0 = disabled)
+        soft_stale_slots: u64,
+    } = 26,
+
+    /// Migrate a VERSION-1 `Position` account in place to the VERSION-2 layout
+    /// (owner-gated): appends `last_social_index` and rebuilds the market's open
+    /// interest by adding this position's size back.
+    #[codama(account(name = "owner", docs = "Position owner (pays rent)", signer, writable))]
+    #[codama(account(name = "position", docs = "Position account to upgrade", writable))]
+    #[codama(account(
+        name = "market",
+        docs = "The position's v5 market (OI rebuilt)",
+        writable
+    ))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab; must be settled (quiescence gate for the OI rebuild)",
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    MigratePosition {} = 27,
+
+    /// Unbind a flat, owner-matched member position from the cross-margin group,
+    /// returning it to isolated mode and freeing its slot.
+    #[codama(account(name = "owner", docs = "Owner of both the group and position", signer))]
+    #[codama(account(name = "margin_account", docs = "Group to shrink", writable))]
+    #[codama(account(
+        name = "position",
+        docs = "Flat member position to unbind (mode set to isolated)",
+        writable
+    ))]
+    RemovePositionFromMargin {} = 28,
+
+    /// Maker: close a cleared (inactive) quote PDA and reclaim its rent, freeing
+    /// the deterministic address so the maker can re-`init_maker_quote`.
+    #[codama(account(
+        name = "maker",
+        docs = "Quote maker; receives reclaimed rent",
+        signer,
+        writable
+    ))]
+    #[codama(account(
+        name = "maker_quote",
+        docs = "Inactive MakerQuote PDA to close",
+        writable
+    ))]
+    CloseMakerQuote {} = 29,
+
+    /// Invoked via CPI to emit event data in instruction args (prevents log truncation).
+    #[codama(skip)]
+    #[codama(account(name = "event_authority", signer))]
+    EmitEvent {} = 228,
+}

@@ -1,0 +1,10 @@
+/.next/
+/out/
+/node_modules
+/src/vendor/tempo-client.mjs
+*.tsbuildinfo
+.env.local
+next-env.d.ts.bak
+# tsc-generated JS siblings of TS/TSX sources
+/src/**/*.js
+/scripts/*.js

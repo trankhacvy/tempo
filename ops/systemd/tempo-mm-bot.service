@@ -1,0 +1,22 @@
+# The reference market maker (single instance; non-load-bearing per build-plan D4).
+# Reads /etc/tempo/mm-bot.env (TEMPO_RPC_URL, TEMPO_MARKET, TEMPO_KEYPAIR,
+# TEMPO_COLLATERAL_MINT, TEMPO_HEALTH_ADDR, ...).
+[Unit]
+Description=Tempo reference market maker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tempo
+EnvironmentFile=/etc/tempo/mm-bot.env
+ExecStart=/usr/local/bin/tempo-mm-bot
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

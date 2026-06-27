@@ -1,0 +1,42 @@
+name: images
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        bin: [tempo-keeper, tempo-liquidator, tempo-api, tempo-mm-bot]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image tag
+        id: tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          BIN: ${{ matrix.bin }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          short="${BIN#tempo-}"
+          echo "image=ghcr.io/${OWNER}/tempo-${short}:${REF_NAME}" >> "$GITHUB_OUTPUT"
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ops/docker/Dockerfile
+          build-args: BIN=${{ matrix.bin }}
+          push: true
+          tags: ${{ steps.tag.outputs.image }}

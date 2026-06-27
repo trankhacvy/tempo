@@ -1,0 +1,96 @@
+{
+  "title": "Tempo — clearing & risk",
+  "uid": "tempo-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "15s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Auction phase",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "min": 0, "max": 3 }, "overrides": [] },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "keeper_phase", "legendFormat": "{{instance}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Slots since clearing progress (freeze headroom)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "keeper_slots_since_progress", "legendFormat": "{{instance}}" }
+      ],
+      "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 300 } ] }
+    },
+    {
+      "id": 3,
+      "title": "Settle fan-out latency (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "histogram_quantile(0.95, sum(rate(keeper_settle_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Funding age",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "keeper_funding_age_seconds", "legendFormat": "{{instance}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Liquidations by result",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "sum(rate(liquidator_fired_total[5m])) by (kind, result)", "legendFormat": "{{kind}}/{{result}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Underwater positions",
+      "type": "stat",
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 14 },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "max(liquidator_underwater_count)", "legendFormat": "underwater" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Insurance balance",
+      "type": "gauge",
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 14 },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "min(liquidator_insurance_balance)", "legendFormat": "insurance" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "API live WebSocket connections",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 21 },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "api_ws_connections", "legendFormat": "{{instance}}" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Liquidation send rate (errors)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "sum(rate(liquidator_scan_errors_total[5m])) by (instance)", "legendFormat": "{{instance}}" }
+      ]
+    }
+  ]
+}

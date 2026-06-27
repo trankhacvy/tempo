@@ -1,0 +1,83 @@
+//! Shared settlement/close money path: conserve a balance move through the
+//! insurance pool and socialize any uncovered bad debt to the winning side.
+//! Single source of truth for `settle_fill`, `settle_maker_quote`, `liquidate`,
+//! and `liquidate_cross` so the four paths cannot drift (known-issues §1.1, §1.2).
+
+use pinocchio::{account::AccountView, error::ProgramError, Address};
+use pinocchio_log::log;
+
+use crate::{
+    errors::TempoProgramError,
+    state::{Market, UserCollateral, Vault},
+    traits::{AccountDeserialize, PdaAccount},
+};
+
+/// Release an order's worst-case margin reservation (missing-features §1.1) back to
+/// the owner's free balance. Shared by `cancel_order` and `settle_fill` so the two
+/// release sites cannot drift (a future change to how a reservation is released must
+/// touch only this one place). Validates the ledger is the owner's before releasing;
+/// `release` is saturating, so an over-release can never underflow.
+pub fn release_order_reservation(
+    account: &AccountView,
+    program_id: &Address,
+    owner: &Address,
+    amount: u64,
+) -> Result<(), ProgramError> {
+    if amount == 0 {
+        return Ok(());
+    }
+    let mut acct = *account;
+    let mut data = acct.try_borrow_mut()?;
+    let uc = UserCollateral::from_bytes_mut(&mut data)?;
+    if uc.owner != *owner {
+        return Err(TempoProgramError::InvalidOrderOwner.into());
+    }
+    uc.validate_self(account, program_id)?;
+    uc.release(amount);
+    Ok(())
+}
+
+/// Conserve `balance_delta` (how the trader's ledger moved, net of fee) against
+/// the insurance pool, then socialize any `shortfall` (loss uncovered by the
+/// trader's balance) to the winning side by open interest. `loser_signed_size`
+/// is the losing position's current signed size and selects which side absorbs
+/// the ADL charge. Fails closed (`InsuranceInsolvent`) on an underfunded gain —
+/// it never mints money.
+pub fn conserve_and_socialize(
+    vault: &mut Vault,
+    market: &mut Market,
+    balance_delta: i128,
+    shortfall: u64,
+    loser_signed_size: i128,
+) -> Result<(), ProgramError> {
+    // The insurance pool BEFORE this event accrues the covered loss. It is the
+    // baseline the winner's later gain draws from, so the ADL residual is the bad
+    // debt beyond it (mirrors liquidate's `bad_debt.saturating_sub(insurance)`).
+    let insurance_before = vault.insurance_balance();
+
+    if balance_delta > 0 {
+        let need = balance_delta as u64;
+        if need > insurance_before {
+            return Err(TempoProgramError::InsuranceInsolvent.into());
+        }
+        vault.set_insurance_balance(insurance_before - need);
+    } else if balance_delta < 0 {
+        vault.set_insurance_balance(
+            insurance_before
+                .checked_add((-balance_delta) as u64)
+                .ok_or(TempoProgramError::MathOverflow)?,
+        );
+    }
+
+    // Uncovered loss (only ever co-occurs with balance_delta <= 0): insurance
+    // absorbs what it had; the part beyond it is socialized to the winning side
+    // (never silently dropped). Insurance is NOT drawn here — the winner draws it
+    // when they settle their gain.
+    if shortfall > 0 {
+        let residual = shortfall.saturating_sub(insurance_before);
+        if residual > 0 && !market.socialize_bad_debt(loser_signed_size, residual)? {
+            log!("tempo: settle unbacked bad debt={}", residual);
+        }
+    }
+    Ok(())
+}

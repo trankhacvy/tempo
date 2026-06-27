@@ -1,0 +1,55 @@
+# Alert rules over the metrics the services already expose. The keeper publishes
+# keeper_slots_since_progress (its freeze watchdog) and keeper_funding_age_seconds;
+# the liquidator publishes liquidator_insurance_balance and liquidator_scan_errors_total.
+groups:
+  - name: tempo
+    rules:
+      - alert: KeeperFrozen
+        expr: keeper_slots_since_progress > 300
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "Keeper has made no clearing progress in >300 slots"
+          description: "The auction is wedged or every keeper replica is down. Clearing has stalled."
+
+      - alert: KeeperReadinessDown
+        expr: up{job="keeper"} == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "A keeper replica is unreachable ({{ $labels.instance }})"
+
+      - alert: AllKeepersDown
+        expr: sum(up{job="keeper"}) == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "No keeper replica is up — the exchange will freeze"
+
+      - alert: InsuranceLow
+        expr: min(liquidator_insurance_balance) < 1000000
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: "Vault insurance balance below floor — rising bad-debt risk"
+
+      - alert: LiquidatorStalled
+        expr: rate(liquidator_scan_errors_total[5m]) > 0.2
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Liquidator scans are failing ({{ $labels.instance }})"
+
+      - alert: LiquidatorDown
+        expr: sum(up{job="liquidator"}) == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "No liquidator replica is up — underwater positions are unbacked"
+
+      - alert: FundingStale
+        expr: keeper_funding_age_seconds > 300
+        for: 2m
+        labels: { severity: warn }
+        annotations:
+          summary: "Funding has not accrued in >5 minutes"

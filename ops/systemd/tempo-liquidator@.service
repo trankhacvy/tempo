@@ -1,0 +1,23 @@
+# Templated liquidator unit: run >=2 for redundancy (D5), e.g.
+#   systemctl enable --now tempo-liquidator@a tempo-liquidator@b
+# Each instance reads /etc/tempo/liquidator-%i.env (TEMPO_RPC_URL, TEMPO_MARKETS,
+# TEMPO_KEYPAIR, TEMPO_COLLATERAL_MINT, TEMPO_HEALTH_ADDR, ...).
+[Unit]
+Description=Tempo liquidator (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tempo
+EnvironmentFile=/etc/tempo/liquidator-%i.env
+ExecStart=/usr/local/bin/tempo-liquidator
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

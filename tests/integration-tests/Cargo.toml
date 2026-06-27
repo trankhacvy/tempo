@@ -1,0 +1,36 @@
+[package]
+name = "tempo-integration-tests"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+# This crate is test-support only; the library exposes a TestContext that drives
+# the on-chain Tempo program through real transactions against LiteSVM.
+[lib]
+name = "tempo_integration_tests"
+path = "src/lib.rs"
+
+[dependencies]
+litesvm = "0.13.0"
+# `litesvm-token` (0.13.0, matches litesvm 0.13) supplies SPL mint / token-account
+# / mint-to builders used by the harness to drive collateral flows.
+litesvm-token = "0.13.0"
+# `full` pulls in the transaction-building APIs (Transaction / Message / signing)
+# used to assemble instructions by hand.
+solana-sdk = { version = "3.0.0", features = ["full"] }
+
+[dev-dependencies]
+litesvm = "0.13.0"
+litesvm-token = "0.13.0"
+solana-sdk = { version = "3.0.0", features = ["full"] }
+# Phase 1: the keeper's pure decision engine + decoders, driven against the real
+# program in LiteSVM to prove `decide` clears a full round (and is replica-safe).
+tempo-sdk = { path = "../../crates/sdk" }
+tempo-keeper = { path = "../../crates/keeper" }
+# Phase 2: the reference market maker's pure quoting strategy, driven against the
+# real program in LiteSVM to prove its ladder encoding + bounds match on-chain.
+tempo-mm-bot = { path = "../../crates/mm-bot" }
+# Phase 3: the reference liquidator's pure decision engine + SDK liquidate builder,
+# driven against the real program in LiteSVM to prove it closes underwater positions.
+tempo-liquidator = { path = "../../crates/liquidator" }
+tempo-math = { path = "../../crates/tempo-math" }

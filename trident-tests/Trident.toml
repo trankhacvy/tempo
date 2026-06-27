@@ -1,0 +1,14 @@
+# Trident fuzzer configuration. Uses the trident-svm execution backend so the
+# Pinocchio program runs in a real SVM (PR #27 enabled get_sysvar for Pinocchio).
+[fuzz]
+fuzzing_with_stats = true
+allow_duplicate_txs = false
+
+[fuzz.programs]
+# The compiled SBF artifact produced by `cd program && cargo-build-sbf`.
+program = "8gpzMDNnKNz422jW3hs54TRmZK2H5uEwgfEQbjWAwnJD"
+path = "../target/deploy/tempo_program.so"
+
+[honggfuzz]
+iterations = 100000
+threads = 8

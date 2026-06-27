@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  off-chain:
+    name: fmt + clippy + tests (off-chain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@just
+      - run: cargo fmt --all -- --check
+      - name: clippy + tests on the service crates
+        run: just services-check
+      - name: program unit tests (pure math + state serde)
+        run: cargo test -p tempo-program --features idl
+
+  on-chain:
+    name: SBF build + integration + IDL freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@just
+      - uses: ./.github/actions/solana-toolchain
+      - name: pnpm (client regeneration)
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: pnpm install --frozen-lockfile
+      - name: build .so + integration suite
+        run: just build && cargo test -p tempo-integration-tests
+      - name: generated clients are fresh vs the IDL
+        run: just clients-fresh
+
+  kani:
+    name: formal verification (panic/overflow + OI conservation)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@just
+      - uses: model-checking/kani-github-action@v1
+      - run: just kani

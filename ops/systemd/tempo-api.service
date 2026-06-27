@@ -1,0 +1,22 @@
+# The read API (single instance; scale behind a load balancer if needed). Reads
+# /etc/tempo/api.env (TEMPO_RPC_URL, TEMPO_MARKET, TEMPO_API_BIND_ADDR, ...). No
+# signing key — the API is read-only.
+[Unit]
+Description=Tempo read API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tempo
+EnvironmentFile=/etc/tempo/api.env
+ExecStart=/usr/local/bin/tempo-api
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
