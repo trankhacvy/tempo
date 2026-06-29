@@ -509,10 +509,18 @@ impl Market {
         if winner_oi == 0 {
             return Ok(false);
         }
-        let add = (residual as u128)
-            .checked_mul(crate::funding::FUNDING_SCALE as u128)
-            .ok_or(TempoProgramError::MathOverflow)?
-            / winner_oi;
+        // Round the per-unit index increment UP (against winners): the per-position
+        // charge in `Position::settle_social_loss` floors again, so a floored index
+        // here double-floors and makes `Σ charges < residual` — leaving dust the last
+        // winner's settle can't cover, reverting it `InsuranceInsolvent`. Ceiling the
+        // index increment makes `winner_oi · add / FUNDING_SCALE ≥ residual`, so the
+        // socialized charges cover the residual instead of falling short (HS-8).
+        let add = crate::wide_math::mul_div_ceil(
+            residual as u128,
+            crate::funding::FUNDING_SCALE as u128,
+            winner_oi,
+        )
+        .ok_or(TempoProgramError::MathOverflow)?;
         let add = i128::try_from(add).map_err(|_| TempoProgramError::MathOverflow)?;
         if winner_is_long {
             self.set_social_loss_index_long(self.social_loss_index_long().saturating_add(add));
@@ -989,6 +997,59 @@ mod tests {
         let before = m.window_floor_price();
         m.recenter_window(0);
         assert_eq!(m.window_floor_price(), before);
+    }
+
+    #[test]
+    fn test_clearing_price_map_uses_window_floor_cr1() {
+        // CR-1 regression: `finalize_clear` maps a clearing tick to a price with the
+        // canonical inverse `tick·tick_size + window_floor` (== `tick_to_price`), NOT
+        // the legacy zero-anchored `(tick+1)·tick_size`, which ignored the
+        // oracle-centered window floor and fabricated the clearing price on every
+        // recentered market.
+        let mut bytes = test_market().to_bytes(); // tick_size 10, num_ticks 64
+        let m = Market::from_bytes_mut(&mut bytes).unwrap();
+        m.recenter_window(10_000); // floor = 9_680
+        let tick_size = m.tick_size();
+        let window_floor = m.window_floor_price();
+        for clearing_tick in [0u32, 1, 32, 63] {
+            // The exact map `finalize_clear`'s `cross_price` closure now computes.
+            let published = (clearing_tick as u64) * tick_size + window_floor;
+            assert_eq!(published, m.tick_to_price(clearing_tick).unwrap());
+            // The legacy (buggy) formula is wrong by exactly (window_floor - tick_size).
+            let legacy = (clearing_tick as u64 + 1) * tick_size;
+            assert_ne!(published, legacy);
+            assert_eq!(published - legacy, window_floor - tick_size);
+        }
+    }
+
+    #[test]
+    fn test_socialize_bad_debt_conserves_residual_hs8() {
+        // HS-8 regression: the social-loss index increment is rounded UP (ceil) so the
+        // socialized charge covers the residual instead of double-flooring below it.
+        // With a single winner holding all the OI, the charge it later pays back is
+        // `floor(winner_oi · add / FUNDING_SCALE)`, which must be ≥ residual. A floored
+        // index increment (the old bug) would leave dust uncharged → `Σ < residual`.
+        let scale = crate::funding::FUNDING_SCALE as u128;
+        // winner_oi deliberately does NOT divide residual·scale, so a floored index
+        // increment would lose dust and undercharge.
+        let winner_oi: i128 = 3;
+        let residual: u64 = 7;
+
+        let mut bytes = test_market().to_bytes();
+        let m = Market::from_bytes_mut(&mut bytes).unwrap();
+        // Loser is short (size < 0) → winners are the longs; give the longs the OI.
+        m.apply_oi_delta(0, winner_oi);
+        assert!(m.socialize_bad_debt(-1, residual).unwrap());
+
+        let add = m.social_loss_index_long(); // per-unit index increment (now ceil)
+                                              // The single winner (all the OI) pays floor(|size| · add / scale).
+        let charge = (winner_oi as u128) * (add as u128) / scale;
+        assert!(
+            charge >= residual as u128,
+            "socialized charge {} < residual {}",
+            charge,
+            residual
+        );
     }
 
     #[test]
