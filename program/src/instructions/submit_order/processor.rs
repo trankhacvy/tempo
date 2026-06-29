@@ -86,8 +86,13 @@ pub fn process_submit_order(
         // One slab pass: the trader's resting-order count (anti-spam cap) and their
         // same-side resting quantity (reduce-only headroom, charged below so resting
         // reduces can't collectively flip the position without reserving margin).
-        let (resting_count, same_side_qty) =
-            trader_resting_stats(&slab_data, capacity, &trader, ix.data.side)?;
+        let (resting_count, same_side_qty) = trader_resting_stats(
+            &slab_data,
+            capacity,
+            &trader,
+            ix.data.side,
+            ix.data.reduce_only,
+        )?;
         if resting_count >= MAX_ORDERS_PER_TRADER {
             return Err(TempoProgramError::TraderOrderCapReached.into());
         }
