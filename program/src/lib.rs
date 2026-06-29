@@ -3,14 +3,18 @@
 //! An open-source Dual Flow Batch Auction (DFBA) perpetuals DEX on Solana L1.
 //!
 //! ## Scope (this crate)
-//! The on-chain **clearing engine** only:
+//! The on-chain **clearing engine**:
 //! - an order slab (resting orders for a market),
 //! - a price histogram (the "mailboxes") of demand/supply per tick,
 //! - the three-phase clearing protocol: ACCUMULATE → DISCOVER → SETTLE.
 //!
-//! There is **no** collateral movement, **no** SPL token transfers, and
-//! **no** margin / funding / liquidation yet. See `docs/system-design.md`
-//! (build order) and `docs/tempo-clearing-protocol.md`.
+//! Built **on top** of the clearing engine is the full **M3 money & risk path**:
+//! an SPL collateral vault and `UserCollateral` ledger, deposit/withdraw,
+//! pre-trade margin reservation, oracle-priced funding, mark price, liquidation,
+//! an insurance pool with ADL/socialized loss, a hard solvency gate, a per-slot
+//! price brake, overflow-safe 256-bit notional math, cross-margin, and parametric
+//! maker quotes. See `docs/system-design.md` (build order),
+//! `docs/risk-model.md`, and `docs/tempo-clearing-protocol.md`.
 //!
 //! ## The clearing breakthrough (see clearing-protocol §2)
 //! A uniform-price clearing price is recoverable from cumulative sums alone.

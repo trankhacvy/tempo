@@ -106,7 +106,10 @@ pub async fn run(ctx: MmCtx, health: Health, poll: Duration, mut shutdown: watch
 async fn ensure_accounts(ctx: &MmCtx) {
     let maker = ctx.maker.pubkey();
     let (position_pda, _) = tempo_sdk::pda::position(&ctx.pdas.market, &maker);
-    let pos_exists = ctx.client.fetch_account_data_opt(&position_pda).await
+    let pos_exists = ctx
+        .client
+        .fetch_account_data_opt(&position_pda)
+        .await
         .map(|opt| opt.is_some())
         .unwrap_or(false);
     if pos_exists {
@@ -144,7 +147,10 @@ async fn tick(
     }
 
     // Ensure the maker_quote account exists (requires Collect phase).
-    let mq_exists = ctx.client.fetch_account_data_opt(&ctx.maker_quote).await
+    let mq_exists = ctx
+        .client
+        .fetch_account_data_opt(&ctx.maker_quote)
+        .await
         .map(|opt| opt.is_some())
         .unwrap_or(false);
     if !mq_exists {
@@ -216,8 +222,8 @@ async fn self_position(ctx: &MmCtx) -> Result<Option<PositionView>, SdkError> {
 /// unmetered budget (a clearing-only market reserves nothing at quote time).
 async fn self_free_collateral(ctx: &MmCtx) -> Result<u64, SdkError> {
     match ctx.collateral_mint {
-        Some(_) => {
-            let (uc, _) = pda::user_collateral(&ctx.maker.pubkey());
+        Some(mint) => {
+            let (uc, _) = pda::user_collateral(&ctx.maker.pubkey(), &mint);
             let view: Option<UserCollateralView> = ctx.client.fetch_user_collateral(&uc).await?;
             Ok(view.map(|v| v.free()).unwrap_or(0))
         }

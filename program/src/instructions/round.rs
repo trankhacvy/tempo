@@ -7,8 +7,9 @@ use crate::{
 };
 
 /// Reset a market's round state and reopen `Collect`: zero the order slab and
-/// histogram, bump both to `next_id`, reset the market counters, and open a fresh
-/// collection window at `slot + COLLECT_WINDOW_SLOTS`. Validates that the slab and
+/// histogram (which resets the authoritative order/accumulated counts), bump both
+/// to `next_id`, reset the maker-quote fold counter, and open a fresh collection
+/// window at `slot + COLLECT_WINDOW_SLOTS`. Validates that the slab and
 /// histogram belong to this market. Shared by `start_auction` (after its
 /// settled-slab preconditions) and `force_reset` (after its authority check).
 pub fn reset_round_to_collect(
@@ -79,8 +80,6 @@ pub fn reset_round_to_collect(
         let mut market_data = market_account.try_borrow_mut()?;
         let market = Market::from_bytes_mut(&mut market_data)?;
         market.set_current_auction_id(next_id);
-        market.set_accumulated_order_count(0);
-        market.set_active_order_count(0);
         // Per-round maker-quote fold counter resets; the active count persists
         // (quotes survive across rounds, unlike the ephemeral slab).
         market.set_folded_maker_quote_count(0);

@@ -45,12 +45,16 @@ pub async fn liquidate_isolated(ctx: &LiqCtx, action: &LiqAction) {
         tracing::warn!("isolated liquidation skipped: no vault configured");
         return;
     };
+    let Some(mint) = ctx.collateral_mint else {
+        tracing::warn!("isolated liquidation skipped: no collateral mint configured");
+        return;
+    };
     let params = LiquidateParams {
         liquidator: ctx.liquidator.pubkey(),
         market: *market,
         oracle: *oracle,
         position: *position,
-        user_collateral: pda::user_collateral(owner).0,
+        user_collateral: pda::user_collateral(owner, &mint).0,
         vault,
         liquidator_collateral: ctx.liquidator_collateral,
     };
@@ -64,10 +68,14 @@ pub async fn liquidate_cross(ctx: &LiqCtx, owner: &Pubkey, legs: &[CrossLeg]) {
         tracing::warn!("cross liquidation skipped: no vault configured");
         return;
     };
+    let Some(mint) = ctx.collateral_mint else {
+        tracing::warn!("cross liquidation skipped: no collateral mint configured");
+        return;
+    };
     let params = LiquidateCrossParams {
         liquidator: ctx.liquidator.pubkey(),
         margin_account: pda::margin_account(owner).0,
-        user_collateral: pda::user_collateral(owner).0,
+        user_collateral: pda::user_collateral(owner, &mint).0,
         vault,
         liquidator_collateral: ctx.liquidator_collateral,
     };

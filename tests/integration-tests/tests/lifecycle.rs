@@ -75,11 +75,10 @@ fn two_consecutive_auctions_on_one_market() {
     let m = ctx.market(&pdas);
     assert_eq!(m.current_auction_id, 1, "auction id incremented");
     assert_eq!(m.phase, PHASE_COLLECT, "reopened for collection");
-    assert_eq!(m.active_order_count, 0, "counters reset");
-    assert_eq!(m.accumulated_order_count, 0);
-    // Histogram + slab were re-stamped with the new round and emptied.
+    // Histogram + slab were re-stamped with the new round and emptied; their counts
+    // are the authoritative reset (PERF-1 removed the market mirrors).
     assert_eq!(ctx.histogram(&pdas).auction_id, 1);
-    assert_eq!(ctx.histogram(&pdas).accumulated_count, 0);
+    assert_eq!(ctx.histogram(&pdas).accumulated_count, 0, "counters reset");
     assert_eq!(ctx.order_slab(&pdas).auction_id, 1);
     assert_eq!(ctx.order_slab(&pdas).count, 0);
     assert_eq!(ctx.orders(&pdas).len(), 0, "no orders leak from round 0");
@@ -97,18 +96,18 @@ fn two_consecutive_auctions_on_one_market() {
     ctx.post_maker_order(&pdas, &ms, SIDE_SELL, 50, 25);
 
     // Only the two takers rest in the slab now (makers live in the quote book),
-    // so active_order_count counts 2, not 4.
+    // so the slab live count is 2, not 4.
     assert_eq!(
-        ctx.market(&pdas).active_order_count,
+        ctx.order_slab(&pdas).count,
         2,
         "only round-1 taker orders are active"
     );
     ctx.process_chunk(&pdas, 0, 64);
     ctx.process_maker_quote(&pdas, &mb.pubkey());
     ctx.process_maker_quote(&pdas, &ms.pubkey());
-    let m = ctx.market(&pdas);
     assert_eq!(
-        m.accumulated_order_count, 2,
+        ctx.histogram(&pdas).accumulated_count,
+        2,
         "round-1 accumulates only its own 2 taker orders"
     );
     // The histogram carries the new round id and only round-1's taker

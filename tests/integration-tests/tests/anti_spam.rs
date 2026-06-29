@@ -24,5 +24,5 @@ fn per_trader_order_cap_enforced() {
     // A different trader is unaffected — the slab still has room.
     let other = ctx.new_funded_signer();
     let _ = ctx.submit_order(&pdas, &other, SIDE_BUY, 40, 5);
-    assert_eq!(ctx.market(&pdas).active_order_count, 9, "8 + 1 active");
+    assert_eq!(ctx.order_slab(&pdas).count, 9, "8 + 1 active");
 }

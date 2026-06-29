@@ -20,4 +20,3 @@ pub const SOL_USD_FEED_ID: [u8; 32] = [
 /// SPL Token program id.
 pub const SPL_TOKEN_PROGRAM_ID: Pubkey =
     Pubkey::from_str_const("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-

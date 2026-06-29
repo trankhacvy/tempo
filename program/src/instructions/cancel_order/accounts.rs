@@ -12,7 +12,7 @@ use crate::{
 ///
 /// # Account Layout
 /// 0. `[signer]` trader
-/// 1. `[writable]` market
+/// 1. `[]` market
 /// 2. `[writable]` order_slab
 /// 3. `[]` event_authority - Event authority PDA
 /// 4. `[]` tempo_program - Current program
@@ -41,7 +41,6 @@ impl<'a> TryFrom<&'a [AccountView]> for CancelOrderAccounts<'a> {
         };
 
         verify_signer(trader, false)?;
-        verify_writable(market, true)?;
         verify_writable(order_slab, true)?;
 
         verify_current_program_account(market)?;

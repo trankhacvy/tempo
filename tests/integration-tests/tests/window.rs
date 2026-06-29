@@ -36,5 +36,5 @@ fn collect_window_blocks_early_accumulation() {
         PHASE_ACCUMULATING,
         "process_chunk transitions to Accumulating once the window closes",
     );
-    assert_eq!(ctx.market(&pdas).accumulated_order_count, 1);
+    assert_eq!(ctx.histogram(&pdas).accumulated_count, 1);
 }

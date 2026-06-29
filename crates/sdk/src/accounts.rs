@@ -16,16 +16,18 @@ const MARKET_DISCRIMINATOR: u8 = 1;
 /// carrying the fields the keeper, market-maker, and preflight checks need.
 /// Field offsets are relative to the start of account data (after the 2-byte
 /// disc+version prefix). `initial_margin_bps`/`max_position_notional` are v8
-/// fields; on a v7 account they read as `0` (the program's `initial_margin_bps`
-/// falls back to maintenance when zero).
+/// fields; on a shorter account they read as `0` (the program's
+/// `initial_margin_bps` falls back to maintenance when zero). PERF-1 (Market v9)
+/// removed the redundant `accumulated_order_count`/`active_order_count` mirror
+/// fields, shifting every field after `tick_size` down 16 bytes (known-issues §2.1):
+/// the authoritative live-order count is `OrderSlabView.count` and the authoritative
+/// folded count is `HistogramView.accumulated_count`.
 #[derive(Clone, Debug)]
 pub struct MarketView {
     pub version: u8,
     pub current_auction_id: u64,
     pub phase_deadline_slot: u64,
     pub tick_size: u64,
-    pub accumulated_order_count: u64,
-    pub active_order_count: u64,
     pub orders_per_auction_cap: u32,
     pub num_ticks: u32,
     pub oracle: Pubkey,
@@ -43,8 +45,9 @@ pub struct MarketView {
 
 impl MarketView {
     /// Smallest account length that carries every field through `window_floor_price`
-    /// (Market v7). v8 appends `initial_margin_bps` + `max_position_notional`.
-    const MIN_LEN: usize = 400;
+    /// (offset 376 + 8). v8 appends `initial_margin_bps` + `max_position_notional`;
+    /// Market v9 (PERF-1) dropped the two order-count mirrors (−16 bytes).
+    const MIN_LEN: usize = 384;
 
     pub fn decode(data: &[u8]) -> Result<Self, SdkError> {
         if data.len() < Self::MIN_LEN {
@@ -60,15 +63,17 @@ impl MarketView {
                 data[0]
             )));
         }
-        // v8 appends the initial-margin buffer + per-position notional cap. A v7
+        // v8 appends the initial-margin buffer + per-position notional cap. A shorter
         // account simply lacks them; report 0 so the maintenance fallback applies.
-        let initial_margin_bps = if data.len() >= 402 {
-            u16_at(data, 400)
+        // (Offsets are −16 vs the pre-v9 layout: PERF-1 removed the two order-count
+        // mirrors that used to sit at 42/50.)
+        let initial_margin_bps = if data.len() >= 386 {
+            u16_at(data, 384)
         } else {
             0
         };
-        let max_position_notional = if data.len() >= 418 {
-            u128_at(data, 402)
+        let max_position_notional = if data.len() >= 402 {
+            u128_at(data, 386)
         } else {
             0
         };
@@ -77,19 +82,17 @@ impl MarketView {
             current_auction_id: u64_at(data, 2),
             phase_deadline_slot: u64_at(data, 10),
             tick_size: u64_at(data, 18),
-            accumulated_order_count: u64_at(data, 42),
-            active_order_count: u64_at(data, 50),
-            orders_per_auction_cap: u32_at(data, 58),
-            num_ticks: u32_at(data, 62),
-            oracle: pubkey_at(data, 130),
-            phase: data[162],
-            last_funding_ts: u64_at(data, 180),
-            oracle_feed_id: array32_at(data, 188),
-            maintenance_margin_bps: u16_at(data, 220),
-            collateral_mint: pubkey_at(data, 238),
-            active_maker_quote_count: u64_at(data, 278),
-            folded_maker_quote_count: u64_at(data, 286),
-            window_floor_price: u64_at(data, 392),
+            orders_per_auction_cap: u32_at(data, 42),
+            num_ticks: u32_at(data, 46),
+            oracle: pubkey_at(data, 114),
+            phase: data[146],
+            last_funding_ts: u64_at(data, 164),
+            oracle_feed_id: array32_at(data, 172),
+            maintenance_margin_bps: u16_at(data, 204),
+            collateral_mint: pubkey_at(data, 222),
+            active_maker_quote_count: u64_at(data, 262),
+            folded_maker_quote_count: u64_at(data, 270),
+            window_floor_price: u64_at(data, 376),
             initial_margin_bps,
             max_position_notional,
         })
@@ -228,17 +231,19 @@ impl PositionView {
 }
 
 /// Decoded view of a `UserCollateral` ledger (`program/src/state/user_collateral.rs`,
-/// VERSION 1). Offsets: `owner@2 balance@34 locked@42`.
+/// VERSION 2 — mint-scoped, CR-3). Offsets: `owner@2 collateral_mint@34 balance@66
+/// locked@74`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UserCollateralView {
     pub owner: Pubkey,
+    pub collateral_mint: Pubkey,
     pub balance: u64,
     pub locked: u64,
 }
 
 impl UserCollateralView {
-    /// Smallest length that carries `locked` (offset 42, 8 bytes).
-    const MIN_LEN: usize = 50;
+    /// Smallest length that carries `locked` (offset 74, 8 bytes).
+    const MIN_LEN: usize = 82;
 
     pub fn decode(data: &[u8]) -> Result<Self, SdkError> {
         if data.len() < Self::MIN_LEN {
@@ -256,8 +261,9 @@ impl UserCollateralView {
         }
         Ok(Self {
             owner: pubkey_at(data, 2),
-            balance: u64_at(data, 34),
-            locked: u64_at(data, 42),
+            collateral_mint: pubkey_at(data, 34),
+            balance: u64_at(data, 66),
+            locked: u64_at(data, 74),
         })
     }
 
@@ -574,42 +580,40 @@ fn pubkey_at(d: &[u8], o: usize) -> Pubkey {
 mod tests {
     use super::*;
 
-    /// Golden test for the offset table: lay out a synthetic v8 Market with known
+    /// Golden test for the offset table: lay out a synthetic v9 Market with known
     /// values at the documented offsets and assert `MarketView` reads them back.
-    /// Locks the layout against drift without depending on the program crate.
+    /// Locks the layout against drift without depending on the program crate. PERF-1
+    /// removed the two order-count mirror fields, so every field after `tick_size`
+    /// sits 16 bytes lower than the pre-v9 layout (total length 418 → 402).
     #[test]
     fn test_market_view_offsets() {
-        let mut d = vec![0u8; 418];
+        let mut d = vec![0u8; 402];
         d[0] = MARKET_DISCRIMINATOR; // disc
-        d[1] = 8; // version
+        d[1] = 9; // version
         d[2..10].copy_from_slice(&7u64.to_le_bytes()); // current_auction_id
         d[10..18].copy_from_slice(&12345u64.to_le_bytes()); // phase_deadline_slot
         d[18..26].copy_from_slice(&10u64.to_le_bytes()); // tick_size
-        d[42..50].copy_from_slice(&3u64.to_le_bytes()); // accumulated_order_count
-        d[50..58].copy_from_slice(&4u64.to_le_bytes()); // active_order_count
-        d[58..62].copy_from_slice(&24u32.to_le_bytes()); // orders_per_auction_cap
-        d[62..66].copy_from_slice(&148u32.to_le_bytes()); // num_ticks
+        d[42..46].copy_from_slice(&24u32.to_le_bytes()); // orders_per_auction_cap
+        d[46..50].copy_from_slice(&148u32.to_le_bytes()); // num_ticks
         let oracle = [9u8; 32];
-        d[130..162].copy_from_slice(&oracle); // oracle
-        d[162] = 1; // phase = Accumulating
-        d[180..188].copy_from_slice(&111u64.to_le_bytes()); // last_funding_ts
-        d[188..220].copy_from_slice(&[5u8; 32]); // oracle_feed_id
-        d[220..222].copy_from_slice(&500u16.to_le_bytes()); // maintenance_margin_bps
+        d[114..146].copy_from_slice(&oracle); // oracle
+        d[146] = 1; // phase = Accumulating
+        d[164..172].copy_from_slice(&111u64.to_le_bytes()); // last_funding_ts
+        d[172..204].copy_from_slice(&[5u8; 32]); // oracle_feed_id
+        d[204..206].copy_from_slice(&500u16.to_le_bytes()); // maintenance_margin_bps
         let mint = [3u8; 32];
-        d[238..270].copy_from_slice(&mint); // collateral_mint
-        d[278..286].copy_from_slice(&6u64.to_le_bytes()); // active_maker_quote_count
-        d[286..294].copy_from_slice(&2u64.to_le_bytes()); // folded_maker_quote_count
-        d[392..400].copy_from_slice(&9_680u64.to_le_bytes()); // window_floor_price
-        d[400..402].copy_from_slice(&600u16.to_le_bytes()); // initial_margin_bps
-        d[402..418].copy_from_slice(&1_000_000u128.to_le_bytes()); // max_position_notional
+        d[222..254].copy_from_slice(&mint); // collateral_mint
+        d[262..270].copy_from_slice(&6u64.to_le_bytes()); // active_maker_quote_count
+        d[270..278].copy_from_slice(&2u64.to_le_bytes()); // folded_maker_quote_count
+        d[376..384].copy_from_slice(&9_680u64.to_le_bytes()); // window_floor_price
+        d[384..386].copy_from_slice(&600u16.to_le_bytes()); // initial_margin_bps
+        d[386..402].copy_from_slice(&1_000_000u128.to_le_bytes()); // max_position_notional
 
         let m = MarketView::decode(&d).unwrap();
-        assert_eq!(m.version, 8);
+        assert_eq!(m.version, 9);
         assert_eq!(m.current_auction_id, 7);
         assert_eq!(m.phase_deadline_slot, 12345);
         assert_eq!(m.tick_size, 10);
-        assert_eq!(m.accumulated_order_count, 3);
-        assert_eq!(m.active_order_count, 4);
         assert_eq!(m.orders_per_auction_cap, 24);
         assert_eq!(m.num_ticks, 148);
         assert_eq!(m.oracle, Pubkey::new_from_array(oracle));
@@ -629,18 +633,18 @@ mod tests {
 
     #[test]
     fn test_market_view_rejects_bad_disc_and_short() {
-        let mut d = vec![0u8; 418];
+        let mut d = vec![0u8; 402];
         d[0] = 2;
         assert!(MarketView::decode(&d).is_err());
-        assert!(MarketView::decode(&[1u8, 8, 0]).is_err());
+        assert!(MarketView::decode(&[1u8, 9, 0]).is_err());
     }
 
     #[test]
-    fn test_market_view_v7_initial_margin_falls_back() {
-        let mut d = vec![0u8; 400]; // v7: no initial_margin / max_position_notional
+    fn test_market_view_short_initial_margin_falls_back() {
+        let mut d = vec![0u8; 384]; // through window_floor_price: no v8 appends
         d[0] = MARKET_DISCRIMINATOR;
-        d[1] = 7;
-        d[220..222].copy_from_slice(&500u16.to_le_bytes());
+        d[1] = 9;
+        d[204..206].copy_from_slice(&500u16.to_le_bytes());
         let m = MarketView::decode(&d).unwrap();
         assert_eq!(m.initial_margin_bps, 0);
         assert_eq!(m.effective_initial_margin_bps(), 500);
@@ -815,18 +819,21 @@ mod tests {
 
     #[test]
     fn test_decode_user_collateral_offsets() {
-        let mut d = vec![0u8; 51];
+        // CR-3 mint-scoped layout: owner@2 collateral_mint@34 balance@66 locked@74.
+        let mut d = vec![0u8; 83];
         d[0] = USER_COLLATERAL_DISCRIMINATOR;
-        d[1] = 1;
+        d[1] = 2;
         d[2..34].copy_from_slice(&[8u8; 32]); // owner
-        d[34..42].copy_from_slice(&9000u64.to_le_bytes()); // balance
-        d[42..50].copy_from_slice(&2500u64.to_le_bytes()); // locked
+        d[34..66].copy_from_slice(&[5u8; 32]); // collateral_mint
+        d[66..74].copy_from_slice(&9000u64.to_le_bytes()); // balance
+        d[74..82].copy_from_slice(&2500u64.to_le_bytes()); // locked
         let u = UserCollateralView::decode(&d).unwrap();
         assert_eq!(u.owner, Pubkey::new_from_array([8u8; 32]));
+        assert_eq!(u.collateral_mint, Pubkey::new_from_array([5u8; 32]));
         assert_eq!(u.balance, 9000);
         assert_eq!(u.locked, 2500);
         assert_eq!(u.free(), 6500);
-        assert!(UserCollateralView::decode(&[7u8, 1, 0]).is_err());
+        assert!(UserCollateralView::decode(&[7u8, 2, 0]).is_err());
     }
 
     /// Golden test pinning the maker-quote offsets — status MUST read from 152.

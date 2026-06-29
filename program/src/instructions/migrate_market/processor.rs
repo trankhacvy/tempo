@@ -19,8 +19,10 @@ const MARKET_APPENDED_LEN: usize = (16 * 2 + 16 * 2 + 8 + 8 + 8 + 2 + 8) + 8 + (
 /// The prior layout version this migration upgrades from.
 const MARKET_OLD_VERSION: u8 = 4;
 /// Account-data offset of the stable `authority` field: 2-byte prefix + the
-/// 64-byte clearing prefix (7×u64 + 2×u32) that precedes it.
-const AUTHORITY_OFFSET: usize = 2 + (8 * 7 + 4 * 2);
+/// 48-byte clearing prefix (5×u64 + 2×u32) that precedes it. PERF-1 (Market v9)
+/// removed the two order-count mirrors from the prefix, so authority sits 16 bytes
+/// earlier than the pre-v9 layout (known-issues §2.1).
+const AUTHORITY_OFFSET: usize = 2 + (8 * 5 + 4 * 2);
 
 /// Processes MigrateMarket — an authority-gated, in-place layout upgrade of a
 /// VERSION-4 `Market` account to VERSION 5 (the risk block). Because every

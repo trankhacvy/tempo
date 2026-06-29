@@ -185,21 +185,31 @@ pub fn process_withdraw_cross(
 
     // Debit the shared ledger; require the post-withdraw recognized equity to still
     // cover combined maintenance.
-    let authority_bump = {
+    let (authority_bump, collateral_mint) = {
         let vault_data = ix.accounts.vault.try_borrow()?;
         let vault = Vault::from_bytes(&vault_data)?;
         vault.validate_self(ix.accounts.vault, program_id)?;
         if vault.vault_token_account != *ix.accounts.vault_token_account.address() {
             return Err(TempoProgramError::InvalidCollateralAccount.into());
         }
-        vault.authority_bump
+        (vault.authority_bump, vault.collateral_mint)
     };
+
+    // HS-12: the destination token account must hold the vault's collateral mint.
+    {
+        let user_token =
+            pinocchio_token::state::Account::from_account_view(ix.accounts.user_token_account)?;
+        if *user_token.mint() != collateral_mint {
+            return Err(TempoProgramError::InvalidCollateralAccount.into());
+        }
+    }
 
     {
         let mut acct = *ix.accounts.user_collateral;
         let mut uc_data = acct.try_borrow_mut()?;
         let uc = UserCollateral::from_bytes_mut(&mut uc_data)?;
-        if uc.owner != owner {
+        // CR-3: the shared ledger must be scoped to the vault's mint.
+        if uc.owner != owner || uc.collateral_mint != collateral_mint {
             return Err(TempoProgramError::InvalidCollateralAccount.into());
         }
         uc.validate_self(ix.accounts.user_collateral, program_id)?;

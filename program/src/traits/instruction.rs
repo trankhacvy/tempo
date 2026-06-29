@@ -131,9 +131,6 @@ pub trait Instruction<'a>: Sized {
     type Accounts: InstructionAccounts<'a>;
     type Data: InstructionData<'a>;
 
-    fn accounts(&self) -> &Self::Accounts;
-    fn data(&self) -> &Self::Data;
-
     /// Parse instruction from data and accounts tuple
     #[inline(always)]
     fn parse(data: &'a [u8], accounts: &'a [AccountView]) -> Result<Self, ProgramError>

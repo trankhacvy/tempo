@@ -48,8 +48,7 @@ fn happy_path_full_loop() {
     ctx.post_maker_order(&pdas, &ms, SIDE_SELL, 5 * tick, 30);
 
     // Only the two takers rest in the slab now; makers live in the quote book.
-    let m = ctx.market(&pdas);
-    assert_eq!(m.active_order_count, 2);
+    // (PERF-1: the slab header count is the authoritative live-order count.)
     assert_eq!(ctx.order_slab(&pdas).count, 2);
 
     // Phase 1 ACCUMULATE — fold the slab (takers) then the maker quotes.
@@ -59,8 +58,11 @@ fn happy_path_full_loop() {
         m.phase, PHASE_ACCUMULATING,
         "first chunk transitions to Accumulating"
     );
-    assert_eq!(m.accumulated_order_count, 2, "two takers accumulated");
-    assert_eq!(ctx.histogram(&pdas).accumulated_count, 2);
+    assert_eq!(
+        ctx.histogram(&pdas).accumulated_count,
+        2,
+        "two takers accumulated"
+    );
     ctx.process_maker_quote(&pdas, &mb.pubkey());
     ctx.process_maker_quote(&pdas, &ms.pubkey());
 

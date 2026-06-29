@@ -23,12 +23,10 @@ use tempo_sdk::{MarketPdas, TempoClient};
 
 fn market_view() -> MarketView {
     MarketView {
-        version: 8,
+        version: 9,
         current_auction_id: 42,
         phase_deadline_slot: 200,
         tick_size: 10,
-        accumulated_order_count: 1,
-        active_order_count: 2,
         orders_per_auction_cap: 64,
         num_ticks: 4,
         oracle: Pubkey::new_unique(),

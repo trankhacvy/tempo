@@ -21,9 +21,10 @@ const CLEARING_SEED: &[u8] = b"clearing";
 
 /// Processes the FinalizeClear instruction — Phase 2 DISCOVER
 /// (clearing-protocol §3). Permissionless. Requires the completeness check
-/// (`accumulated_order_count == active_order_count`, clearing-protocol §4.2),
-/// runs a single O(ticks) pass to find the clearing price and marginal-tick
-/// allocation, and publishes a `ClearingResult`.
+/// (every resting order folded — enforced by the `all_active_orders_accumulated`
+/// slab scan — plus every maker quote folded, clearing-protocol §4.2), runs a
+/// single O(ticks) pass to find the clearing price and marginal-tick allocation,
+/// and publishes a `ClearingResult`.
 ///
 /// Runs **both** uniform-price crosses (system-design §1): the bid auction
 /// (maker-buys vs taker-sells) and the ask auction (taker-buys vs maker-sells),
@@ -42,21 +43,23 @@ pub fn process_finalize_clear(
     let market_key = *ix.accounts.market.address();
 
     // --- validate market phase + completeness; capture params ---
-    let (num_ticks, tick_size, auction_id, crank_fee, market_collateral_mint) = {
+    let (num_ticks, tick_size, window_floor, auction_id, crank_fee, market_collateral_mint) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
         market.require_phase(AuctionPhase::Accumulating)?;
-        // Completeness check (clearing-protocol §4.2): refuse to finalize until
-        // every active order AND every active maker quote has been folded exactly
-        // once (the latter keeps our censorship guarantee for maker liquidity).
-        if market.accumulated_order_count() != market.active_order_count()
-            || market.folded_maker_quote_count() != market.active_maker_quote_count()
-        {
+        // Maker-quote completeness check (clearing-protocol §4.2): refuse to finalize
+        // until every active maker quote has been folded exactly once (keeps our
+        // censorship guarantee for maker liquidity). The ORDER-side completeness is
+        // enforced authoritatively by the `all_active_orders_accumulated` slab scan
+        // below — PERF-1 removed the redundant `accumulated_order_count`/
+        // `active_order_count` market counters that used to mirror it (known-issues §2.1).
+        if market.folded_maker_quote_count() != market.active_maker_quote_count() {
             return Err(TempoProgramError::AuctionNotComplete.into());
         }
         (
             market.num_ticks(),
             market.tick_size(),
+            market.window_floor_price(),
             market.current_auction_id(),
             market.crank_fee(),
             market.collateral_mint,
@@ -106,11 +109,15 @@ pub fn process_finalize_clear(
     let bid = find_cross(&bid_demand, &bid_supply)?;
     let ask = find_cross(&ask_demand, &ask_supply)?;
 
-    // map clearing tick -> price: price = (tick + 1) * tick_size
+    // map clearing tick -> price: the canonical inverse of `price_to_tick`
+    // (Market::tick_to_price), `price = tick·tick_size + window_floor`. Using the
+    // legacy zero-anchored `(tick+1)·tick_size` here ignored the oracle-centered
+    // window floor and fabricated the clearing price on every recentered market (CR-1).
     let cross_price = |c: &CrossResult| -> Result<u64, ProgramError> {
         if c.crossed {
-            (c.clearing_tick as u64 + 1)
+            (c.clearing_tick as u64)
                 .checked_mul(tick_size)
+                .and_then(|off| off.checked_add(window_floor))
                 .ok_or(TempoProgramError::MathOverflow.into())
         } else {
             Ok(0)

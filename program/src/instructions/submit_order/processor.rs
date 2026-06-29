@@ -22,8 +22,9 @@ const MAX_ORDERS_PER_TRADER: u32 = 8;
 ///
 /// Validates phase + price/quantity, **reserves the order's worst-case initial
 /// margin** into the trader's collateral ledger (missing-features §1.1) on a
-/// money-path market, inserts the order into a free slab slot, and bumps the
-/// market's active-order count.
+/// money-path market, and inserts the order into a free slab slot. The market is
+/// read-only here (PERF-1, known-issues §2.1): the authoritative live-order count
+/// is `OrderSlabHeader.count`, so `submit_order` never write-locks `Market`.
 ///
 /// # Pre-trade margin reservation (missing-features §1.1)
 /// A batch auction discovers the clearing price *after* matching, so the only way
@@ -86,8 +87,13 @@ pub fn process_submit_order(
         // One slab pass: the trader's resting-order count (anti-spam cap) and their
         // same-side resting quantity (reduce-only headroom, charged below so resting
         // reduces can't collectively flip the position without reserving margin).
-        let (resting_count, same_side_qty) =
-            trader_resting_stats(&slab_data, capacity, &trader, ix.data.side)?;
+        let (resting_count, same_side_qty) = trader_resting_stats(
+            &slab_data,
+            capacity,
+            &trader,
+            ix.data.side,
+            ix.data.reduce_only,
+        )?;
         if resting_count >= MAX_ORDERS_PER_TRADER {
             return Err(TempoProgramError::TraderOrderCapReached.into());
         }
@@ -227,18 +233,6 @@ pub fn process_submit_order(
                 .ok_or(TempoProgramError::MathOverflow)?,
         );
         header.set_next_free_hint(slot.saturating_add(1).min(capacity));
-    }
-
-    // --- bump market active order count ---
-    {
-        let mut market_account = *ix.accounts.market;
-        let mut market_data = market_account.try_borrow_mut()?;
-        let market = Market::from_bytes_mut(&mut market_data)?;
-        let v = market
-            .active_order_count()
-            .checked_add(1)
-            .ok_or(TempoProgramError::MathOverflow)?;
-        market.set_active_order_count(v);
     }
 
     // Emit event via CPI (carries the order id + fields; no log!, §1).

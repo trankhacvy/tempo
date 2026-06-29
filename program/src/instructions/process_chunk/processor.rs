@@ -19,7 +19,9 @@ use crate::{
 /// Processes the ProcessChunk instruction — Phase 1 ACCUMULATE
 /// (clearing-protocol §3). Permissionless. Folds a bounded slice of resting
 /// orders into the histogram, marks them accumulated, and bumps the
-/// accumulated-order counter on both the market and the histogram.
+/// histogram's authoritative accumulated-order counter (PERF-1: the market no
+/// longer mirrors it; it still write-locks the market only for the one-time
+/// Collect→Accumulating phase flip).
 ///
 /// Commutativity (clearing-protocol §4.1): folding is integer addition into a
 /// bucket, so the final histogram is identical regardless of which cranker
@@ -83,7 +85,7 @@ pub fn process_process_chunk(
 
     // --- fold a bounded slice of resting orders ---
     let mut folded: u64 = 0;
-    {
+    let accumulated_total = {
         let mut slab_account = *ix.accounts.order_slab;
         let mut slab_data = slab_account.try_borrow_mut()?;
         let mut hist_account = *ix.accounts.histogram;
@@ -147,25 +149,13 @@ pub fn process_process_chunk(
                 .ok_or(TempoProgramError::MathOverflow)?;
         }
 
-        // bump histogram accumulated_count
+        // bump histogram accumulated_count (the authoritative folded count, PERF-1).
         let hist = AuctionHistogramHeader::from_bytes_mut(&mut hist_data)?;
         let c = hist
             .accumulated_count()
             .checked_add(folded)
             .ok_or(TempoProgramError::MathOverflow)?;
         hist.set_accumulated_count(c);
-    }
-
-    // --- bump market accumulated_count ---
-    let accumulated_total = {
-        let mut market_account = *ix.accounts.market;
-        let mut market_data = market_account.try_borrow_mut()?;
-        let market = Market::from_bytes_mut(&mut market_data)?;
-        let c = market
-            .accumulated_order_count()
-            .checked_add(folded)
-            .ok_or(TempoProgramError::MathOverflow)?;
-        market.set_accumulated_order_count(c);
         c
     };
 

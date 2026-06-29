@@ -44,7 +44,8 @@ use crate::{assert_no_padding, le_field};
 pub struct AuctionHistogramHeader {
     /// Auction round this histogram is accumulating.
     pub auction_id_le: [u8; 8],
-    /// Number of orders folded so far (mirrors `Market.accumulated_order_count`).
+    /// Number of orders folded so far (the authoritative accumulated count; PERF-1
+    /// removed the redundant `Market.accumulated_order_count` mirror, known-issues §2.1).
     pub accumulated_count_le: [u8; 8],
     /// Number of price ticks (length of each bucket array).
     pub num_ticks_le: [u8; 4],

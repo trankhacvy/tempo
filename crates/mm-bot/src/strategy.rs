@@ -196,12 +196,10 @@ mod tests {
 
     fn market(num_ticks: u32) -> MarketView {
         MarketView {
-            version: 8,
+            version: 9,
             current_auction_id: 1,
             phase_deadline_slot: 0,
             tick_size: 10,
-            accumulated_order_count: 0,
-            active_order_count: 0,
             orders_per_auction_cap: 64,
             num_ticks,
             oracle: Pubkey::new_unique(),

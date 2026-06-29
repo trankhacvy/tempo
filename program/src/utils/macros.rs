@@ -106,16 +106,6 @@ macro_rules! define_instruction {
         impl<'a> $crate::traits::Instruction<'a> for $name<'a> {
             type Accounts = $accounts<'a>;
             type Data = $data;
-
-            #[inline(always)]
-            fn accounts(&self) -> &Self::Accounts {
-                &self.accounts
-            }
-
-            #[inline(always)]
-            fn data(&self) -> &Self::Data {
-                &self.data
-            }
         }
     };
 }

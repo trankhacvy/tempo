@@ -318,13 +318,17 @@ pub fn init_position(pdas: &MarketPdas, payer: Pubkey, owner: Pubkey) -> Instruc
 pub const SPL_TOKEN_PROGRAM_ID: Pubkey =
     Pubkey::from_str_const("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
-/// Create a trader's `UserCollateral` ledger PDA (`init_collateral`).
-pub fn init_collateral(payer: Pubkey, owner: Pubkey) -> Instruction {
-    let (user_collateral, bump) = crate::pda::user_collateral(&owner);
+/// Create a trader's mint-scoped `UserCollateral` ledger PDA (`init_collateral`,
+/// CR-3). The ledger is scoped to `collateral_mint`; the per-mint `vault` is passed
+/// read-only as the source of truth for which mints are valid collateral.
+pub fn init_collateral(payer: Pubkey, owner: Pubkey, collateral_mint: Pubkey) -> Instruction {
+    let (user_collateral, bump) = crate::pda::user_collateral(&owner, &collateral_mint);
+    let (vault, _) = crate::pda::vault(&collateral_mint);
     InitCollateral {
         payer,
         owner,
         user_collateral,
+        vault,
         system_program: SYSTEM_PROGRAM_ID,
     }
     .instruction(InitCollateralInstructionArgs { bump })
@@ -340,7 +344,7 @@ pub fn deposit(
     token_program: Pubkey,
     amount: u64,
 ) -> Instruction {
-    let (user_collateral, _) = crate::pda::user_collateral(&owner);
+    let (user_collateral, _) = crate::pda::user_collateral(&owner, &collateral_mint);
     let (vault, _) = crate::pda::vault(&collateral_mint);
     Deposit {
         owner,
@@ -599,9 +603,9 @@ mod tests {
     fn test_collateral_money_wrappers() {
         let owner = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
-        let ic = init_collateral(owner, owner);
+        let ic = init_collateral(owner, owner, mint);
         assert_eq!(ic.data[0], INIT_COLLATERAL_DISCRIMINATOR);
-        assert_eq!(ic.accounts.len(), 4);
+        assert_eq!(ic.accounts.len(), 5);
         let dep = deposit(
             owner,
             mint,

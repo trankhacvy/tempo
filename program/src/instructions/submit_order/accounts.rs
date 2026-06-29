@@ -12,7 +12,7 @@ use crate::{
 ///
 /// # Account Layout
 /// 0. `[signer, writable]` trader
-/// 1. `[writable]` market
+/// 1. `[]` market
 /// 2. `[writable]` order_slab
 /// 3. `[]` event_authority - Event authority PDA
 /// 4. `[]` tempo_program - Current program
@@ -44,7 +44,6 @@ impl<'a> TryFrom<&'a [AccountView]> for SubmitOrderAccounts<'a> {
         };
 
         verify_signer(trader, true)?;
-        verify_writable(market, true)?;
         verify_writable(order_slab, true)?;
 
         // Both state accounts must be owned by this program.

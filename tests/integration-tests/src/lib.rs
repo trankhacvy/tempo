@@ -202,8 +202,6 @@ pub struct MarketState {
     pub tick_size: u64,
     pub last_bid_fill_price: u64,
     pub last_ask_fill_price: u64,
-    pub accumulated_order_count: u64,
-    pub active_order_count: u64,
     pub orders_per_auction_cap: u32,
     pub num_ticks: u32,
     pub authority: Pubkey,
@@ -1386,14 +1384,14 @@ impl TestContext {
         }
     }
 
-    /// Read the market's `active_maker_quote_count`.
+    /// Read the market's `active_maker_quote_count` (Market v9, PERF-1 shifted −16).
     pub fn active_maker_quote_count(&self, pdas: &MarketPdas) -> u64 {
-        read_u64(&self.account_data(&pdas.market)[PREFIX..], 276)
+        read_u64(&self.account_data(&pdas.market)[PREFIX..], 260)
     }
 
-    /// Read the market's `folded_maker_quote_count`.
+    /// Read the market's `folded_maker_quote_count` (Market v9, PERF-1 shifted −16).
     pub fn folded_maker_quote_count(&self, pdas: &MarketPdas) -> u64 {
-        read_u64(&self.account_data(&pdas.market)[PREFIX..], 284)
+        read_u64(&self.account_data(&pdas.market)[PREFIX..], 268)
     }
 
     /// Crank: fold one maker quote into the histogram (advances past the window).
@@ -1611,9 +1609,16 @@ impl TestContext {
         Pubkey::find_program_address(&[b"vault_authority"], &TEMPO_PROGRAM_ID)
     }
 
-    /// UserCollateral PDA + bump (`[b"collateral", owner]`).
+    /// UserCollateral PDA + bump (`[b"collateral", owner, collateral_mint]` — CR-3
+    /// mint-scoped). Uses the mint recorded by `init_vault`; on a clearing-only
+    /// market (no vault) the default mint is used — the ledger is never created or
+    /// read there, so the exact address is immaterial, it just must not panic.
     pub fn collateral_pda(&self, owner: &Pubkey) -> (Pubkey, u8) {
-        Pubkey::find_program_address(&[b"collateral", owner.as_ref()], &TEMPO_PROGRAM_ID)
+        let mint = self.vault_mint.unwrap_or_default();
+        Pubkey::find_program_address(
+            &[b"collateral", owner.as_ref(), mint.as_ref()],
+            &TEMPO_PROGRAM_ID,
+        )
     }
 
     /// Create an SPL mint (0 decimals so amounts are raw base units), mint
@@ -1691,12 +1696,14 @@ impl TestContext {
     /// Create `owner`'s `UserCollateral` ledger. Returns the ledger PDA.
     pub fn init_collateral(&mut self, owner: &Keypair) -> Pubkey {
         let (user_collateral, bump) = self.collateral_pda(&owner.pubkey());
+        let (vault, _) = self.vault_pda();
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
             accounts: vec![
                 AccountMeta::new(self.payer.pubkey(), true),
                 AccountMeta::new_readonly(owner.pubkey(), true),
                 AccountMeta::new(user_collateral, false),
+                AccountMeta::new_readonly(vault, false),
                 AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
             ],
             data: vec![IX_INIT_COLLATERAL, bump],
@@ -2363,28 +2370,28 @@ impl TestContext {
     pub fn market(&self, pdas: &MarketPdas) -> MarketState {
         let d = self.account_data(&pdas.market);
         let b = &d[PREFIX..];
-        // layout: 7*u64, 2*u32, 3*Address, phase(u8), bump(u8)
+        // layout (Market v9, PERF-1): 5*u64, 2*u32, 3*Address, phase(u8), bump(u8), …
+        // The two order-count mirrors that used to sit at b-offsets 40/48 were
+        // removed, so every field after `last_ask_fill_price` is 16 bytes lower.
         MarketState {
             current_auction_id: read_u64(b, 0),
             // phase_deadline_slot at 8 (unused in assertions)
             tick_size: read_u64(b, 16),
             last_bid_fill_price: read_u64(b, 24),
             last_ask_fill_price: read_u64(b, 32),
-            accumulated_order_count: read_u64(b, 40),
-            active_order_count: read_u64(b, 48),
-            orders_per_auction_cap: read_u32(b, 56),
-            num_ticks: read_u32(b, 60),
-            authority: read_pubkey(b, 64),
-            market_seed: read_pubkey(b, 96),
-            // oracle at 128
-            phase: b[160],
-            bump: b[161],
-            oi_long: u128::from_le_bytes(b[292..308].try_into().unwrap()),
-            oi_short: u128::from_le_bytes(b[308..324].try_into().unwrap()),
-            social_loss_index_long: i128::from_le_bytes(b[324..340].try_into().unwrap()),
-            social_loss_index_short: i128::from_le_bytes(b[340..356].try_into().unwrap()),
-            effective_price_1e8: read_u64(b, 356),
-            last_good_oracle_slot: read_u64(b, 364),
+            orders_per_auction_cap: read_u32(b, 40),
+            num_ticks: read_u32(b, 44),
+            authority: read_pubkey(b, 48),
+            market_seed: read_pubkey(b, 80),
+            // oracle at 112
+            phase: b[144],
+            bump: b[145],
+            oi_long: u128::from_le_bytes(b[276..292].try_into().unwrap()),
+            oi_short: u128::from_le_bytes(b[292..308].try_into().unwrap()),
+            social_loss_index_long: i128::from_le_bytes(b[308..324].try_into().unwrap()),
+            social_loss_index_short: i128::from_le_bytes(b[324..340].try_into().unwrap()),
+            effective_price_1e8: read_u64(b, 340),
+            last_good_oracle_slot: read_u64(b, 348),
         }
     }
 
@@ -2464,21 +2471,22 @@ impl TestContext {
         let (uc, _) = self.collateral_pda(owner);
         let d = self.account_data(&uc);
         let b = &d[PREFIX..];
-        // layout: Address(32), u64 balance, u64 locked, u8 bump
+        // layout (CR-3 mint-scoped): owner Address(32), collateral_mint Address(32),
+        // u64 balance, u64 locked, u8 bump
         UserCollateralState {
             owner: read_pubkey(b, 0),
-            balance: read_u64(b, 32),
-            locked: read_u64(b, 40),
-            bump: b[48],
+            balance: read_u64(b, 64),
+            locked: read_u64(b, 72),
+            bump: b[80],
         }
     }
 
-    /// Read the market's bound funding index (Market layout: funding_index at
-    /// offset 162 after the prefix, 16 bytes; last_funding_ts at 178).
+    /// Read the market's bound funding index (Market v9 layout, PERF-1 shifted −16:
+    /// funding_index at b-offset 146, 16 bytes; last_funding_ts at 162).
     pub fn market_funding(&self, pdas: &MarketPdas) -> (i128, u64) {
         let d = self.account_data(&pdas.market);
         let b = &d[PREFIX..];
-        (read_i128(b, 162), read_u64(b, 178))
+        (read_i128(b, 146), read_u64(b, 162))
     }
 
     /// Read all non-empty order slots from the slab.

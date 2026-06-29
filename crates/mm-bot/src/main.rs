@@ -121,7 +121,7 @@ async fn run_deposit(
         None => ix::SPL_TOKEN_PROGRAM_ID,
     };
 
-    let init = ix::init_collateral(maker.pubkey(), maker.pubkey());
+    let init = ix::init_collateral(maker.pubkey(), maker.pubkey(), mint);
     if let Err(e) = client.send(maker, &[init]).await {
         tracing::info!(error = %e, "init_collateral skipped (likely exists)");
     }

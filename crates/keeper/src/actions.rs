@@ -62,7 +62,7 @@ pub async fn discover(ctx: &KeeperCtx) {
 fn settle_money(ctx: &KeeperCtx, trader: &Pubkey) -> SettleMoney {
     let position = Some(pda::position(&ctx.pdas.market, trader).0);
     let (user_collateral, vault) = match ctx.collateral_mint {
-        Some(_) => (Some(pda::user_collateral(trader).0), ctx.vault),
+        Some(mint) => (Some(pda::user_collateral(trader, &mint).0), ctx.vault),
         None => (None, None),
     };
     SettleMoney {
@@ -98,7 +98,7 @@ pub async fn settle(ctx: &KeeperCtx, orders: Vec<SlabOrder>, quotes: Vec<Pubkey>
         let Some(view) = view else { continue };
         let position = pda::position(&ctx.pdas.market, &view.maker).0;
         let (user_collateral, vault) = match ctx.collateral_mint {
-            Some(_) => (Some(pda::user_collateral(&view.maker).0), ctx.vault),
+            Some(mint) => (Some(pda::user_collateral(&view.maker, &mint).0), ctx.vault),
             None => (None, None),
         };
         let ix =

@@ -46,6 +46,9 @@ pub struct LiqCtx {
     pub markets: Vec<Pubkey>,
     /// The vault PDA for the configured collateral mint, when a money path exists.
     pub vault: Option<Pubkey>,
+    /// The collateral mint, when a money path exists. `Some` exactly when `vault` is
+    /// `Some`; required to derive mint-scoped `UserCollateral` ledgers (CR-3).
+    pub collateral_mint: Option<Pubkey>,
     pub scan_concurrency: usize,
 }
 
@@ -60,8 +63,15 @@ fn unix_now_secs() -> i64 {
 /// receives penalties). Checks on-chain first to avoid a 120s ConfirmTimeout when
 /// the account already exists and simulation rejects with "uninitialized account".
 pub async fn ensure_accounts(ctx: &LiqCtx) {
-    let uc_pda = tempo_sdk::pda::user_collateral(&ctx.liquidator.pubkey()).0;
-    let exists = ctx.client.fetch_account_data_opt(&uc_pda).await
+    let Some(mint) = ctx.collateral_mint else {
+        tracing::info!("ensure_accounts: no collateral mint configured, skipping");
+        return;
+    };
+    let uc_pda = tempo_sdk::pda::user_collateral(&ctx.liquidator.pubkey(), &mint).0;
+    let exists = ctx
+        .client
+        .fetch_account_data_opt(&uc_pda)
+        .await
         .map(|opt| opt.is_some())
         .unwrap_or(false);
     if exists {
@@ -69,7 +79,7 @@ pub async fn ensure_accounts(ctx: &LiqCtx) {
         return;
     }
     let pubkey = ctx.liquidator.pubkey();
-    let ix = ix::init_collateral(pubkey, pubkey);
+    let ix = ix::init_collateral(pubkey, pubkey, mint);
     match ctx.client.send(&ctx.liquidator, &[ix]).await {
         Ok(sig) => tracing::info!(%sig, "ensure_accounts: init_collateral ok"),
         Err(e) if benign(&e) => tracing::info!("ensure_accounts: init_collateral benign"),

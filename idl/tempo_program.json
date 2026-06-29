@@ -719,38 +719,6 @@
             },
             {
               "kind": "structFieldTypeNode",
-              "name": "accumulatedOrderCountLe",
-              "type": {
-                "count": {
-                  "kind": "fixedCountNode",
-                  "value": 8
-                },
-                "item": {
-                  "endian": "le",
-                  "format": "u8",
-                  "kind": "numberTypeNode"
-                },
-                "kind": "arrayTypeNode"
-              }
-            },
-            {
-              "kind": "structFieldTypeNode",
-              "name": "activeOrderCountLe",
-              "type": {
-                "count": {
-                  "kind": "fixedCountNode",
-                  "value": 8
-                },
-                "item": {
-                  "endian": "le",
-                  "format": "u8",
-                  "kind": "numberTypeNode"
-                },
-                "kind": "arrayTypeNode"
-              }
-            },
-            {
-              "kind": "structFieldTypeNode",
               "name": "ordersPerAuctionCapLe",
               "type": {
                 "count": {
@@ -1537,6 +1505,13 @@
             {
               "kind": "structFieldTypeNode",
               "name": "owner",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "collateralMint",
               "type": {
                 "kind": "publicKeyTypeNode"
               }
@@ -2958,7 +2933,7 @@
               "Market the order belongs to"
             ],
             "isSigner": false,
-            "isWritable": true,
+            "isWritable": false,
             "kind": "instructionAccountNode",
             "name": "market"
           },
@@ -3108,7 +3083,7 @@
               "Market the order belongs to"
             ],
             "isSigner": false,
-            "isWritable": true,
+            "isWritable": false,
             "kind": "instructionAccountNode",
             "name": "market"
           },
@@ -4155,30 +4130,22 @@
             "name": "owner"
           },
           {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
-                "name": "userCollateral"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "owner",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "owner"
-                  }
-                }
-              ]
-            },
             "docs": [
-              "UserCollateral PDA to create"
+              "UserCollateral PDA to create (seeds [collateral, owner, vault.collateral_mint])"
             ],
             "isSigner": false,
             "isWritable": true,
             "kind": "instructionAccountNode",
             "name": "userCollateral"
+          },
+          {
+            "docs": [
+              "Per-collateral vault whose collateral_mint scopes the ledger (CR-3)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vault"
           },
           {
             "defaultValue": {
@@ -4245,25 +4212,8 @@
             "name": "owner"
           },
           {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
-                "name": "userCollateral"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "owner",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "owner"
-                  }
-                }
-              ]
-            },
             "docs": [
-              "Owner's collateral ledger"
+              "Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)"
             ],
             "isSigner": false,
             "isWritable": true,
@@ -4358,25 +4308,8 @@
             "name": "owner"
           },
           {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
-                "name": "userCollateral"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "owner",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "owner"
-                  }
-                }
-              ]
-            },
             "docs": [
-              "Owner's collateral ledger"
+              "Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)"
             ],
             "isSigner": false,
             "isWritable": true,
@@ -6240,6 +6173,13 @@
           {
             "kind": "variablePdaSeedNode",
             "name": "owner",
+            "type": {
+              "kind": "publicKeyTypeNode"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "mint",
             "type": {
               "kind": "publicKeyTypeNode"
             }

@@ -45,10 +45,13 @@ pub fn decide(s: &MarketSnapshot, now_slot: u64, chunk_size: u32) -> Plan {
             }
         }
         PHASE_ACCUMULATING => {
-            let orders_done = s.market.accumulated_order_count == s.market.active_order_count;
+            // PERF-1 (known-issues §2.1): the redundant market order-count mirrors are
+            // gone; order completeness is the authoritative slab scan `all_resting_folded`
+            // (the same signal the on-chain `all_active_orders_accumulated` finalize gate
+            // uses). Maker-quote completeness still rides the market quote counters.
             let makers_done =
                 s.market.folded_maker_quote_count == s.market.active_maker_quote_count;
-            if orders_done && makers_done && s.all_resting_folded() {
+            if makers_done && s.all_resting_folded() {
                 Plan::Discover
             } else {
                 accumulate_plan(s, chunk_size)
@@ -97,12 +100,10 @@ mod tests {
 
     fn market(phase: u8) -> MarketView {
         MarketView {
-            version: 8,
+            version: 9,
             current_auction_id: 5,
             phase_deadline_slot: 100,
             tick_size: 10,
-            accumulated_order_count: 0,
-            active_order_count: 0,
             orders_per_auction_cap: 4,
             num_ticks: 64,
             oracle: Pubkey::new_from_array([9u8; 32]),
@@ -186,32 +187,29 @@ mod tests {
     }
 
     #[test]
-    fn accumulating_counters_mismatch_keeps_accumulating() {
-        let mut m = market(PHASE_ACCUMULATING);
-        m.active_order_count = 2;
-        m.accumulated_order_count = 1;
+    fn accumulating_resting_order_remains_keeps_accumulating() {
+        // A slot is still Resting (status 1) — the authoritative slab scan keeps
+        // folding (PERF-1: no counters; this IS the completeness signal).
+        let m = market(PHASE_ACCUMULATING);
         let s = snap(m, vec![order(0, 1, 2), order(1, 2, 1)]);
         assert!(matches!(decide(&s, 200, 256), Plan::Accumulate { .. }));
     }
 
     #[test]
     fn accumulating_all_folded_discovers() {
-        let mut m = market(PHASE_ACCUMULATING);
-        m.active_order_count = 2;
-        m.accumulated_order_count = 2;
+        // Every slab slot is folded (status 2) — order completeness satisfied, so
+        // Discover (matches the on-chain `all_active_orders_accumulated` gate).
+        let m = market(PHASE_ACCUMULATING);
         let s = snap(m, vec![order(0, 1, 2), order(1, 2, 2)]);
         assert_eq!(decide(&s, 200, 256), Plan::Discover);
     }
 
     #[test]
-    fn accumulating_counters_match_but_resting_remains_keeps_accumulating() {
-        // The counters say done, but a slot is still Resting — the on-chain
-        // completeness re-scan would reject finalize, so keep folding.
-        let mut m = market(PHASE_ACCUMULATING);
-        m.active_order_count = 2;
-        m.accumulated_order_count = 2;
-        let s = snap(m, vec![order(0, 1, 2), order(1, 2, 1)]);
-        assert!(matches!(decide(&s, 200, 256), Plan::Accumulate { .. }));
+    fn accumulating_empty_slab_discovers() {
+        // No resting orders and no maker quotes — completeness trivially holds.
+        let m = market(PHASE_ACCUMULATING);
+        let s = snap(m, vec![]);
+        assert_eq!(decide(&s, 200, 256), Plan::Discover);
     }
 
     #[test]

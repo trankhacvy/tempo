@@ -75,14 +75,21 @@ impl MarketSnapshot {
 
     /// A hash of the fields that advance with clearing progress (round, phase,
     /// accumulated/folded counts, live slot count). Used by the freeze watchdog to
-    /// detect "no progress in N slots".
+    /// detect "no progress in N slots". PERF-1 removed the market's accumulated-order
+    /// mirror, so the accumulation-progress term is derived from the slab itself (the
+    /// count of folded — non-`Resting` — slots advances exactly as folding proceeds).
     pub fn fingerprint(&self) -> u64 {
         let m = &self.market;
+        let folded_orders = self
+            .slab
+            .iter()
+            .filter(|o| o.status != STATUS_RESTING)
+            .count() as u64;
         let mut h: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a offset basis
         for v in [
             m.current_auction_id,
             m.phase as u64,
-            m.accumulated_order_count,
+            folded_orders,
             m.folded_maker_quote_count,
             self.slab.len() as u64,
         ] {
