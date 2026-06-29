@@ -1611,9 +1611,16 @@ impl TestContext {
         Pubkey::find_program_address(&[b"vault_authority"], &TEMPO_PROGRAM_ID)
     }
 
-    /// UserCollateral PDA + bump (`[b"collateral", owner]`).
+    /// UserCollateral PDA + bump (`[b"collateral", owner, collateral_mint]` — CR-3
+    /// mint-scoped). Uses the mint recorded by `init_vault`; on a clearing-only
+    /// market (no vault) the default mint is used — the ledger is never created or
+    /// read there, so the exact address is immaterial, it just must not panic.
     pub fn collateral_pda(&self, owner: &Pubkey) -> (Pubkey, u8) {
-        Pubkey::find_program_address(&[b"collateral", owner.as_ref()], &TEMPO_PROGRAM_ID)
+        let mint = self.vault_mint.unwrap_or_default();
+        Pubkey::find_program_address(
+            &[b"collateral", owner.as_ref(), mint.as_ref()],
+            &TEMPO_PROGRAM_ID,
+        )
     }
 
     /// Create an SPL mint (0 decimals so amounts are raw base units), mint
@@ -1691,12 +1698,14 @@ impl TestContext {
     /// Create `owner`'s `UserCollateral` ledger. Returns the ledger PDA.
     pub fn init_collateral(&mut self, owner: &Keypair) -> Pubkey {
         let (user_collateral, bump) = self.collateral_pda(&owner.pubkey());
+        let (vault, _) = self.vault_pda();
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
             accounts: vec![
                 AccountMeta::new(self.payer.pubkey(), true),
                 AccountMeta::new_readonly(owner.pubkey(), true),
                 AccountMeta::new(user_collateral, false),
+                AccountMeta::new_readonly(vault, false),
                 AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
             ],
             data: vec![IX_INIT_COLLATERAL, bump],
@@ -2464,12 +2473,13 @@ impl TestContext {
         let (uc, _) = self.collateral_pda(owner);
         let d = self.account_data(&uc);
         let b = &d[PREFIX..];
-        // layout: Address(32), u64 balance, u64 locked, u8 bump
+        // layout (CR-3 mint-scoped): owner Address(32), collateral_mint Address(32),
+        // u64 balance, u64 locked, u8 bump
         UserCollateralState {
             owner: read_pubkey(b, 0),
-            balance: read_u64(b, 32),
-            locked: read_u64(b, 40),
-            bump: b[48],
+            balance: read_u64(b, 64),
+            locked: read_u64(b, 72),
+            bump: b[80],
         }
     }
 

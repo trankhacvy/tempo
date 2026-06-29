@@ -129,7 +129,12 @@ pub async fn resolve_cross(
     let Some(margin) = ctx.client.fetch_margin_account(&margin_pda).await? else {
         return Ok(None);
     };
-    let collateral_pda = pda::user_collateral(owner).0;
+    // Cross liquidation is a money-path operation; without a collateral mint there
+    // is no mint-scoped ledger to read (CR-3).
+    let Some(mint) = ctx.collateral_mint else {
+        return Ok(None);
+    };
+    let collateral_pda = pda::user_collateral(owner, &mint).0;
     let Some(collateral) = ctx.client.fetch_user_collateral(&collateral_pda).await? else {
         return Ok(None);
     };

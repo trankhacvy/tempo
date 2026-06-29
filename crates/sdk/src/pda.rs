@@ -27,8 +27,13 @@ pub fn position(market: &Pubkey, owner: &Pubkey) -> (Pubkey, u8) {
     )
 }
 
-pub fn user_collateral(owner: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"collateral", owner.as_ref()], &TEMPO_PROGRAM_ID)
+/// The ledger is mint-scoped (CR-3): seeds are `[b"collateral", owner, mint]`, so a
+/// balance deposited under one mint can never be derived/withdrawn against another.
+pub fn user_collateral(owner: &Pubkey, collateral_mint: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[b"collateral", owner.as_ref(), collateral_mint.as_ref()],
+        &TEMPO_PROGRAM_ID,
+    )
 }
 
 pub fn vault(collateral_mint: &Pubkey) -> (Pubkey, u8) {

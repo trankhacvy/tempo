@@ -228,17 +228,19 @@ impl PositionView {
 }
 
 /// Decoded view of a `UserCollateral` ledger (`program/src/state/user_collateral.rs`,
-/// VERSION 1). Offsets: `owner@2 balance@34 locked@42`.
+/// VERSION 2 — mint-scoped, CR-3). Offsets: `owner@2 collateral_mint@34 balance@66
+/// locked@74`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UserCollateralView {
     pub owner: Pubkey,
+    pub collateral_mint: Pubkey,
     pub balance: u64,
     pub locked: u64,
 }
 
 impl UserCollateralView {
-    /// Smallest length that carries `locked` (offset 42, 8 bytes).
-    const MIN_LEN: usize = 50;
+    /// Smallest length that carries `locked` (offset 74, 8 bytes).
+    const MIN_LEN: usize = 82;
 
     pub fn decode(data: &[u8]) -> Result<Self, SdkError> {
         if data.len() < Self::MIN_LEN {
@@ -256,8 +258,9 @@ impl UserCollateralView {
         }
         Ok(Self {
             owner: pubkey_at(data, 2),
-            balance: u64_at(data, 34),
-            locked: u64_at(data, 42),
+            collateral_mint: pubkey_at(data, 34),
+            balance: u64_at(data, 66),
+            locked: u64_at(data, 74),
         })
     }
 
@@ -815,18 +818,21 @@ mod tests {
 
     #[test]
     fn test_decode_user_collateral_offsets() {
-        let mut d = vec![0u8; 51];
+        // CR-3 mint-scoped layout: owner@2 collateral_mint@34 balance@66 locked@74.
+        let mut d = vec![0u8; 83];
         d[0] = USER_COLLATERAL_DISCRIMINATOR;
-        d[1] = 1;
+        d[1] = 2;
         d[2..34].copy_from_slice(&[8u8; 32]); // owner
-        d[34..42].copy_from_slice(&9000u64.to_le_bytes()); // balance
-        d[42..50].copy_from_slice(&2500u64.to_le_bytes()); // locked
+        d[34..66].copy_from_slice(&[5u8; 32]); // collateral_mint
+        d[66..74].copy_from_slice(&9000u64.to_le_bytes()); // balance
+        d[74..82].copy_from_slice(&2500u64.to_le_bytes()); // locked
         let u = UserCollateralView::decode(&d).unwrap();
         assert_eq!(u.owner, Pubkey::new_from_array([8u8; 32]));
+        assert_eq!(u.collateral_mint, Pubkey::new_from_array([5u8; 32]));
         assert_eq!(u.balance, 9000);
         assert_eq!(u.locked, 2500);
         assert_eq!(u.free(), 6500);
-        assert!(UserCollateralView::decode(&[7u8, 1, 0]).is_err());
+        assert!(UserCollateralView::decode(&[7u8, 2, 0]).is_err());
     }
 
     /// Golden test pinning the maker-quote offsets — status MUST read from 152.

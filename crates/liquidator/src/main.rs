@@ -44,10 +44,13 @@ async fn main() -> Result<(), LiquidatorError> {
     let ctx = LiqCtx {
         client: client.clone(),
         liquidator: liquidator.clone(),
-        liquidator_collateral: pda::user_collateral(&liquidator.pubkey()).0,
+        liquidator_collateral: collateral_mint
+            .map(|m| pda::user_collateral(&liquidator.pubkey(), &m).0)
+            .unwrap_or_default(),
         source: Arc::new(ChainScan::new(client)),
         markets: cfg.markets.clone(),
         vault,
+        collateral_mint,
         scan_concurrency: cfg.scan_concurrency,
     };
 
