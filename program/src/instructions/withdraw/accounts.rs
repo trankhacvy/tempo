@@ -2,7 +2,7 @@ use pinocchio::{account::AccountView, error::ProgramError};
 
 use crate::{
     traits::InstructionAccounts,
-    utils::{verify_current_program_account, verify_signer, verify_writable},
+    utils::{verify_current_program_account, verify_signer, verify_token_program, verify_writable},
 };
 
 /// Accounts for the Withdraw instruction.
@@ -42,6 +42,8 @@ impl<'a> TryFrom<&'a [AccountView]> for WithdrawAccounts<'a> {
         verify_current_program_account(vault)?;
         verify_writable(vault_token_account, true)?;
         verify_writable(user_token_account, true)?;
+        // HS-12: only the canonical SPL Token program (no transfer-fee mints).
+        verify_token_program(token_program)?;
 
         Ok(Self {
             owner,

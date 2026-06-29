@@ -393,14 +393,20 @@ pub enum TempoProgramInstruction {
         authority_bump: u8,
     } = 9,
 
-    /// Trader: create their `UserCollateral` ledger.
+    /// Trader: create their `UserCollateral` ledger (mint-scoped, CR-3).
     #[codama(account(name = "payer", docs = "Pays for the ledger account", signer, writable))]
     #[codama(account(name = "owner", docs = "Trader the ledger belongs to", signer))]
+    // CR-3: the ledger PDA is `[b"collateral", owner, vault.collateral_mint]`. The mint
+    // is read from the vault (not an instruction account), so it cannot be auto-derived
+    // here — clients must pass the resolved mint-scoped address.
     #[codama(account(
         name = "user_collateral",
-        docs = "UserCollateral PDA to create",
-        writable,
-        default_value = pda("userCollateral", [seed("owner", account("owner"))])
+        docs = "UserCollateral PDA to create (seeds [collateral, owner, vault.collateral_mint])",
+        writable
+    ))]
+    #[codama(account(
+        name = "vault",
+        docs = "Per-collateral vault whose collateral_mint scopes the ledger (CR-3)"
     ))]
     #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
     InitCollateral {
@@ -413,9 +419,8 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "owner", docs = "Depositing trader", signer))]
     #[codama(account(
         name = "user_collateral",
-        docs = "Owner's collateral ledger",
-        writable,
-        default_value = pda("userCollateral", [seed("owner", account("owner"))])
+        docs = "Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)",
+        writable
     ))]
     #[codama(account(
         name = "vault",
@@ -441,9 +446,8 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "owner", docs = "Withdrawing trader", signer))]
     #[codama(account(
         name = "user_collateral",
-        docs = "Owner's collateral ledger",
-        writable,
-        default_value = pda("userCollateral", [seed("owner", account("owner"))])
+        docs = "Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)",
+        writable
     ))]
     #[codama(account(
         name = "vault",

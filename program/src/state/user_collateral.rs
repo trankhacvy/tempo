@@ -13,36 +13,55 @@ use crate::{assert_no_padding, le_field};
 /// A user's collateral ledger. `balance` is free (withdrawable)
 /// collateral; `locked` is margin reserved against open positions.
 ///
+/// The ledger is **mint-scoped** (CR-3): each `(owner, collateral_mint)` pair has
+/// its own ledger so a balance deposited under one mint can never be withdrawn
+/// against another mint's per-mint vault. `collateral_mint` is both a stored field
+/// and a PDA seed; `deposit`/`withdraw`/`withdraw_cross` assert it matches the
+/// vault's `collateral_mint`.
+///
 /// # PDA Seeds
-/// `[b"collateral", owner.as_ref()]`
+/// `[b"collateral", owner.as_ref(), collateral_mint.as_ref()]`
 ///
 /// # Zero-copy layout (`#[repr(C)]`, **alignment 1**)
-/// Address (32) + 2 × [u8;8] (16) + u8 (1) = 49.
+/// 2 × Address (64) + 2 × [u8;8] (16) + u8 (1) = 81.
+///
+/// # Migration
+/// Adding `collateral_mint` to the seeds changes the PDA **address**, so an
+/// in-place realloc migration (as `migrate_position` does) is impossible — a v1
+/// ledger lives at a different address than its v2 counterpart. The `VERSION` bump
+/// makes any stale-layout account fail the version check loudly; existing v1
+/// `[b"collateral", owner]` ledgers must be **re-provisioned** (withdraw, then
+/// `init_collateral` at the new mint-scoped address). This is a latent fix (only
+/// one collateral mint exists today), so re-provisioning is acceptable.
 #[derive(Clone, Debug, PartialEq, CodamaAccount)]
 #[codama(field("discriminator", number(u8), default_value = 7))]
 #[codama(discriminator(field = "discriminator"))]
 #[codama(seed(type = string(utf8), value = "collateral"))]
 #[codama(seed(name = "owner", type = public_key))]
+#[codama(seed(name = "mint", type = public_key))]
 #[repr(C)]
 pub struct UserCollateral {
     pub owner: Address,
+    pub collateral_mint: Address,
     pub balance_le: [u8; 8],
     pub locked_le: [u8; 8],
     pub bump: u8,
 }
 
-assert_no_padding!(UserCollateral, 32 + 8 + 8 + 1);
+assert_no_padding!(UserCollateral, 32 + 32 + 8 + 8 + 1);
 
 impl Discriminator for UserCollateral {
     const DISCRIMINATOR: u8 = TempoAccountDiscriminators::UserCollateralDiscriminator as u8;
 }
 
 impl Versioned for UserCollateral {
-    const VERSION: u8 = 1;
+    // v2: `collateral_mint` added + folded into the PDA seeds (CR-3). The bump makes
+    // a pre-v2 (mint-less) ledger fail the version check rather than be mis-read.
+    const VERSION: u8 = 2;
 }
 
 impl AccountSize for UserCollateral {
-    const DATA_LEN: usize = 32 + 8 + 8 + 1;
+    const DATA_LEN: usize = 32 + 32 + 8 + 8 + 1;
 }
 
 impl AccountDeserialize for UserCollateral {}
@@ -52,6 +71,7 @@ impl AccountSerialize for UserCollateral {
     fn to_bytes_inner(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(Self::DATA_LEN);
         data.extend_from_slice(self.owner.as_ref());
+        data.extend_from_slice(self.collateral_mint.as_ref());
         data.extend_from_slice(&self.balance_le);
         data.extend_from_slice(&self.locked_le);
         data.push(self.bump);
@@ -64,7 +84,11 @@ impl PdaSeeds for UserCollateral {
 
     #[inline(always)]
     fn seeds(&self) -> Vec<&[u8]> {
-        vec![Self::PREFIX, self.owner.as_ref()]
+        vec![
+            Self::PREFIX,
+            self.owner.as_ref(),
+            self.collateral_mint.as_ref(),
+        ]
     }
 
     #[inline(always)]
@@ -72,6 +96,7 @@ impl PdaSeeds for UserCollateral {
         vec![
             Seed::from(Self::PREFIX),
             Seed::from(self.owner.as_ref()),
+            Seed::from(self.collateral_mint.as_ref()),
             Seed::from(bump.as_slice()),
         ]
     }
@@ -89,9 +114,10 @@ impl UserCollateral {
     le_field!(locked, set_locked, locked_le, u64);
 
     #[inline(always)]
-    pub fn new(bump: u8, owner: Address) -> Self {
+    pub fn new(bump: u8, owner: Address, collateral_mint: Address) -> Self {
         Self {
             owner,
+            collateral_mint,
             balance_le: 0u64.to_le_bytes(),
             locked_le: 0u64.to_le_bytes(),
             bump,
@@ -174,7 +200,11 @@ mod tests {
 
     #[test]
     fn test_roundtrip_and_accounting() {
-        let mut c = UserCollateral::new(255, Address::new_from_array([3u8; 32]));
+        let mut c = UserCollateral::new(
+            255,
+            Address::new_from_array([3u8; 32]),
+            Address::new_from_array([7u8; 32]),
+        );
         c.credit(1_000).unwrap();
         c.lock(300).unwrap();
         assert_eq!(c.balance(), 1_000);
@@ -194,15 +224,35 @@ mod tests {
         assert_eq!(c.locked(), 0);
 
         let bytes = c.to_bytes();
+        assert_eq!(bytes.len(), UserCollateral::LEN);
         assert_eq!(bytes[0], UserCollateral::DISCRIMINATOR);
+        assert_eq!(bytes[1], UserCollateral::VERSION);
         let de = UserCollateral::from_bytes(&bytes).unwrap();
         assert_eq!(de.owner, c.owner);
+        assert_eq!(de.collateral_mint, c.collateral_mint);
         assert_eq!(de.balance(), 300);
     }
 
     #[test]
+    fn test_mint_in_seeds() {
+        // The collateral_mint is folded into the PDA seeds (CR-3): two ledgers for
+        // the same owner under different mints derive different addresses.
+        let owner = Address::new_from_array([3u8; 32]);
+        let a = UserCollateral::new(1, owner, Address::new_from_array([1u8; 32]));
+        let b = UserCollateral::new(1, owner, Address::new_from_array([2u8; 32]));
+        assert_eq!(a.seeds().len(), 3);
+        assert_eq!(a.seeds()[0], UserCollateral::PREFIX);
+        assert_eq!(a.seeds()[1], owner.as_ref());
+        assert_ne!(a.seeds()[2], b.seeds()[2]);
+    }
+
+    #[test]
     fn test_apply_pnl() {
-        let mut c = UserCollateral::new(1, Address::new_from_array([0u8; 32]));
+        let mut c = UserCollateral::new(
+            1,
+            Address::new_from_array([0u8; 32]),
+            Address::new_from_array([9u8; 32]),
+        );
         c.credit(1_000).unwrap();
         assert_eq!(c.apply_pnl(250).unwrap(), 0);
         assert_eq!(c.balance(), 1_250);
