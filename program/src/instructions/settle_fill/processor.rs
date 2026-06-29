@@ -379,12 +379,17 @@ pub fn process_settle_fill(
                 let mut m = *ix.accounts.market;
                 let mut m_data = m.try_borrow_mut()?;
                 let market = Market::from_bytes_mut(&mut m_data)?;
+                // Socialize against the PRE-fill signed size (`oi_old`): the loss
+                // occurred on the position's side *before* this fill, so the cohort to
+                // charge is chosen from `oi_old`, not the post-fill `oi_new` (which is
+                // 0 on a close, or flipped on a flip — charging the wrong side). This
+                // matches `liquidate`, which passes the pre-close size (CR-4).
                 crate::settle_money::conserve_and_socialize(
                     vault,
                     market,
                     balance_delta,
                     shortfall,
-                    oi_new,
+                    oi_old,
                 )?;
             }
 

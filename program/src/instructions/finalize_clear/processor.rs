@@ -42,7 +42,7 @@ pub fn process_finalize_clear(
     let market_key = *ix.accounts.market.address();
 
     // --- validate market phase + completeness; capture params ---
-    let (num_ticks, tick_size, auction_id, crank_fee, market_collateral_mint) = {
+    let (num_ticks, tick_size, window_floor, auction_id, crank_fee, market_collateral_mint) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
         market.require_phase(AuctionPhase::Accumulating)?;
@@ -57,6 +57,7 @@ pub fn process_finalize_clear(
         (
             market.num_ticks(),
             market.tick_size(),
+            market.window_floor_price(),
             market.current_auction_id(),
             market.crank_fee(),
             market.collateral_mint,
@@ -106,11 +107,15 @@ pub fn process_finalize_clear(
     let bid = find_cross(&bid_demand, &bid_supply)?;
     let ask = find_cross(&ask_demand, &ask_supply)?;
 
-    // map clearing tick -> price: price = (tick + 1) * tick_size
+    // map clearing tick -> price: the canonical inverse of `price_to_tick`
+    // (Market::tick_to_price), `price = tick·tick_size + window_floor`. Using the
+    // legacy zero-anchored `(tick+1)·tick_size` here ignored the oracle-centered
+    // window floor and fabricated the clearing price on every recentered market (CR-1).
     let cross_price = |c: &CrossResult| -> Result<u64, ProgramError> {
         if c.crossed {
-            (c.clearing_tick as u64 + 1)
+            (c.clearing_tick as u64)
                 .checked_mul(tick_size)
+                .and_then(|off| off.checked_add(window_floor))
                 .ok_or(TempoProgramError::MathOverflow.into())
         } else {
             Ok(0)
