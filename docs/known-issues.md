@@ -32,7 +32,7 @@ the **money/settlement glue** and the **lifecycle bookkeeping** around it.
 | 1.6 maker marginal-tick over-allocation           | ✅ fixed       | fold-time `cum_before` snapshots; makers tile the marginal tick → Σ fills == V (MakerQuote v3, re-provision) |
 | 2.1 hand-maintained counters                      | ✅ fixed       | slab-derived completeness gate                                                                           |
 | 2.2 brake delays liquidations                     | ✅ fixed       | all paths price solvency off the raw per-leg oracle (`oracle::solvency_mark`); cross members now carry an oracle |
-| 2.3 mint-agnostic collateral                      | ⛔ deferred    | USDC-only for now (1 mint, many markets); breaking layout + re-provision + decision                      |
+| 2.3 mint-agnostic collateral                      | ✅ fixed       | CR-3: `UserCollateral` mint-scoped — `collateral_mint` field + seeds `[b"collateral", owner, mint]`, VERSION 2 (re-provision)        |
 | 2.4 cross-margin reconstruct-per-call             | ✅ fixed       | flat legs ride as a bare position (no market/oracle); live-leg ceiling is ALT territory; "maintain equity as state" dropped as infeasible |
 | 2.5 `margin_mode` mutable mid-auction             | ✅ fixed       | in-flight-order guard                                                                                    |
 | 2.6 migrate OI ordering                           | ✅ fixed       | empty-slab quiescence gate                                                                               |
@@ -110,7 +110,8 @@ Partially documented as a "v1.1 conserving" limitation, but the **asymmetry with
 ### 1.3 `is_maker` was an unvalidated client flag that steered price formation — [bug] · [mechanism-design]
 
 > **Status: ✅ FIXED (Option A).** `submit_order` is now **taker-only**: the
-> `is_maker` byte was removed from its wire format (`data.rs` `LEN` 1+8+8=17), so a
+> `is_maker` byte was removed from its wire format (`data.rs` no longer parses it; the
+> byte at that position is now the separate `reduce_only` flag, so `LEN` = 1+8+8+1 = 18), so a
 > trader can no longer self-select which uniform cross they clear in or which fee
 > tier they pay. `process_chunk` routes every slab order into a taker region by
 > side alone (taker-sell→`BidSupply`, taker-buy→`AskDemand`); `settle_fill` always
@@ -279,12 +280,13 @@ retained in the layout but no longer read).
 
 ### 2.1 Three hand-maintained order counters, no derived invariant — [design]
 
-> **Status: ✅ FIXED.** `finalize_clear` now additionally requires
-> `all_active_orders_accumulated(slab)` — the completeness gate derives "every
-> non-empty slot is folded" from the slab itself, so the censorship guarantee no
-> longer rests on the parallel counters (kept as an O(1) fast-path hint). The
-> counters are not yet _removed_ — that is a larger refactor — but they are no
-> longer load-bearing for the gate.
+> **Status: ✅ FIXED.** `finalize_clear` derives completeness from the slab itself —
+> `all_active_orders_accumulated(slab)` ("every non-empty slot is folded") is the sole
+> censorship-resistance authority. The redundant `accumulated_order_count` /
+> `active_order_count` Market counters were subsequently **removed entirely** (PERF-1,
+> `Market` VERSION → 9); the only count-equality check left in `finalize_clear` is the
+> unrelated maker-quote completeness gate (`folded_maker_quote_count ==
+> active_maker_quote_count`).
 
 `slab.count`, `Market.active_order_count`, `Market.accumulated_order_count` are
 updated by _different_ instructions (`submit_order:113`, `cancel_order:81`,
@@ -334,24 +336,20 @@ exactly when bad debt accrues.
 
 ### 2.3 Mint-agnostic collateral ledger vs per-mint vaults — [design]
 
-> **Status: ⛔ DEFERRED (gated).** Two blockers, neither resolvable in a code pass:
-> (1) a **product decision** — seed-hardening (`[b"collateral", mint, owner]`) vs.
-> true per-mint ledgers; (2) a **devnet re-provision** — the fix bumps
-> `UserCollateral::VERSION` and relocates every collateral PDA, so deployed accounts
-> become incompatible. It is also **latent-only**: the program is single-mint today
-> (one vault, bound to the market's `collateral_mint`), so no cross-mint
-> contamination can occur until a second mint is introduced. Recommendation when
-> undertaken: seed-hardening, as its own milestone. See `docs/plan.md` Phase 6.
->
-> **Operational constraint until then: the only supported collateral is USDC.**
-> Many markets are allowed (SOL-perp, BTC-perp, …) but they must all settle in
-> the single USDC collateral mint / vault — do **not** provision a market with a
-> different `collateral_mint`.
+> **Status: ✅ FIXED (CR-3).** The collateral ledger is now **mint-scoped**:
+> `UserCollateral` carries a `collateral_mint: Address` field and its PDA seeds are
+> `[b"collateral", owner, collateral_mint]` (`user_collateral.rs`), so a distinct
+> ledger exists per `(owner, mint)` and the cross-mint contamination vector is closed
+> at the data model — the chosen approach was seed-hardening. **Breaking layout:**
+> `UserCollateral::VERSION` bumped 1→2 and every collateral PDA relocates, so deployed
+> accounts must be **re-provisioned, not migrated**. Tests `test_mint_in_seeds` /
+> `test_roundtrip_and_accounting` assert the 3-seed scoping.
 
-`user_collateral.rs` seeds `[b"collateral", owner]` (no mint); `vault.rs` seeds
-`[b"vault", collateral_mint]`. One global `balance` mixes mints, and `withdraw`
-lets it be pulled from either vault. Single-mint today, but the data model
-invites cross-mint contamination the moment a second mint exists.
+The original analysis (now resolved): `user_collateral.rs` previously seeded
+`[b"collateral", owner]` (no mint) while `vault.rs` seeds `[b"vault",
+collateral_mint]`. One global `balance` mixed mints and `withdraw` could be pulled
+from either vault — the data model invited cross-mint contamination the moment a
+second mint existed. CR-3 folded the mint into the seeds, fixing it at the root.
 
 ### 2.4 Cross-margin is reconstruct-per-call, not maintained state — [design]
 
@@ -576,17 +574,19 @@ never to absorb.
 #### 2.12 Devnet client bundle + IDL drift after the v8 layout bump — [design] · operational
 
 > **Status: ⬜ OPERATIONAL (before any devnet money-path run).** The pre-trade-safety
-> pass bumps `Market` VERSION 7→8 (`initial_margin_bps` + `max_position_notional`;
-> `InitializeMarket` data 111→129 bytes) and `OrderSlabHeader` 2→3 (`Order` 80→88, adds
-> `reserved_margin`), and adds optional `position`/`user_collateral` accounts + a
-> `reduce_only` byte to `submit_order` (optional `user_collateral` to `cancel_order`).
-> The generated TS client + `apps/bots/vendor/tempo-client.mjs` predate this, so the
-> money-path bot scripts build the old call and fail at the first `submit_order`. Before
-> any devnet run: `pnpm generate-clients && pnpm bundle-client` and **re-provision** the
-> market (old `Market`/`OrderSlab` accounts fail the version check — re-provision, not
-> migrate).
+> pass bumped `Market` (`initial_margin_bps` + `max_position_notional`;
+> `InitializeMarket` data is now **129 bytes**) and `OrderSlabHeader` 2→3 (`Order`
+> 80→88, adds `reserved_margin`), and adds optional `position`/`user_collateral`
+> accounts + a `reduce_only` byte to `submit_order` (optional `user_collateral` to
+> `cancel_order`). `Market` has since advanced to **VERSION 9** (PERF-1 removed the
+> order counters). The generated TS client + the vendored
+> `apps/web/src/vendor/tempo-client.d.mts` / `apps/web/src/lib/tempo-client.ts` must be
+> regenerated to match, or money-path callers build the old instruction and fail at the
+> first `submit_order`. Before any devnet run: `pnpm generate-clients && pnpm
+> bundle-client` and **re-provision** the market (old `Market`/`OrderSlab`/
+> `UserCollateral` accounts fail the version check — re-provision, not migrate).
 
-`apps/bots/vendor/tempo-client.mjs` · `apps/bots/src/*.ts`.
+`apps/web/src/vendor/tempo-client.d.mts` · `apps/web/src/lib/tempo-client.ts`.
 
 ---
 
@@ -865,12 +865,15 @@ MarketPaused, `close_maker_quote`, the three dead struct fields removed outright
 finally `compute_fill` + `classify_level` collapsed into the one shared
 `clearing::fill_against_cross` classifier).
 
-Remaining, in priority order:
+Also done since: **2.3** per-mint collateral seeds — CR-3 made `UserCollateral`
+mint-scoped (`[b"collateral", owner, mint]`, VERSION 2) via seed-hardening; it shares
+the same devnet re-provision as the §2.7 window/slab and the §3 `[LAYOUT]` dead-field
+deletions, so batch the re-provision.
 
-1. **2.3** per-mint collateral seeds — gated on the seed-hardening product decision.
-   (The §3 `[LAYOUT]` dead-field deletions that were previously batched here are now
-   done; they already force the devnet re-provision this milestone would have shared —
-   as does the **2.7** window/slab re-provision, so batch them.)
+Remaining on-chain: none of §1–§3 — the only open items are the unverified §2.10
+reduce-only conservation fuzz, the by-design §2.11 client/doc parity, the operational
+§2.12 client regen + re-provision, and the off-chain §4.9 / §4.10 (deferred /
+accepted).
 
 > Note: 1.1, 1.2, 1.4, and 1.5 shared one root cause — the settlement money-path
 > was copy-pasted into four processors and the copies drifted. The durable fix

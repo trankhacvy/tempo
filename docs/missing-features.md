@@ -10,7 +10,35 @@ real and end-to-end**. What is missing is the trading/risk/admin layer that turn
 a clearing engine into an operable exchange. Items are grouped by area; each notes
 where the gap lives in code.
 
-Status tags: **absent** (nothing exists), **partial** (exists but incomplete).
+Status tags: ✅ **DONE** (built) · 🟡 **partial** (exists but incomplete) ·
+⬜ **absent** (nothing exists yet).
+
+### Status at a glance
+
+| Item                                              | Status        | Note                                                                                  |
+| ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
+| 1.1 collateral reservation at submit              | ✅ done        | `Order.reserved_margin`; rejected at submit (`InsufficientCollateral`)                |
+| 1.2 position cap + initial-margin buffer          | 🟡 partial     | `initial_margin_bps` + `max_position_notional` done; **max-OI cap still absent**       |
+| 1.3 `initialize_market` param validation          | ✅ done        | structural + fee + risk-config bounds in `data.rs` `TryFrom`                          |
+| 2.1 close / reduce-position instruction           | ⬜ absent      | only exit is an opposing order into the next auction                                  |
+| 2.2 reduce-only flag                              | ✅ done        | margin-reservation scope only (does not enforce non-flip at settle)                   |
+| 2.3 order types beyond resting limit              | ⬜ absent      | no market / IOC / FOK / post-only / TIF                                               |
+| 2.4 partial-fill carry-over                       | 🟡 partial     | rationed remainder is `Consumed`, never requeued                                      |
+| 2.5 remove-from-group for cross margin            | ✅ done        | `RemovePositionFromMargin` (disc 28) + compacting `remove_member`                     |
+| 2.6 minimum order size / notional                 | ⬜ absent      | only `quantity != 0`; dust flooding possible                                          |
+| 2.7 cancel-all / batch cancel / expiry            | ⬜ absent      | only single-order `cancel_order`                                                      |
+| 3.1 update-market / set-risk-params               | ⬜ absent      | params fixed at init (only `migrate_market` rewrites brake/stale-window)              |
+| 3.2 pause / halt / resume                         | ⬜ absent      | `MarketPaused` error exists but is referenced nowhere                                 |
+| 3.3 set-oracle / repoint feed                     | ⬜ absent      | oracle bound once at init                                                             |
+| 3.4 close-market / delist / authority transfer    | ⬜ absent      | markets can't be wound down; no authority transfer                                    |
+| 4.1 insurance seed / withdraw                     | ⬜ absent      | no admin seed/harvest; only outflow is `finalize_clear` crank fee                     |
+| 4.2 insurance segregation                         | 🟡 partial     | bookkeeping `u64` shares the vault token account; invariant tested off-chain only     |
+| 5.1 EMA / TWAP                                     | ⬜ absent      | spot price only; Pyth `ema_price` ignored                                             |
+| 5.2 unified mark price                            | 🟡 partial     | funding = clearing midpoint, liquidation = raw oracle — two definitions               |
+| 6.1 partial liquidation                           | ⬜ absent      | `liquidate` zeroes the whole position                                                 |
+| 6.2 keeper-reward floor                           | 🟡 partial     | penalty caps to equity; most cranks unincentivized                                    |
+| 7.1 maker collateral check at quote time          | ⬜ absent      | unbacked ladders can move the clearing price + drain insurance                        |
+| 7.2 inventory / skew management                   | ⬜ absent      | by design — static quote; re-quoting is the maker's off-chain job                     |
 
 ---
 
@@ -94,15 +122,18 @@ single-shot limit that fills or dies in one auction.
 
 ### 2.4 Partial fills are discarded, not carried over — partial
 
-`settle_fill/processor.rs:234-238` decrements `remaining` then unconditionally
+`settle_fill/processor.rs:186-191` decrements `remaining` then unconditionally
 marks the order `Consumed`; `start_auction` zeroes the slab. An order rationed at
 the marginal tick loses its unfilled remainder permanently. No GTC, no requeue.
 
-### 2.5 No remove-from-group for cross margin — absent
+### 2.5 Remove-from-group for cross margin — DONE
 
-There is `add_position_to_margin` but no remove. `position_count` is monotonic
-and `members` is append-only (`margin_account.rs:123`). A closed cross leg stays
-in the set forever; at 8 ever-added positions the group is permanently full.
+`RemovePositionFromMargin` (disc 28, `remove_position_from_margin/processor.rs`)
+unbinds a flat, owner-matched, zero-collateral member and calls
+`MarginAccount::remove_member` (`margin_account.rs:149-167`), which **compacts** the
+member array and **decrements** `position_count` — so the set is neither append-only
+nor monotonic, and a churned group is never permanently full. Covered by
+`test_remove_member_compacts_and_frees_slot`. (See `known-issues.md` §2.4.)
 
 ### 2.6 No minimum order size / notional — absent
 
@@ -120,8 +151,11 @@ Only single-order `cancel_order` exists.
 ### 3.1 No update-market / set-risk-params — absent
 
 Margins, fees, the price brake, and the stale window are set once at
-`initialize_market` and never changeable. `market.authority` is stored but only
-ever checked in `force_reset`. No admin can retune a live market.
+`initialize_market` and never changeable by a live-market instruction.
+`market.authority` is checked only in `force_reset` and `migrate_market` (the latter
+re-sets the brake + stale-window during the one-time v4→v5 in-place upgrade,
+`migrate_market/processor.rs:97-98` — a migration path, not a retune). No admin can
+retune a live market.
 
 ### 3.2 No pause / halt / resume — absent
 
@@ -146,9 +180,11 @@ transfer instruction.
 ### 4.1 Insurance fund cannot be seeded or withdrawn — absent
 
 `set_insurance_balance` is called only inside settle/liquidate/finalize
-conservation. No admin can bootstrap the pool or harvest accrued fees.
-**Protocol fees are economically trapped** — they inflate `insurance_balance`,
-which has no withdrawal path. There is also no withdrawal fee.
+conservation. No admin can bootstrap the pool or harvest accrued fees. The only
+outflow is the flat per-clear `crank_fee` paid to the cranker
+(`finalize_clear/processor.rs:216-217`); there is no admin seed/harvest path and no
+withdrawal fee, so **protocol fees beyond that crank reward are economically
+trapped** in `insurance_balance`.
 
 ### 4.2 Insurance is not segregated — partial
 
@@ -169,10 +205,12 @@ only by the per-slot brake).
 
 ### 5.2 Inconsistent mark price — partial
 
-Funding marks off the last-clearing-price midpoint (`update_funding:74`);
-liquidation marks off the braked effective oracle price (`liquidate:91`). Two
-different definitions of "mark" for the two core risk functions. (Tracked from
-the risk side in `known-issues.md` §2.2.)
+Funding marks off the last-clearing-price midpoint (`update_funding/processor.rs:72`,
+banded around the oracle); liquidation marks off the **raw** confidence-checked oracle
+via `oracle::solvency_mark` (`liquidate/processor.rs:76-95`). Two different definitions
+of "mark" for the two core risk functions. (Liquidation used to price off the braked
+`effective_price`; that was fixed in `known-issues.md` §2.2 — the braked value is now
+only the soft-stale fallback.)
 
 ---
 
@@ -204,8 +242,9 @@ both a price-manipulation and an insurance-drain vector.
 
 ### 7.2 No inventory / skew management — absent (by design)
 
-The quote is static between explicit `update_*` calls. `sync_spread_ticks` is an
-unused hook (see `known-issues.md` §3). Re-quoting is the maker's off-chain job.
+The quote is static between explicit `update_*` calls; re-quoting is the maker's
+off-chain job. (The old `sync_spread_ticks` placeholder hook was removed in
+MakerQuote v2 — see `known-issues.md` §3.)
 
 ---
 
@@ -215,8 +254,9 @@ unused hook (see `known-issues.md` §3). Re-quoting is the maker's off-chain job
    initial-margin buffer + per-position notional cap, full `initialize_market`
    validation, reduce-only (Market v8 / OrderSlab v3). Remaining sub-item: a
    max-open-interest cap (§1.2).
-2. **Position management** (§2.1, §2.3–2.7) — explicit close/reduce instruction +
-   richer order types (reduce-only §2.2 is done).
+2. **Position management** (§2.1, §2.3, §2.4, §2.6, §2.7) — explicit close/reduce
+   instruction + richer order types (reduce-only §2.2 and cross-margin
+   remove-from-group §2.5 are done).
 3. **Admin lifecycle** (§3) — update-params, pause, set-oracle.
 4. **Treasury** (§4) — insurance seed/withdraw + protocol-fee withdrawal.
 5. **Depth & pricing** (§5, §6) — partial liquidation, unified mark, EMA/TWAP.

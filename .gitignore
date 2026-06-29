@@ -61,3 +61,7 @@ ops/compose/.env
 
 # Local reference clones (not part of this repo)
 /rise-public/
+
+# Personal research notes (not part of this repo)
+/research.md
+/research-vi.md
