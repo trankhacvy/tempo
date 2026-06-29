@@ -27,9 +27,10 @@ fn skipped_order_blocks_finalize_until_a_different_signer_includes_it() {
     // --- Hostile cranker folds only slots 0..=2, censoring slot 3. ---
     let hostile = ctx.new_funded_signer();
     ctx.process_chunk_by(&pdas, &hostile, 0, 3);
-    let m = ctx.market(&pdas);
-    assert_eq!(m.accumulated_order_count, 3);
-    assert_eq!(m.active_order_count, 4);
+    // Authoritative counts (PERF-1): folded count is the histogram's accumulated_count;
+    // the live-order count is the slab header's count.
+    assert_eq!(ctx.histogram(&pdas).accumulated_count, 3);
+    assert_eq!(ctx.order_slab(&pdas).count, 4);
 
     // The censored order is still Resting (not accumulated).
     let victim_order = ctx
@@ -51,7 +52,7 @@ fn skipped_order_blocks_finalize_until_a_different_signer_includes_it() {
     // --- A different, non-initial signer accumulates exactly the skipped order. ---
     let rescuer = ctx.new_funded_signer();
     ctx.process_chunk_by(&pdas, &rescuer, 3, 1);
-    assert_eq!(ctx.market(&pdas).accumulated_order_count, 4);
+    assert_eq!(ctx.histogram(&pdas).accumulated_count, 4);
     let victim_order = ctx
         .orders(&pdas)
         .into_iter()

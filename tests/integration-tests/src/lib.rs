@@ -202,8 +202,6 @@ pub struct MarketState {
     pub tick_size: u64,
     pub last_bid_fill_price: u64,
     pub last_ask_fill_price: u64,
-    pub accumulated_order_count: u64,
-    pub active_order_count: u64,
     pub orders_per_auction_cap: u32,
     pub num_ticks: u32,
     pub authority: Pubkey,
@@ -1386,14 +1384,14 @@ impl TestContext {
         }
     }
 
-    /// Read the market's `active_maker_quote_count`.
+    /// Read the market's `active_maker_quote_count` (Market v9, PERF-1 shifted −16).
     pub fn active_maker_quote_count(&self, pdas: &MarketPdas) -> u64 {
-        read_u64(&self.account_data(&pdas.market)[PREFIX..], 276)
+        read_u64(&self.account_data(&pdas.market)[PREFIX..], 260)
     }
 
-    /// Read the market's `folded_maker_quote_count`.
+    /// Read the market's `folded_maker_quote_count` (Market v9, PERF-1 shifted −16).
     pub fn folded_maker_quote_count(&self, pdas: &MarketPdas) -> u64 {
-        read_u64(&self.account_data(&pdas.market)[PREFIX..], 284)
+        read_u64(&self.account_data(&pdas.market)[PREFIX..], 268)
     }
 
     /// Crank: fold one maker quote into the histogram (advances past the window).
@@ -2372,28 +2370,28 @@ impl TestContext {
     pub fn market(&self, pdas: &MarketPdas) -> MarketState {
         let d = self.account_data(&pdas.market);
         let b = &d[PREFIX..];
-        // layout: 7*u64, 2*u32, 3*Address, phase(u8), bump(u8)
+        // layout (Market v9, PERF-1): 5*u64, 2*u32, 3*Address, phase(u8), bump(u8), …
+        // The two order-count mirrors that used to sit at b-offsets 40/48 were
+        // removed, so every field after `last_ask_fill_price` is 16 bytes lower.
         MarketState {
             current_auction_id: read_u64(b, 0),
             // phase_deadline_slot at 8 (unused in assertions)
             tick_size: read_u64(b, 16),
             last_bid_fill_price: read_u64(b, 24),
             last_ask_fill_price: read_u64(b, 32),
-            accumulated_order_count: read_u64(b, 40),
-            active_order_count: read_u64(b, 48),
-            orders_per_auction_cap: read_u32(b, 56),
-            num_ticks: read_u32(b, 60),
-            authority: read_pubkey(b, 64),
-            market_seed: read_pubkey(b, 96),
-            // oracle at 128
-            phase: b[160],
-            bump: b[161],
-            oi_long: u128::from_le_bytes(b[292..308].try_into().unwrap()),
-            oi_short: u128::from_le_bytes(b[308..324].try_into().unwrap()),
-            social_loss_index_long: i128::from_le_bytes(b[324..340].try_into().unwrap()),
-            social_loss_index_short: i128::from_le_bytes(b[340..356].try_into().unwrap()),
-            effective_price_1e8: read_u64(b, 356),
-            last_good_oracle_slot: read_u64(b, 364),
+            orders_per_auction_cap: read_u32(b, 40),
+            num_ticks: read_u32(b, 44),
+            authority: read_pubkey(b, 48),
+            market_seed: read_pubkey(b, 80),
+            // oracle at 112
+            phase: b[144],
+            bump: b[145],
+            oi_long: u128::from_le_bytes(b[276..292].try_into().unwrap()),
+            oi_short: u128::from_le_bytes(b[292..308].try_into().unwrap()),
+            social_loss_index_long: i128::from_le_bytes(b[308..324].try_into().unwrap()),
+            social_loss_index_short: i128::from_le_bytes(b[324..340].try_into().unwrap()),
+            effective_price_1e8: read_u64(b, 340),
+            last_good_oracle_slot: read_u64(b, 348),
         }
     }
 
@@ -2483,12 +2481,12 @@ impl TestContext {
         }
     }
 
-    /// Read the market's bound funding index (Market layout: funding_index at
-    /// offset 162 after the prefix, 16 bytes; last_funding_ts at 178).
+    /// Read the market's bound funding index (Market v9 layout, PERF-1 shifted −16:
+    /// funding_index at b-offset 146, 16 bytes; last_funding_ts at 162).
     pub fn market_funding(&self, pdas: &MarketPdas) -> (i128, u64) {
         let d = self.account_data(&pdas.market);
         let b = &d[PREFIX..];
-        (read_i128(b, 162), read_u64(b, 178))
+        (read_i128(b, 146), read_u64(b, 162))
     }
 
     /// Read all non-empty order slots from the slab.

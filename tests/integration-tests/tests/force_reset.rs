@@ -28,14 +28,14 @@ fn force_reset_recovers_a_wedged_round() {
     let m = ctx.market(&pdas);
     assert_eq!(m.phase, PHASE_COLLECT, "back to Collect");
     assert_eq!(m.current_auction_id, id0 + 1, "auction id bumped");
-    assert_eq!(m.active_order_count, 0);
-    assert_eq!(m.accumulated_order_count, 0);
+    // PERF-1: the authoritative counts reset because the slab and histogram do.
     assert_eq!(ctx.order_slab(&pdas).count, 0, "slab emptied");
+    assert_eq!(ctx.histogram(&pdas).accumulated_count, 0);
 
     // A fresh round works end-to-end after the reset.
     let t2 = ctx.new_funded_signer();
     ctx.submit_order(&pdas, &t2, SIDE_BUY, 40, 5);
     ctx.process_chunk(&pdas, 0, 64);
     assert_eq!(ctx.market(&pdas).phase, PHASE_ACCUMULATING);
-    assert_eq!(ctx.market(&pdas).accumulated_order_count, 1);
+    assert_eq!(ctx.histogram(&pdas).accumulated_count, 1);
 }

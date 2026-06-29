@@ -94,7 +94,7 @@ pub enum TempoProgramInstruction {
 
     /// Submit a resting order into the slab (phase must be Collect).
     #[codama(account(name = "trader", docs = "Order owner", signer, writable))]
-    #[codama(account(name = "market", docs = "Market the order belongs to", writable))]
+    #[codama(account(name = "market", docs = "Market the order belongs to"))]
     #[codama(account(
         name = "order_slab",
         docs = "OrderSlab to insert into",
@@ -138,7 +138,7 @@ pub enum TempoProgramInstruction {
 
     /// Cancel a resting order before clearing begins.
     #[codama(account(name = "trader", docs = "Order owner", signer))]
-    #[codama(account(name = "market", docs = "Market the order belongs to", writable))]
+    #[codama(account(name = "market", docs = "Market the order belongs to"))]
     #[codama(account(
         name = "order_slab",
         docs = "OrderSlab to remove from",

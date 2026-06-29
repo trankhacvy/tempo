@@ -62,11 +62,19 @@ impl LiveState {
             .clearing
             .map(|c| c.bid_matched_volume ^ c.ask_matched_volume.rotate_left(1))
             .unwrap_or(0);
+        // PERF-1 removed the market's order-count mirrors (known-issues §2.1). The
+        // accumulation-progress term is now slab-derived — the count of folded
+        // (non-`Resting`) slots advances exactly as folding proceeds — and live-order
+        // progress is the decoded slab length.
+        let folded_orders = self
+            .orders
+            .iter()
+            .filter(|o| o.status != tempo_sdk::accounts::STATUS_RESTING)
+            .count() as u64;
         for v in [
             m.current_auction_id,
             m.phase as u64,
-            m.accumulated_order_count,
-            m.active_order_count,
+            folded_orders,
             m.folded_maker_quote_count,
             self.orders.len() as u64,
             self.quotes.len() as u64,

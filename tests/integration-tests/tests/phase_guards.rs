@@ -23,8 +23,8 @@ fn submit_order_rejected_after_accumulating() {
     let c = ctx.new_funded_signer();
     let res = ctx.try_submit_order(&pdas, &c, SIDE_BUY, 30, 5);
     assert!(res.is_err(), "submit_order must fail once Accumulating");
-    // active_order_count is unchanged.
-    assert_eq!(ctx.market(&pdas).active_order_count, 2);
+    // The live-order count (authoritative slab header count) is unchanged.
+    assert_eq!(ctx.order_slab(&pdas).count, 2);
 }
 
 #[test]
@@ -42,20 +42,17 @@ fn finalize_fails_when_chunk_skipped() {
     ctx.submit_order(&pdas, &t1, SIDE_SELL, 40, 10);
     ctx.submit_order(&pdas, &t2, SIDE_BUY, 50, 10);
     ctx.submit_order(&pdas, &t3, SIDE_SELL, 50, 10);
-    assert_eq!(ctx.market(&pdas).active_order_count, 4);
+    assert_eq!(ctx.order_slab(&pdas).count, 4);
 
     // Only accumulate the first 3 slots, deliberately skipping slot 3.
     ctx.process_chunk(&pdas, 0, 3);
-    let m = ctx.market(&pdas);
-    assert_eq!(m.phase, PHASE_ACCUMULATING);
-    assert_eq!(
-        m.accumulated_order_count, 3,
-        "one order left un-accumulated"
-    );
-    assert!(
-        m.accumulated_order_count != m.active_order_count,
-        "incomplete"
-    );
+    assert_eq!(ctx.market(&pdas).phase, PHASE_ACCUMULATING);
+    // Authoritative completeness (PERF-1): the histogram's folded count is below the
+    // slab's live count, so one order is still un-accumulated.
+    let folded = ctx.histogram(&pdas).accumulated_count;
+    let live = ctx.order_slab(&pdas).count as u64;
+    assert_eq!(folded, 3, "one order left un-accumulated");
+    assert!(folded != live, "incomplete");
 
     // Completeness check must reject finalize.
     let res = ctx.try_finalize_clear(&pdas);
@@ -66,7 +63,7 @@ fn finalize_fails_when_chunk_skipped() {
 
     // Once the skipped slot is folded, finalize succeeds.
     ctx.process_chunk(&pdas, 3, 1);
-    assert_eq!(ctx.market(&pdas).accumulated_order_count, 4);
+    assert_eq!(ctx.histogram(&pdas).accumulated_count, 4);
     ctx.finalize_clear(&pdas);
     assert_eq!(ctx.market(&pdas).phase, PHASE_DISCOVERED);
 }

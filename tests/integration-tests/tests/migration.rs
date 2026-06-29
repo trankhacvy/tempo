@@ -33,7 +33,7 @@ fn migrate_market_v4_to_v5_preserves_prefix_and_works() {
     // Grown back to the current size, version byte bumped to the current VERSION.
     let raw = ctx.account_raw(&pdas.market);
     assert_eq!(raw.len(), v5_len, "regrown to current size");
-    assert_eq!(raw[1], 8, "version byte bumped to current VERSION");
+    assert_eq!(raw[1], 9, "version byte bumped to current VERSION");
 
     let after = ctx.market(&pdas);
     // Prefix fields untouched.

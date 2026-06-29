@@ -14,8 +14,9 @@ use crate::{
 
 /// Processes the CancelOrder instruction (Collect phase only).
 ///
-/// Removes a resting order owned by the signing trader, freeing its slot and
-/// decrementing the active-order count.
+/// Removes a resting order owned by the signing trader, freeing its slot (which
+/// decrements the authoritative `OrderSlabHeader.count`). The market is read-only
+/// here (PERF-1, known-issues §2.1): `cancel_order` never write-locks `Market`.
 pub fn process_cancel_order(
     program_id: &Address,
     accounts: &[AccountView],
@@ -85,18 +86,6 @@ pub fn process_cancel_order(
             &trader,
             reserved_margin,
         )?;
-    }
-
-    // --- decrement market active order count ---
-    {
-        let mut market_account = *ix.accounts.market;
-        let mut market_data = market_account.try_borrow_mut()?;
-        let market = Market::from_bytes_mut(&mut market_data)?;
-        let v = market
-            .active_order_count()
-            .checked_sub(1)
-            .ok_or(TempoProgramError::MathOverflow)?;
-        market.set_active_order_count(v);
     }
 
     // Emit event via CPI.

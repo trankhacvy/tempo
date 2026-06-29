@@ -67,15 +67,15 @@ fn interrupted_crank_resumed_by_other_signer_matches_uninterrupted() {
     let cranker2 = ctx.new_funded_signer();
 
     // cranker1 folds the first slab slot, then "stops" (does nothing more). Only
-    // takers rest in the slab; active_order_count counts those.
+    // takers rest in the slab; the slab header count is the authoritative live count.
     ctx.process_chunk_by(&m, &cranker1, 0, 1);
-    let mid = ctx.market(&m);
-    assert_eq!(mid.phase, PHASE_ACCUMULATING);
-    assert_eq!(mid.accumulated_order_count, 1, "partial progress");
-    assert!(
-        mid.accumulated_order_count < mid.active_order_count,
-        "round not complete"
-    );
+    assert_eq!(ctx.market(&m).phase, PHASE_ACCUMULATING);
+    // Authoritative completeness (PERF-1): the histogram has folded only one of the
+    // live slab orders, so the round is not yet complete.
+    let folded = ctx.histogram(&m).accumulated_count;
+    let live = ctx.order_slab(&m).count as u64;
+    assert_eq!(folded, 1, "partial progress");
+    assert!(folded < live, "round not complete");
 
     // A finalize attempt here must fail (incomplete) — proves the round is stuck
     // until someone resumes.
@@ -87,7 +87,7 @@ fn interrupted_crank_resumed_by_other_signer_matches_uninterrupted() {
     // cranker2 (a *different* signer) resumes and finishes the slab, then the
     // maker quotes are folded (finalize blocks until every active quote is folded).
     ctx.process_chunk_by(&m, &cranker2, 1, 15);
-    assert_eq!(ctx.market(&m).accumulated_order_count, taker_count());
+    assert_eq!(ctx.histogram(&m).accumulated_count, taker_count());
     for mk in &makers_m {
         ctx.process_maker_quote(&m, mk);
     }

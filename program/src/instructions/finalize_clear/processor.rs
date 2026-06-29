@@ -21,9 +21,10 @@ const CLEARING_SEED: &[u8] = b"clearing";
 
 /// Processes the FinalizeClear instruction — Phase 2 DISCOVER
 /// (clearing-protocol §3). Permissionless. Requires the completeness check
-/// (`accumulated_order_count == active_order_count`, clearing-protocol §4.2),
-/// runs a single O(ticks) pass to find the clearing price and marginal-tick
-/// allocation, and publishes a `ClearingResult`.
+/// (every resting order folded — enforced by the `all_active_orders_accumulated`
+/// slab scan — plus every maker quote folded, clearing-protocol §4.2), runs a
+/// single O(ticks) pass to find the clearing price and marginal-tick allocation,
+/// and publishes a `ClearingResult`.
 ///
 /// Runs **both** uniform-price crosses (system-design §1): the bid auction
 /// (maker-buys vs taker-sells) and the ask auction (taker-buys vs maker-sells),
@@ -46,12 +47,13 @@ pub fn process_finalize_clear(
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
         market.require_phase(AuctionPhase::Accumulating)?;
-        // Completeness check (clearing-protocol §4.2): refuse to finalize until
-        // every active order AND every active maker quote has been folded exactly
-        // once (the latter keeps our censorship guarantee for maker liquidity).
-        if market.accumulated_order_count() != market.active_order_count()
-            || market.folded_maker_quote_count() != market.active_maker_quote_count()
-        {
+        // Maker-quote completeness check (clearing-protocol §4.2): refuse to finalize
+        // until every active maker quote has been folded exactly once (keeps our
+        // censorship guarantee for maker liquidity). The ORDER-side completeness is
+        // enforced authoritatively by the `all_active_orders_accumulated` slab scan
+        // below — PERF-1 removed the redundant `accumulated_order_count`/
+        // `active_order_count` market counters that used to mirror it (known-issues §2.1).
+        if market.folded_maker_quote_count() != market.active_maker_quote_count() {
             return Err(TempoProgramError::AuctionNotComplete.into());
         }
         (

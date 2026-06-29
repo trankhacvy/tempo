@@ -132,8 +132,11 @@ fn keeper_actions_are_idempotent_for_replicas() {
     ctx.process_chunk(&pdas, 0, 16);
     ctx.process_maker_quote(&pdas, &maker.pubkey());
     ctx.process_chunk(&pdas, 0, 16);
-    let m = ctx.market(&pdas);
-    assert_eq!(m.accumulated_order_count, m.active_order_count);
+    // PERF-1: completeness is the authoritative histogram folded count == slab live count.
+    assert_eq!(
+        ctx.histogram(&pdas).accumulated_count,
+        ctx.order_slab(&pdas).count as u64
+    );
 
     // Discover once; a replica's second finalize must be rejected (already Discovered).
     ctx.finalize_clear(&pdas);

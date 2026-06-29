@@ -719,38 +719,6 @@
             },
             {
               "kind": "structFieldTypeNode",
-              "name": "accumulatedOrderCountLe",
-              "type": {
-                "count": {
-                  "kind": "fixedCountNode",
-                  "value": 8
-                },
-                "item": {
-                  "endian": "le",
-                  "format": "u8",
-                  "kind": "numberTypeNode"
-                },
-                "kind": "arrayTypeNode"
-              }
-            },
-            {
-              "kind": "structFieldTypeNode",
-              "name": "activeOrderCountLe",
-              "type": {
-                "count": {
-                  "kind": "fixedCountNode",
-                  "value": 8
-                },
-                "item": {
-                  "endian": "le",
-                  "format": "u8",
-                  "kind": "numberTypeNode"
-                },
-                "kind": "arrayTypeNode"
-              }
-            },
-            {
-              "kind": "structFieldTypeNode",
               "name": "ordersPerAuctionCapLe",
               "type": {
                 "count": {
@@ -2965,7 +2933,7 @@
               "Market the order belongs to"
             ],
             "isSigner": false,
-            "isWritable": true,
+            "isWritable": false,
             "kind": "instructionAccountNode",
             "name": "market"
           },
@@ -3115,7 +3083,7 @@
               "Market the order belongs to"
             ],
             "isSigner": false,
-            "isWritable": true,
+            "isWritable": false,
             "kind": "instructionAccountNode",
             "name": "market"
           },
