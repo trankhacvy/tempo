@@ -89,7 +89,7 @@ pub struct Order {
     /// bucket value captured immediately *before* this order folded — i.e. the
     /// Σ `remaining` of same-bucket orders folded earlier, in fold order.
     /// `settle_fill` reads this for O(1) marginal-tick rationing instead of
-    /// re-scanning the whole slab (`cumulative_qty_before`). `0` until folded
+    /// re-scanning the whole slab. `0` until folded
     /// (`process_chunk` sets it when it marks the order `Accumulated`). Appended
     /// last so the earlier field offsets stay stable.
     pub cum_before: u64,
@@ -442,24 +442,6 @@ pub fn find_order_by_id_hinted(
     find_order_by_id(data, capacity, order_id)
 }
 
-/// Count the resting orders belonging to `trader` in the current auction
-/// (anti-spam: bound how many slab slots one trader can occupy).
-#[inline(always)]
-pub fn count_trader_orders(
-    data: &[u8],
-    capacity: u32,
-    trader: &Address,
-) -> Result<u32, ProgramError> {
-    let mut n = 0u32;
-    for i in 0..capacity {
-        let order = read_order(data, capacity, i)?;
-        if order.status == OrderStatus::Resting as u8 && &order.trader == trader {
-            n += 1;
-        }
-    }
-    Ok(n)
-}
-
 /// The completeness source of truth (clearing-protocol §4.2): every non-empty
 /// slot has been folded — none is still `Resting`. `finalize_clear` requires this
 /// directly off the slab, so the censorship guarantee never rests on the
@@ -487,12 +469,19 @@ pub fn all_active_orders_accumulated(data: &[u8], capacity: u32) -> Result<bool,
 /// reduce-only order claims any. Counting ALL same-side resting qty (not only
 /// reduce-only ones) is deliberately conservative — it can only make a new order
 /// reserve MORE, never less, so the reservation can never under-cover a flip.
+///
+/// PERF-2: the same-side sum is only consumed by the reduce-only opening-qty path,
+/// so it is gated behind `reduce_only`. The common *open* submit skips the per-slot
+/// `remaining` addition (and the side compare) entirely; it returns `same_side = 0`,
+/// which the caller never reads on the open path. `resting_count` (the anti-spam
+/// cap) is always computed, so `MAX_ORDERS_PER_TRADER` enforcement is unchanged.
 #[inline(always)]
 pub fn trader_resting_stats(
     data: &[u8],
     capacity: u32,
     trader: &Address,
     side: u8,
+    reduce_only: bool,
 ) -> Result<(u32, u64), ProgramError> {
     let mut count = 0u32;
     let mut same_side = 0u64;
@@ -500,7 +489,7 @@ pub fn trader_resting_stats(
         let o = read_order(data, capacity, i)?;
         if o.status == OrderStatus::Resting as u8 && &o.trader == trader {
             count += 1;
-            if o.side == side {
+            if reduce_only && o.side == side {
                 same_side = same_side
                     .checked_add(o.remaining)
                     .ok_or(TempoProgramError::MathOverflow)?;
@@ -531,44 +520,6 @@ pub fn count_trader_live_orders(
         }
     }
     Ok(n)
-}
-
-/// Sum the `quantity` of orders that fold into the SAME histogram bucket as a
-/// marginal order — same `(side, is_maker)` (region) and `price` (tick) — that
-/// participated this round (Accumulated or Consumed) and have a strictly lower
-/// `order_id`. This is the `cum_before` prefix the cumulative-floor marginal
-/// allocation needs (exact OI conservation, see `clearing::compute_marginal_fill`).
-///
-/// Orders at the same tick share the same (tick-aligned) price, so matching on
-/// price avoids needing the tick size. Uses `quantity` (immutable original),
-/// which equals the amount folded into the histogram, so it is stable regardless
-/// of how many orders have already settled.
-#[inline(always)]
-pub fn cumulative_qty_before(
-    data: &[u8],
-    capacity: u32,
-    side: u8,
-    is_maker: u8,
-    price: u64,
-    order_id: u64,
-) -> Result<u64, ProgramError> {
-    let mut sum = 0u64;
-    for i in 0..capacity {
-        let o = read_order(data, capacity, i)?;
-        let participated =
-            o.status == OrderStatus::Accumulated as u8 || o.status == OrderStatus::Consumed as u8;
-        if participated
-            && o.side == side
-            && o.is_maker == is_maker
-            && o.price == price
-            && o.order_id < order_id
-        {
-            sum = sum
-                .checked_add(o.quantity)
-                .ok_or(TempoProgramError::MathOverflow)?;
-        }
-    }
-    Ok(sum)
 }
 
 #[cfg(test)]
