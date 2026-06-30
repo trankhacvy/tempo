@@ -81,7 +81,7 @@ bench:
 
 # Run the formal-verification harnesses (panic/overflow freedom + OI conservation).
 kani:
-    cd program && cargo kani
+    cargo kani -p tempo-program
 
 # Fail if the committed clients are stale vs the program IDL (regenerate → no diff).
 # Guards against the "stale client bundle" class of bug (known-issues §2.12).

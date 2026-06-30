@@ -54,6 +54,7 @@ fn mm_strategy_quote_folds_and_fills_against_taker() {
         size_growth_den: 1,
         max_inventory: 1_000_000,
         skew_ticks_max: 0,
+        size_jitter_bps: 0,
     };
     let quote = build_quote(&market, None, 1_000_000, &cfg).expect("a two-sided quote");
     assert_eq!(quote.mid_tick, 16, "num_ticks 32 → mid 16");

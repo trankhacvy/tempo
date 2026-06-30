@@ -6,6 +6,12 @@ pub struct Backoff {
     current: Duration,
 }
 
+impl Default for Backoff {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Backoff {
     const BASE: Duration = Duration::from_millis(500);
     const MAX: Duration = Duration::from_secs(5);
