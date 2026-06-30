@@ -12,8 +12,11 @@
 # NEVER point this at mainnet — the devnet RPC belongs in .env.
 name: tempo-sim
 
+# context is the repo root. Coolify runs compose with --project-directory=<repo-root>,
+# which resolves relative paths against the repo root (not this file's dir), so use `.`.
+# For local runs, invoke from the repo root with: --project-directory "$(pwd)".
 x-build: &build
-  context: ../..
+  context: .
   dockerfile: ops/docker/Dockerfile
 
 x-svc: &svc
