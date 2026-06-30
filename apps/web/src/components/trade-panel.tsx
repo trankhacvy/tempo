@@ -11,7 +11,7 @@ import { StatusMessage, type TxStatus } from "@/components/ui/status-message";
 import { type MarketView } from "@/lib/data";
 import { buildSubmitOrderIx } from "@/lib/instructions";
 import { Phase } from "@/lib/tempo-client";
-import { notionalToQty, tickToUsd, usdToTick } from "@/lib/tempo-math";
+import { notionalToQty, price1e8ToUsd, usdToTick } from "@/lib/tempo-math";
 import { sendInstructions } from "@/lib/tx";
 import { useWalletSigner } from "@/lib/use-wallet-signer";
 import { cn, isValidBase58Address } from "@/lib/utils";
@@ -38,19 +38,23 @@ function deriveOrder(
     oracleUsd: number,
     side: Side,
     tickSize: bigint,
+    windowFloor: bigint,
 ): DerivedOrder | null {
-    if (collateralUsd <= 0 || oracleUsd <= 0) return null;
+    if (collateralUsd <= 0 || oracleUsd <= 0 || tickSize <= 0n) return null;
     const notionalUsd = collateralUsd * leverage;
     const quantity = notionalToQty(notionalUsd, oracleUsd);
     if (quantity <= 0n) return null;
-    const oracleTick = usdToTick(oracleUsd, tickSize);
-    const price =
+    const oracleTick = usdToTick(oracleUsd, tickSize, windowFloor);
+    const targetTick =
         side === 0
             ? oracleTick + CROSS_TICKS
             : oracleTick > CROSS_TICKS
               ? oracleTick - CROSS_TICKS
-              : 1n;
-    return { price, quantity, notionalUsd, priceUsd: tickToUsd(price, tickSize) };
+              : 0n;
+    // The order price the program expects is a 1e8, tick-aligned, in-window price:
+    // window_floor + tick·tick_size (NOT the bare tick index).
+    const price = windowFloor + targetTick * tickSize;
+    return { price, quantity, notionalUsd, priceUsd: price1e8ToUsd(price) };
 }
 
 export function TradePanel({
@@ -80,6 +84,7 @@ export function TradePanel({
     const owner = publicKey?.toBase58() ?? null;
     const marketReady = isValidBase58Address(market);
     const tickSize = view?.tickSize ?? 0n;
+    const windowFloor = view?.windowFloorPrice ?? 0n;
     const collecting = view !== null && view.phase === Phase.Collect;
     const gated = view !== null && !collecting;
 
@@ -87,8 +92,8 @@ export function TradePanel({
         const c = Number(collateral);
         if (advanced || !Number.isFinite(c) || c <= 0 || oracleUsd === null || tickSize <= 0n)
             return null;
-        return deriveOrder(c, leverage, oracleUsd, side, tickSize);
-    }, [advanced, collateral, leverage, oracleUsd, side, tickSize]);
+        return deriveOrder(c, leverage, oracleUsd, side, tickSize, windowFloor);
+    }, [advanced, collateral, leverage, oracleUsd, side, tickSize, windowFloor]);
 
     function resolveOrder(): { price: bigint; quantity: bigint } | null {
         if (advanced) {

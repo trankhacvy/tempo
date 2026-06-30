@@ -97,12 +97,13 @@ export function AuctionHistogram({ market, view }: AuctionHistogramProps) {
     const [loading, setLoading] = useState(false);
 
     const tickSize = view?.tickSize ?? 0n;
+    const windowFloor = view?.windowFloorPrice ?? 0n;
     const active = !!market && tickSize > 0n;
 
     async function load() {
         if (!active) return;
         try {
-            const h = await fetchHistogramView(market!, tickSize);
+            const h = await fetchHistogramView(market!, tickSize, windowFloor);
             setHistogram(h);
         } catch {
             // silent — keep last known state
@@ -116,7 +117,7 @@ export function AuctionHistogram({ market, view }: AuctionHistogramProps) {
         setLoading(true);
         void load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [market, tickSize.toString()]);
+    }, [market, tickSize.toString(), windowFloor.toString()]);
 
     useInterval(() => void load(), active ? POLL_MS : null);
 
