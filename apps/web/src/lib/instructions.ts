@@ -6,10 +6,10 @@ import {
   type Instruction,
   type TransactionSigner,
 } from "@solana/kit";
+import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 
 import {
   COLLATERAL_MINT,
-  USER_TOKEN_ACCOUNT,
   VAULT_TOKEN_ACCOUNT,
 } from "./config";
 import {
@@ -68,6 +68,17 @@ async function vaultAddr(mint: Address): Promise<Address> {
   return pda;
 }
 
+/** The connected wallet's associated token account for the collateral mint —
+ *  derived per-wallet (the faucet creates it), not a fixed env account. */
+async function userAtaAddr(owner: Address, mint: Address): Promise<Address> {
+  const [ata] = await findAssociatedTokenPda({
+    owner,
+    mint,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+  });
+  return ata;
+}
+
 // The vault authority is a seed-only PDA with no generated finder.
 async function vaultAuthorityAddr(): Promise<Address> {
   const [pda] = await getProgramDerivedAddress({
@@ -96,26 +107,17 @@ export async function buildInitCollateralIx(
   });
 }
 
-export interface CollateralAccounts {
-  /** Defaults to NEXT_PUBLIC_USER_TOKEN_ACCOUNT, else the provided override. */
-  userTokenAccount?: string;
-}
-
 export async function buildDepositIx(
   owner: string,
   amount: bigint,
-  opts: CollateralAccounts = {},
 ): Promise<Instruction> {
   const signer = addressSigner(owner);
   const vaultTokenAccount = requireConfigured(
     VAULT_TOKEN_ACCOUNT,
     "NEXT_PUBLIC_VAULT_TOKEN_ACCOUNT",
   );
-  const userTokenAccount = requireConfigured(
-    opts.userTokenAccount ?? USER_TOKEN_ACCOUNT,
-    "NEXT_PUBLIC_USER_TOKEN_ACCOUNT",
-  );
   const mint = requireConfigured(COLLATERAL_MINT, "NEXT_PUBLIC_COLLATERAL_MINT");
+  const userTokenAccount = await userAtaAddr(address(owner), mint);
   const userCollateral = await userCollateralAddr(address(owner), mint);
   const vault = await vaultAddr(mint);
   return getDepositInstruction({
@@ -131,18 +133,14 @@ export async function buildDepositIx(
 export async function buildWithdrawIx(
   owner: string,
   amount: bigint,
-  opts: CollateralAccounts = {},
 ): Promise<Instruction> {
   const signer = addressSigner(owner);
   const vaultTokenAccount = requireConfigured(
     VAULT_TOKEN_ACCOUNT,
     "NEXT_PUBLIC_VAULT_TOKEN_ACCOUNT",
   );
-  const userTokenAccount = requireConfigured(
-    opts.userTokenAccount ?? USER_TOKEN_ACCOUNT,
-    "NEXT_PUBLIC_USER_TOKEN_ACCOUNT",
-  );
   const mint = requireConfigured(COLLATERAL_MINT, "NEXT_PUBLIC_COLLATERAL_MINT");
+  const userTokenAccount = await userAtaAddr(address(owner), mint);
   const userCollateral = await userCollateralAddr(address(owner), mint);
   const vault = await vaultAddr(mint);
   const vaultAuthority = await vaultAuthorityAddr();

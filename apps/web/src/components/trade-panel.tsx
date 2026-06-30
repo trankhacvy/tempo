@@ -2,25 +2,36 @@
 
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useMemo, useState } from "react";
+import { ExternalLink } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusMessage, type TxStatus } from "@/components/ui/status-message";
-import { type MarketView } from "@/lib/data";
-import { buildSubmitOrderIx } from "@/lib/instructions";
+import { COLLATERAL_MINT, VAULT_TOKEN_ACCOUNT } from "@/lib/config";
+import { type MarketView, fetchCollateralView, fetchPositionView, type CollateralView } from "@/lib/data";
+import { requestFaucet } from "@/lib/faucet";
+import {
+    buildDepositIx,
+    buildInitCollateralIx,
+    buildInitPositionIx,
+    buildSubmitOrderIx,
+} from "@/lib/instructions";
 import { Phase } from "@/lib/tempo-client";
 import { notionalToQty, price1e8ToUsd, usdToTick } from "@/lib/tempo-math";
 import { sendInstructions } from "@/lib/tx";
+import { useInterval } from "@/lib/use-interval";
 import { useWalletSigner } from "@/lib/use-wallet-signer";
-import { cn, isValidBase58Address } from "@/lib/utils";
+import { cn, formatUnits, isValidBase58Address, parseUnits } from "@/lib/utils";
 
 type Side = 0 | 1;
 
 const MIN_LEVERAGE = 1;
 const MAX_LEVERAGE = 10;
 const CROSS_TICKS = 2n;
+const COLLATERAL_DECIMALS = 6;
+const POLL_MS = 4000;
 
 interface DerivedOrder {
     price: bigint;
@@ -29,9 +40,6 @@ interface DerivedOrder {
     priceUsd: number | null;
 }
 
-/** A USD collateral + leverage → a marketable order. Notional = collateral ·
- *  leverage; quantity = floor(notional / oracleUsd); price = the live oracle
- *  tick crossed a couple ticks into the trade direction (a taker that sweeps). */
 function deriveOrder(
     collateralUsd: number,
     leverage: number,
@@ -51,8 +59,6 @@ function deriveOrder(
             : oracleTick > CROSS_TICKS
               ? oracleTick - CROSS_TICKS
               : 0n;
-    // The order price the program expects is a 1e8, tick-aligned, in-window price:
-    // window_floor + tick·tick_size (NOT the bare tick index).
     const price = windowFloor + targetTick * tickSize;
     return { price, quantity, notionalUsd, priceUsd: price1e8ToUsd(price) };
 }
@@ -80,13 +86,45 @@ export function TradePanel({
     const [quantity, setQuantity] = useState("");
     const [status, setStatus] = useState<TxStatus>({ kind: "idle" });
 
+    // Account (ledger) state.
+    const [ledger, setLedger] = useState<CollateralView | null>(null);
+    const [ledgerExists, setLedgerExists] = useState<boolean | null>(null);
+    const [positionExists, setPositionExists] = useState<boolean | null>(null);
+    const [depositAmt, setDepositAmt] = useState("");
+
     const busy = status.kind === "pending";
     const owner = publicKey?.toBase58() ?? null;
     const marketReady = isValidBase58Address(market);
+    const moneyMarket = Boolean(COLLATERAL_MINT);
     const tickSize = view?.tickSize ?? 0n;
     const windowFloor = view?.windowFloorPrice ?? 0n;
     const collecting = view !== null && view.phase === Phase.Collect;
     const gated = view !== null && !collecting;
+
+    const refreshAccount = useCallback(async () => {
+        if (!owner || !market || !moneyMarket) {
+            setLedger(null);
+            setLedgerExists(null);
+            setPositionExists(null);
+            return;
+        }
+        try {
+            const [c, p] = await Promise.all([
+                fetchCollateralView(owner),
+                fetchPositionView(owner, market),
+            ]);
+            setLedger(c);
+            setLedgerExists(c !== null);
+            setPositionExists(p !== null);
+        } catch {
+            // keep last good state
+        }
+    }, [owner, market, moneyMarket]);
+
+    useEffect(() => {
+        void refreshAccount();
+    }, [refreshAccount]);
+    useInterval(() => void refreshAccount(), owner && market && moneyMarket ? POLL_MS : null);
 
     const derived = useMemo<DerivedOrder | null>(() => {
         const c = Number(collateral);
@@ -105,7 +143,7 @@ export function TradePanel({
             } catch {
                 setStatus({
                     kind: "error",
-                    message: "Price and quantity must be positive whole numbers (ticks / base units).",
+                    message: "Price and quantity must be positive whole numbers (1e8 price / base units).",
                 });
                 return null;
             }
@@ -120,7 +158,45 @@ export function TradePanel({
         return { price: derived.price, quantity: derived.quantity };
     }
 
-    async function submit() {
+    const faucet = useCallback(async () => {
+        if (!owner) return;
+        setStatus({ kind: "pending" });
+        try {
+            const r = await requestFaucet(owner);
+            setStatus({ kind: "success", signature: r.signature });
+            await refreshAccount();
+        } catch (e) {
+            setStatus({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+        }
+    }, [owner, refreshAccount]);
+
+    const deposit = useCallback(async () => {
+        if (!signer || !owner) {
+            setStatus({ kind: "error", message: "Connect a wallet first." });
+            return;
+        }
+        const amount = parseUnits(depositAmt, COLLATERAL_DECIMALS);
+        if (amount <= 0n) {
+            setStatus({ kind: "error", message: "Enter a deposit amount." });
+            return;
+        }
+        setStatus({ kind: "pending" });
+        try {
+            const ixs = [];
+            if (ledgerExists === false) ixs.push(await buildInitCollateralIx(owner));
+            ixs.push(await buildDepositIx(owner, amount));
+            const { signature } = await sendInstructions(signer, ixs, (sig) =>
+                setStatus({ kind: "pending", signature: sig }),
+            );
+            setStatus({ kind: "success", signature });
+            setDepositAmt("");
+            await refreshAccount();
+        } catch (e) {
+            setStatus({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+        }
+    }, [signer, owner, depositAmt, ledgerExists, refreshAccount]);
+
+    const submit = useCallback(async () => {
         if (!signer || !owner) {
             setStatus({ kind: "error", message: "Connect a wallet first." });
             return;
@@ -140,34 +216,40 @@ export function TradePanel({
         if (!resolved) return;
         setStatus({ kind: "pending" });
         try {
-            const ix = await buildSubmitOrderIx(owner, {
-                market,
-                side,
-                price: resolved.price,
-                quantity: resolved.quantity,
-            });
-            const { signature } = await sendInstructions(signer, [ix], (sig) =>
+            const ixs = [];
+            // Auto-open the Position PDA on a money market so the fill can settle.
+            if (moneyMarket && positionExists === false) {
+                ixs.push(await buildInitPositionIx(owner, market));
+            }
+            ixs.push(
+                await buildSubmitOrderIx(owner, {
+                    market,
+                    side,
+                    price: resolved.price,
+                    quantity: resolved.quantity,
+                }),
+            );
+            const { signature } = await sendInstructions(signer, ixs, (sig) =>
                 setStatus({ kind: "pending", signature: sig }),
             );
             setStatus({ kind: "success", signature });
+            await refreshAccount();
         } catch (e) {
-            setStatus({
-                kind: "error",
-                message: e instanceof Error ? e.message : String(e),
-            });
+            setStatus({ kind: "error", message: e instanceof Error ? e.message : String(e) });
         }
-    }
+    }, [signer, owner, marketReady, gated, moneyMarket, positionExists, market, side, derived, advanced, price, quantity]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const inputsEmpty = advanced
         ? price.trim() === "" || quantity.trim() === ""
         : derived === null;
     const submitDisabled = busy || !marketReady || gated || inputsEmpty;
+    const freeUsd = ledger ? formatUnits(ledger.free, COLLATERAL_DECIMALS) : "0";
 
     return (
         <div className="flex flex-col">
-            {/* Panel header */}
+            {/* Header */}
             <div className="flex h-9 items-center justify-between border-b border-border px-4">
-                <span className="text-xs font-medium text-foreground">Submit order</span>
+                <span className="text-xs font-medium text-foreground">Trade</span>
                 <button
                     type="button"
                     onClick={() => setAdvanced((v) => !v)}
@@ -177,9 +259,46 @@ export function TradePanel({
                 </button>
             </div>
 
-            {/* Panel content */}
             <div className="space-y-4 p-4">
-                {/* Side toggle */}
+                {/* Account / margin */}
+                {connected && moneyMarket && (
+                    <div className="space-y-2 border border-border/60 bg-secondary/20 p-3">
+                        <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-muted-foreground">Free margin</span>
+                            <span className="font-mono tnum text-foreground">${freeUsd}</span>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 flex-1 text-xs"
+                                disabled={busy}
+                                onClick={() => void faucet()}
+                            >
+                                Get test tokens
+                            </Button>
+                            <Input
+                                inputMode="decimal"
+                                placeholder="amount"
+                                value={depositAmt}
+                                onChange={(e) => setDepositAmt(e.target.value)}
+                                disabled={busy || !VAULT_TOKEN_ACCOUNT}
+                                className="h-7 w-24 text-xs"
+                            />
+                            <Button
+                                size="sm"
+                                className="h-7 text-xs"
+                                disabled={busy || !VAULT_TOKEN_ACCOUNT || depositAmt.trim() === ""}
+                                onClick={() => void deposit()}
+                            >
+                                Deposit
+                            </Button>
+                        </div>
+                        {ledger && ledger.balance === 0n && <FaucetHint />}
+                    </div>
+                )}
+
+                {/* Side */}
                 <div className="space-y-2">
                     <Label>Side</Label>
                     <div className="grid grid-cols-2 gap-2">
@@ -195,12 +314,12 @@ export function TradePanel({
                 {advanced ? (
                     <>
                         <p className="border border-border/60 bg-secondary/20 p-2 text-[11px] text-muted-foreground">
-                            Orders submitted here are takers. Maker liquidity is posted through the
-                            maker-quote book (a market-maker flow), not the trade panel.
+                            Orders here are takers. Maker liquidity is posted through the maker-quote
+                            book (a market-maker flow), not the trade panel.
                         </p>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-2">
-                                <Label htmlFor="price">Price (ticks)</Label>
+                                <Label htmlFor="price">Price (1e8)</Label>
                                 <Input
                                     id="price"
                                     inputMode="numeric"
@@ -228,7 +347,7 @@ export function TradePanel({
                 ) : (
                     <>
                         <div className="space-y-2">
-                            <Label htmlFor="collateral">Collateral (USD)</Label>
+                            <Label htmlFor="collateral">Margin (USD)</Label>
                             <Input
                                 id="collateral"
                                 inputMode="decimal"
@@ -275,8 +394,8 @@ export function TradePanel({
                                 {derived ? derived.quantity.toString() : "—"}
                             </Estimate>
                             <Estimate label="Limit price">
-                                {derived
-                                    ? `${derived.price.toString()} tick${derived.priceUsd !== null ? ` · $${derived.priceUsd.toFixed(2)}` : ""}`
+                                {derived && derived.priceUsd !== null
+                                    ? `$${derived.priceUsd.toFixed(2)}`
                                     : "—"}
                             </Estimate>
                         </div>
@@ -311,12 +430,33 @@ export function TradePanel({
 
                 {!marketReady && (
                     <p className="text-sm text-muted-foreground">
-                        Load a market in the Market tab first.
+                        Load a market in the Auction tab first.
                     </p>
                 )}
                 <StatusMessage status={status} />
             </div>
         </div>
+    );
+}
+
+function FaucetHint() {
+    const url = COLLATERAL_MINT
+        ? `https://spl-token-faucet.com/?token-name=${COLLATERAL_MINT}`
+        : "https://faucet.solana.com/";
+    return (
+        <p className="text-[11px] text-muted-foreground">
+            No SOL for fees?{" "}
+            <a
+                href="https://faucet.solana.com/"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline"
+            >
+                Airdrop devnet SOL
+                <ExternalLink className="size-3" />
+            </a>
+            <span className="sr-only">{url}</span>
+        </p>
     );
 }
 

@@ -212,42 +212,45 @@ const SLAB_DISC = 4;
 const SLAB_HEADER = 63;
 const SLOT_SIZE = 88;
 
-export async function fetchMyOrders(
-    market: string,
-    walletAddress: string,
-    tickSize: bigint,
-): Promise<OrderView[]> {
+export interface OrderBook {
+    /** Active (Resting + Accumulated) orders this auction, with the owner. */
+    orders: (OrderView & { trader: string })[];
+    /** Header `count` field — live active-order tally (O(1), no scan). */
+    count: number;
+    capacity: number;
+}
+
+/** Decode the whole order slab once: every active order + the header count.
+ *  The book and "my orders" are both derived from this single fetch. */
+export async function fetchOrderBook(market: string): Promise<OrderBook> {
+    const empty: OrderBook = { orders: [], count: 0, capacity: 0 };
     try {
         const [slabPda] = await findOrderSlabHeaderPda({ market: address(market) });
         const raw = await fetchRaw(slabPda);
-        if (!raw) return [];
-        if (raw.owner !== PROGRAM_ID) return [];
+        if (!raw) return empty;
+        if (raw.owner !== PROGRAM_ID) return empty;
 
         const d = raw.data;
-        if (d.length < SLAB_HEADER) return [];
-        if (d[0] !== SLAB_DISC) return [];
+        if (d.length < SLAB_HEADER) return empty;
+        if (d[0] !== SLAB_DISC) return empty;
 
         const capacity = readU32le(d.subarray(18, 22));
-        if (capacity === 0) return [];
+        const count = readU32le(d.subarray(22, 26));
+        if (capacity === 0) return empty;
 
-        const orders: OrderView[] = [];
-
+        const orders: (OrderView & { trader: string })[] = [];
         for (let i = 0; i < capacity; i++) {
             const base = SLAB_HEADER + i * SLOT_SIZE;
             if (base + SLOT_SIZE > d.length) break;
 
             const status = d[base + 66] as 0 | 1 | 2 | 3;
-            // Skip Empty or Consumed
-            if (status === 0 || status === 3) continue;
-
-            const traderBytes = d.subarray(base + 32, base + 64);
-            const traderStr = encodeAddress(traderBytes);
-            if (traderStr !== walletAddress) continue;
+            if (status === 0 || status === 3) continue; // skip Empty / Consumed
 
             const price = readU64le(d.subarray(base + 0, base + 8));
             const quantity = readU64le(d.subarray(base + 8, base + 16));
             const remaining = readU64le(d.subarray(base + 16, base + 24));
             const orderId = readU64le(d.subarray(base + 24, base + 32));
+            const trader = encodeAddress(d.subarray(base + 32, base + 64));
             const side = (d[base + 64] ?? 0) as 0 | 1;
 
             orders.push({
@@ -258,13 +261,12 @@ export async function fetchMyOrders(
                 quantity,
                 remaining,
                 status,
-                // order.price is a 1e8 price (tick-aligned), not a tick index.
                 priceUsd: price1e8ToUsd(price),
+                trader,
             });
         }
-
-        return orders;
+        return { orders, count, capacity };
     } catch {
-        return [];
+        return empty;
     }
 }
