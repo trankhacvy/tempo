@@ -291,7 +291,8 @@ pub enum TempoProgramInstruction {
     ))]
     #[codama(account(
         name = "vault",
-        docs = "(Optional) supplies the maintenance-margin bps",
+        docs = "(Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill)",
+        writable,
         optional
     ))]
     #[codama(account(
