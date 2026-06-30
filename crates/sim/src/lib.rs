@@ -8,6 +8,7 @@ pub mod artifact;
 pub mod config;
 pub mod error;
 pub mod health;
+pub mod master_funder;
 pub mod metrics_defs;
 pub mod persona;
 pub mod provision;

@@ -68,6 +68,31 @@ async fn main() -> Result<(), SimError> {
 
     let mut tasks: Vec<LocalBoxFuture<'static, ()>> = Vec::new();
 
+    // --- master funder cron: top the master wallet up via devnet airdrop every
+    // TEMPO_SIM_MASTER_AIRDROP_SECS (default 1h) so it can keep backstopping the
+    // agents + keeper SOL. Best-effort; skipped if no master keypair is configured.
+    if let Ok(master_path) = std::env::var("TEMPO_SIM_MASTER_KEYPAIR") {
+        match load_keypair_file(&master_path) {
+            Ok(master_kp) => {
+                let master = master_kp.pubkey();
+                let airdrop_pool =
+                    RpcPool::from_urls(&cfg.common.rpc_url, cfg.common.commitment_config())
+                        .map_err(SimError::Common)?;
+                let secs: u64 = env_parse("TEMPO_SIM_MASTER_AIRDROP_SECS", 3600);
+                let sol: u64 = env_parse("TEMPO_SIM_MASTER_AIRDROP_SOL", 2);
+                tasks.push(Box::pin(tempo_sim::master_funder::run(
+                    airdrop_pool,
+                    master,
+                    sol * tempo_sim::master_funder::LAMPORTS_PER_SOL,
+                    Duration::from_secs(secs),
+                    rx.clone(),
+                )));
+                tracing::info!(%master, every_secs = secs, sol, "master funder cron enabled");
+            }
+            Err(e) => tracing::warn!(error = %e, "master funder cron disabled (bad keypair)"),
+        }
+    }
+
     // --- keeper + funding ---
     let keeper_kp = Arc::new(load_keypair_file(&art.keeper.keypair_path).map_err(SimError::Common)?);
     let keeper_ctx = KeeperCtx {
