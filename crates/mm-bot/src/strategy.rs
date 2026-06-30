@@ -22,6 +22,12 @@ pub struct MmStrategyConfig {
     pub size_growth_den: u32,
     pub max_inventory: u64,
     pub skew_ticks_max: u16,
+    /// Per-round, per-side size variation in basis points (0 = off → a fixed
+    /// ladder every round). When set, each rung's size is scaled by a deterministic
+    /// pseudo-random factor in `±size_jitter_bps`, seeded by the auction id (and the
+    /// side), so the book breathes and leans differently each round without losing
+    /// determinism. The reference bot leaves this at 0; the sim turns it up.
+    pub size_jitter_bps: u16,
 }
 
 /// A two-sided ladder centered on `mid_tick`.
@@ -53,6 +59,27 @@ fn rung_size(base: u64, num: u32, den: u32, k: u32) -> u64 {
         acc = acc * num as u128 / den as u128;
     }
     u64::try_from(acc).unwrap_or(u64::MAX)
+}
+
+/// Scale `base` by a deterministic factor in `±jitter_bps`, seeded by
+/// `(auction_id, k, side)`. A SplitMix64-style mix keeps it pure (same round →
+/// same book) while making the size vary round to round and bid≠ask. The factor is
+/// floored at 10% so a rung never collapses to nothing.
+fn jitter_size(base: u64, jitter_bps: u16, auction_id: u64, k: u32, side: u8) -> u64 {
+    if jitter_bps == 0 || base == 0 {
+        return base;
+    }
+    let mut h = auction_id
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        .wrapping_add((k as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9))
+        .wrapping_add((side as u64).wrapping_mul(0x94D0_49BB_1331_11EB));
+    h ^= h >> 30;
+    h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    h ^= h >> 27;
+    let span = jitter_bps as u64 * 2 + 1;
+    let delta = (h % span) as i64 - jitter_bps as i64; // [-jitter_bps, +jitter_bps]
+    let factor = (10_000i64 + delta).max(1_000) as u128; // floor at 10%
+    u64::try_from(base as u128 * factor / 10_000).unwrap_or(u64::MAX)
 }
 
 /// Build the ladder for one Collect window. Returns `None` when the market or
@@ -91,7 +118,7 @@ pub fn build_quote(
 
         // Bid rung: tick = mid - offset, valid only while it stays in-window.
         if offset <= mid_tick {
-            let raw = size;
+            let raw = jitter_size(size, cfg.size_jitter_bps, market.current_auction_id, k, 0);
             // When long, buying increases inventory → cap the bid side to `room`.
             let capped = if inventory > 0 {
                 raw.min(room.saturating_sub(bid_cum))
@@ -109,7 +136,7 @@ pub fn build_quote(
 
         // Ask rung: tick = mid + offset, valid only while it stays in-window.
         if mid_tick + offset < num_ticks {
-            let raw = size;
+            let raw = jitter_size(size, cfg.size_jitter_bps, market.current_auction_id, k, 1);
             // When short, selling increases inventory → cap the ask side to `room`.
             let capped = if inventory < 0 {
                 raw.min(room.saturating_sub(ask_cum))
@@ -238,6 +265,7 @@ mod tests {
             size_growth_den: 1,
             max_inventory: 10_000,
             skew_ticks_max: 2,
+            size_jitter_bps: 0,
         }
     }
 
