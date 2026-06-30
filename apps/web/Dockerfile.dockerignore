@@ -1,0 +1,22 @@
+# Scoped to apps/web/Dockerfile (BuildKit). Build context is the repo root; keep
+# apps/, clients/, idl/, scripts/ (the web build needs them), drop the rest.
+**/node_modules/
+**/target/
+target/
+.git/
+.github/
+**/.next/
+docs/
+program/target/
+trident-tests/
+percolator/
+percolator-prog/
+*.so
+.env
+**/.env*
+keys/
+**/keys/
+.sim-keys/
+**/.sim-keys/
+**/*keypair*.json
+sim-artifact.json
