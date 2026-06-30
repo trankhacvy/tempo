@@ -1,0 +1,42 @@
+[package]
+name = "tempo-sim"
+version.workspace = true
+edition.workspace = true
+description = "Tempo devnet simulation: a synthetic trader fleet plus a one-shot provisioner so the user-facing UI has a live market to render."
+
+[[bin]]
+name = "tempo-sim"
+path = "src/main.rs"
+
+[[bin]]
+name = "tempo-sim-provision"
+path = "src/bin/provision.rs"
+
+[[bin]]
+name = "tempo-sim-orchestrator"
+path = "src/bin/orchestrator.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+tempo-common = { path = "../common" }
+tempo-sdk = { path = "../sdk" }
+tempo-math = { path = "../tempo-math" }
+# Reused in the local single-process orchestrator binary.
+tempo-keeper = { path = "../keeper" }
+tempo-mm-bot = { path = "../mm-bot" }
+tempo-liquidator = { path = "../liquidator" }
+solana-sdk = { workspace = true }
+solana-client = { workspace = true }
+solana-commitment-config = { workspace = true }
+solana-system-interface = { version = "2", features = ["bincode"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+axum = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

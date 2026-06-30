@@ -7051,6 +7051,7 @@ dependencies = [
  "tempo-math",
  "tempo-mm-bot",
  "tempo-sdk",
+ "tempo-sim",
 ]
 
 [[package]]
@@ -7146,6 +7147,31 @@ dependencies = [
  "tempo-common",
  "tempo-math",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "tempo-sim"
+version = "0.0.1"
+dependencies = [
+ "axum",
+ "futures",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "serde",
+ "serde_json",
+ "solana-client",
+ "solana-commitment-config",
+ "solana-sdk",
+ "solana-system-interface 2.0.0",
+ "tempo-common",
+ "tempo-keeper",
+ "tempo-liquidator",
+ "tempo-math",
+ "tempo-mm-bot",
+ "tempo-sdk",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

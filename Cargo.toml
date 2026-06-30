@@ -10,6 +10,7 @@ members = [
     "crates/api",
     "crates/mm-bot",
     "crates/liquidator",
+    "crates/sim",
 ]
 # The Trident transaction-level fuzz target is a standalone crate that
 # depends on the external `trident-fuzz`/`trident-svm` toolchain. It is excluded
