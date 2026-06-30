@@ -5,107 +5,102 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use solana_address::Address;
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
-
+use borsh::BorshSerialize;
+use solana_address::Address;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
 pub struct AuctionHistogramHeader {
-pub discriminator: u8,
-pub auction_id_le: [u8; 8],
-pub accumulated_count_le: [u8; 8],
-pub num_ticks_le: [u8; 4],
-pub market: Address,
-pub bump: u8,
+    pub discriminator: u8,
+    pub auction_id_le: [u8; 8],
+    pub accumulated_count_le: [u8; 8],
+    pub num_ticks_le: [u8; 4],
+    pub market: Address,
+    pub bump: u8,
 }
-
 
 pub const AUCTION_HISTOGRAM_HEADER_DISCRIMINATOR: u8 = 2;
 
 impl AuctionHistogramHeader {
-  
-          /// Prefix values used to generate a PDA for this account.
+    /// Prefix values used to generate a PDA for this account.
     ///
     /// Values are positional and appear in the following order:
     ///
-                  ///   0. `AuctionHistogramHeader::PREFIX`
-                                ///   1. market (`Address`)
-                    pub const PREFIX: &'static [u8] = "histogram".as_bytes();
-      
-      pub fn create_pda(
-                                                                market: Address,
-                                  bump: u8,
+    ///   0. `AuctionHistogramHeader::PREFIX`
+    ///   1. market (`Address`)
+    pub const PREFIX: &'static [u8] = "histogram".as_bytes();
+
+    pub fn create_pda(
+        market: Address,
+        bump: u8,
     ) -> Result<solana_address::Address, solana_address::error::AddressError> {
-      solana_address::Address::create_program_address(
-        &[
-                                    "histogram".as_bytes(),
-                                                market.as_ref(),
-                                &[bump],
-        ],
-        &crate::TEMPO_PROGRAM_ID,
-      )
+        solana_address::Address::create_program_address(
+            &["histogram".as_bytes(), market.as_ref(), &[bump]],
+            &crate::TEMPO_PROGRAM_ID,
+        )
     }
 
-    pub fn find_pda(
-                                                    market: &Address,
-                          ) -> (solana_address::Address, u8) {
-      solana_address::Address::find_program_address(
-        &[
-                                    "histogram".as_bytes(),
-                                                market.as_ref(),
-                              ],
-        &crate::TEMPO_PROGRAM_ID,
-      )
+    pub fn find_pda(market: &Address) -> (solana_address::Address, u8) {
+        solana_address::Address::find_program_address(
+            &["histogram".as_bytes(), market.as_ref()],
+            &crate::TEMPO_PROGRAM_ID,
+        )
     }
-  
-  #[inline(always)]
-  pub fn from_bytes(data: &[u8]) -> Result<Self, std::io::Error> {
-    let mut data = data;
-    Self::deserialize(&mut data)
-  }
+
+    #[inline(always)]
+    pub fn from_bytes(data: &[u8]) -> Result<Self, std::io::Error> {
+        let mut data = data;
+        Self::deserialize(&mut data)
+    }
 }
 
 impl<'a> TryFrom<&solana_account_info::AccountInfo<'a>> for AuctionHistogramHeader {
-  type Error = std::io::Error;
+    type Error = std::io::Error;
 
-  fn try_from(account_info: &solana_account_info::AccountInfo<'a>) -> Result<Self, Self::Error> {
-      let mut data: &[u8] = &(*account_info.data).borrow();
-      Self::deserialize(&mut data)
-  }
+    fn try_from(account_info: &solana_account_info::AccountInfo<'a>) -> Result<Self, Self::Error> {
+        let mut data: &[u8] = &(*account_info.data).borrow();
+        Self::deserialize(&mut data)
+    }
 }
 
 #[cfg(feature = "fetch")]
 pub fn fetch_auction_histogram_header(
-  rpc: &solana_rpc_client::rpc_client::RpcClient,
-  address: &solana_address::Address,
+    rpc: &solana_rpc_client::rpc_client::RpcClient,
+    address: &solana_address::Address,
 ) -> Result<crate::shared::DecodedAccount<AuctionHistogramHeader>, std::io::Error> {
-  let accounts = fetch_all_auction_histogram_header(rpc, &[*address])?;
-  Ok(accounts[0].clone())
+    let accounts = fetch_all_auction_histogram_header(rpc, &[*address])?;
+    Ok(accounts[0].clone())
 }
 
 #[cfg(feature = "fetch")]
 pub fn fetch_all_auction_histogram_header(
-  rpc: &solana_rpc_client::rpc_client::RpcClient,
-  addresses: &[solana_address::Address],
+    rpc: &solana_rpc_client::rpc_client::RpcClient,
+    addresses: &[solana_address::Address],
 ) -> Result<Vec<crate::shared::DecodedAccount<AuctionHistogramHeader>>, std::io::Error> {
-    let accounts = rpc.get_multiple_accounts(addresses)
-      .map_err(|e| std::io::Error::other(e.to_string()))?;
-    let mut decoded_accounts: Vec<crate::shared::DecodedAccount<AuctionHistogramHeader>> = Vec::new();
+    let accounts = rpc
+        .get_multiple_accounts(addresses)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let mut decoded_accounts: Vec<crate::shared::DecodedAccount<AuctionHistogramHeader>> =
+        Vec::new();
     for i in 0..addresses.len() {
-      let address = addresses[i];
-      let account = accounts[i].as_ref()
-        .ok_or(std::io::Error::other(format!("Account not found: {address}")))?;
-      let data = AuctionHistogramHeader::from_bytes(&account.data)?;
-      decoded_accounts.push(crate::shared::DecodedAccount { address, account: account.clone(), data });
+        let address = addresses[i];
+        let account = accounts[i].as_ref().ok_or(std::io::Error::other(format!(
+            "Account not found: {address}"
+        )))?;
+        let data = AuctionHistogramHeader::from_bytes(&account.data)?;
+        decoded_accounts.push(crate::shared::DecodedAccount {
+            address,
+            account: account.clone(),
+            data,
+        });
     }
     Ok(decoded_accounts)
 }
 
 #[cfg(feature = "fetch")]
 pub fn fetch_maybe_auction_histogram_header(
-  rpc: &solana_rpc_client::rpc_client::RpcClient,
-  address: &solana_address::Address,
+    rpc: &solana_rpc_client::rpc_client::RpcClient,
+    address: &solana_address::Address,
 ) -> Result<crate::shared::MaybeAccount<AuctionHistogramHeader>, std::io::Error> {
     let accounts = fetch_all_maybe_auction_histogram_header(rpc, &[*address])?;
     Ok(accounts[0].clone())
@@ -113,49 +108,52 @@ pub fn fetch_maybe_auction_histogram_header(
 
 #[cfg(feature = "fetch")]
 pub fn fetch_all_maybe_auction_histogram_header(
-  rpc: &solana_rpc_client::rpc_client::RpcClient,
-  addresses: &[solana_address::Address],
+    rpc: &solana_rpc_client::rpc_client::RpcClient,
+    addresses: &[solana_address::Address],
 ) -> Result<Vec<crate::shared::MaybeAccount<AuctionHistogramHeader>>, std::io::Error> {
-    let accounts = rpc.get_multiple_accounts(addresses)
-      .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let accounts = rpc
+        .get_multiple_accounts(addresses)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
     let mut decoded_accounts: Vec<crate::shared::MaybeAccount<AuctionHistogramHeader>> = Vec::new();
     for i in 0..addresses.len() {
-      let address = addresses[i];
-      if let Some(account) = accounts[i].as_ref() {
-        let data = AuctionHistogramHeader::from_bytes(&account.data)?;
-        decoded_accounts.push(crate::shared::MaybeAccount::Exists(crate::shared::DecodedAccount { address, account: account.clone(), data }));
-      } else {
-        decoded_accounts.push(crate::shared::MaybeAccount::NotFound(address));
-      }
+        let address = addresses[i];
+        if let Some(account) = accounts[i].as_ref() {
+            let data = AuctionHistogramHeader::from_bytes(&account.data)?;
+            decoded_accounts.push(crate::shared::MaybeAccount::Exists(
+                crate::shared::DecodedAccount {
+                    address,
+                    account: account.clone(),
+                    data,
+                },
+            ));
+        } else {
+            decoded_accounts.push(crate::shared::MaybeAccount::NotFound(address));
+        }
     }
-  Ok(decoded_accounts)
+    Ok(decoded_accounts)
 }
 
-  #[cfg(feature = "anchor")]
-  impl anchor_lang::AccountDeserialize for AuctionHistogramHeader {
-      fn try_deserialize_unchecked(buf: &mut &[u8]) -> anchor_lang::Result<Self> {
+#[cfg(feature = "anchor")]
+impl anchor_lang::AccountDeserialize for AuctionHistogramHeader {
+    fn try_deserialize_unchecked(buf: &mut &[u8]) -> anchor_lang::Result<Self> {
         Ok(Self::deserialize(buf)?)
-      }
-  }
+    }
+}
 
-  #[cfg(feature = "anchor")]
-  impl anchor_lang::AccountSerialize for AuctionHistogramHeader {}
+#[cfg(feature = "anchor")]
+impl anchor_lang::AccountSerialize for AuctionHistogramHeader {}
 
-  #[cfg(feature = "anchor")]
-  impl anchor_lang::Owner for AuctionHistogramHeader {
-      fn owner() -> anchor_lang::solana_program::pubkey::Pubkey {
-        anchor_lang::solana_program::pubkey::Pubkey::from(
-          crate::TEMPO_PROGRAM_ID.to_bytes()
-        )
-      }
-  }
+#[cfg(feature = "anchor")]
+impl anchor_lang::Owner for AuctionHistogramHeader {
+    fn owner() -> anchor_lang::solana_program::pubkey::Pubkey {
+        anchor_lang::solana_program::pubkey::Pubkey::from(crate::TEMPO_PROGRAM_ID.to_bytes())
+    }
+}
 
-  #[cfg(feature = "anchor-idl-build")]
-  impl anchor_lang::IdlBuild for AuctionHistogramHeader {}
+#[cfg(feature = "anchor-idl-build")]
+impl anchor_lang::IdlBuild for AuctionHistogramHeader {}
 
-  
-  #[cfg(feature = "anchor-idl-build")]
-  impl anchor_lang::Discriminator for AuctionHistogramHeader {
+#[cfg(feature = "anchor-idl-build")]
+impl anchor_lang::Discriminator for AuctionHistogramHeader {
     const DISCRIMINATOR: &[u8] = &[0; 8];
-  }
-
+}

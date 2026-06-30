@@ -5,16 +5,14 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use solana_address::Address;
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
+use solana_address::Address;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
 pub struct OrderCancelledEvent {
-pub market: Address,
-pub trader: Address,
-pub order_id: u64,
-pub auction_id: u64,
+    pub market: Address,
+    pub trader: Address,
+    pub order_id: u64,
+    pub auction_id: u64,
 }
-
-

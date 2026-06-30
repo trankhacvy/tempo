@@ -5,23 +5,21 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use solana_address::Address;
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
+use solana_address::Address;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
 pub struct Order {
-pub price: u64,
-pub quantity: u64,
-pub remaining: u64,
-pub order_id: u64,
-pub trader: Address,
-pub side: u8,
-pub is_maker: u8,
-pub status: u8,
-pub padding: [u8; 5],
-pub cum_before: u64,
-pub reserved_margin: u64,
+    pub price: u64,
+    pub quantity: u64,
+    pub remaining: u64,
+    pub order_id: u64,
+    pub trader: Address,
+    pub side: u8,
+    pub is_maker: u8,
+    pub status: u8,
+    pub padding: [u8; 5],
+    pub cum_before: u64,
+    pub reserved_margin: u64,
 }
-
-

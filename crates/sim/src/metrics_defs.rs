@@ -6,7 +6,10 @@ pub fn register() {
         "sim_orders_submitted_total",
         "Trader order submissions, labelled by result (ok|benign|error|skip)."
     );
-    describe_gauge!("sim_inventory", "The trader's current signed position size.");
+    describe_gauge!(
+        "sim_inventory",
+        "The trader's current signed position size."
+    );
     describe_gauge!(
         "sim_free_collateral",
         "The trader's free collateral (unmetered markets report a sentinel)."

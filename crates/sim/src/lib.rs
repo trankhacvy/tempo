@@ -52,7 +52,12 @@ pub struct TraderCtx {
 }
 
 /// Run one trader loop until `shutdown` flips true.
-pub async fn run(ctx: TraderCtx, health: Health, poll: Duration, mut shutdown: watch::Receiver<bool>) {
+pub async fn run(
+    ctx: TraderCtx,
+    health: Health,
+    poll: Duration,
+    mut shutdown: watch::Receiver<bool>,
+) {
     ensure_accounts(&ctx).await;
     let mut backoff = Backoff::new();
     let mut last_round: Option<u64> = None;

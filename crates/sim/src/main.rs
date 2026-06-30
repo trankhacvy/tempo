@@ -29,7 +29,10 @@ async fn main() -> Result<(), SimError> {
 
     let pool = RpcPool::from_urls(&cfg.common.rpc_url, cfg.common.commitment_config())
         .map_err(SimError::Common)?;
-    let client = Arc::new(TempoClient::new(pool, cfg.common.priority_fee_micro_lamports));
+    let client = Arc::new(TempoClient::new(
+        pool,
+        cfg.common.priority_fee_micro_lamports,
+    ));
 
     let market: Pubkey = cfg
         .common
@@ -40,13 +43,13 @@ async fn main() -> Result<(), SimError> {
         .map_err(|_| SimError::Config("TEMPO_MARKET is not a valid pubkey".into()))?;
     let pdas = MarketPdas::derive(market);
 
-    let collateral_mint = match cfg.common.collateral_mint.as_deref() {
-        Some(s) => Some(
-            s.parse::<Pubkey>()
-                .map_err(|_| SimError::Config("TEMPO_COLLATERAL_MINT is not a valid pubkey".into()))?,
-        ),
-        None => None,
-    };
+    let collateral_mint =
+        match cfg.common.collateral_mint.as_deref() {
+            Some(s) => Some(s.parse::<Pubkey>().map_err(|_| {
+                SimError::Config("TEMPO_COLLATERAL_MINT is not a valid pubkey".into())
+            })?),
+            None => None,
+        };
     let ctx = TraderCtx {
         client,
         trader,

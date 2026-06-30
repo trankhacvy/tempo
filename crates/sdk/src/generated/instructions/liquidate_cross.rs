@@ -5,563 +5,562 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
 
 pub const LIQUIDATE_CROSS_DISCRIMINATOR: u8 = 25;
 
 /// Accounts.
 #[derive(Debug)]
 pub struct LiquidateCross {
-            /// Permissionless caller (paid the penalty)
-
-    
-              
-          pub liquidator: solana_address::Address,
-                /// Owner's group
-
-    
-              
-          pub margin_account: solana_address::Address,
-                /// Owner's shared ledger
-
-    
-              
-          pub user_collateral: solana_address::Address,
-                /// Per-collateral vault
-
-    
-              
-          pub vault: solana_address::Address,
-                /// Liquidator's ledger
-
-    
-              
-          pub liquidator_collateral: solana_address::Address,
-                /// Event authority PDA
-
-    
-              
-          pub event_authority: solana_address::Address,
-                /// Tempo program (self-CPI)
-
-    
-              
-          pub tempo_program: solana_address::Address,
-      }
+    /// Permissionless caller (paid the penalty)
+    pub liquidator: solana_address::Address,
+    /// Owner's group
+    pub margin_account: solana_address::Address,
+    /// Owner's shared ledger
+    pub user_collateral: solana_address::Address,
+    /// Per-collateral vault
+    pub vault: solana_address::Address,
+    /// Liquidator's ledger
+    pub liquidator_collateral: solana_address::Address,
+    /// Event authority PDA
+    pub event_authority: solana_address::Address,
+    /// Tempo program (self-CPI)
+    pub tempo_program: solana_address::Address,
+}
 
 impl LiquidateCross {
-  pub fn instruction(&self, args: LiquidateCrossInstructionArgs) -> solana_instruction::Instruction {
-    self.instruction_with_remaining_accounts(args, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn instruction_with_remaining_accounts(&self, args: LiquidateCrossInstructionArgs, remaining_accounts: &[solana_instruction::AccountMeta]) -> solana_instruction::Instruction {
-    let mut accounts = Vec::with_capacity(7+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.liquidator,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.margin_account,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.user_collateral,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.vault,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.liquidator_collateral,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.event_authority,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.tempo_program,
-            false
-          ));
-                      accounts.extend_from_slice(remaining_accounts);
-    let mut data = LiquidateCrossInstructionData::new().try_to_vec().unwrap();
-          let mut args = args.try_to_vec().unwrap();
-      data.append(&mut args);
-    
-    solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
+    pub fn instruction(
+        &self,
+        args: LiquidateCrossInstructionArgs,
+    ) -> solana_instruction::Instruction {
+        self.instruction_with_remaining_accounts(args, &[])
     }
-  }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn instruction_with_remaining_accounts(
+        &self,
+        args: LiquidateCrossInstructionArgs,
+        remaining_accounts: &[solana_instruction::AccountMeta],
+    ) -> solana_instruction::Instruction {
+        let mut accounts = Vec::with_capacity(7 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.liquidator,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.margin_account,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            self.user_collateral,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.vault, false));
+        accounts.push(solana_instruction::AccountMeta::new(
+            self.liquidator_collateral,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.event_authority,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.tempo_program,
+            false,
+        ));
+        accounts.extend_from_slice(remaining_accounts);
+        let mut data = LiquidateCrossInstructionData::new().try_to_vec().unwrap();
+        let mut args = args.try_to_vec().unwrap();
+        data.append(&mut args);
+
+        solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct LiquidateCrossInstructionData {
-            discriminator: u8,
-            }
+pub struct LiquidateCrossInstructionData {
+    discriminator: u8,
+}
 
 impl LiquidateCrossInstructionData {
-  pub fn new() -> Self {
-    Self {
-                        discriminator: 25,
-                                }
-  }
+    pub fn new() -> Self {
+        Self { discriminator: 25 }
+    }
 
     pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
-  }
+        borsh::to_vec(self)
+    }
+}
 
 impl Default for LiquidateCrossInstructionData {
-  fn default() -> Self {
-    Self::new()
-  }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct LiquidateCrossInstructionArgs {
-                  pub live_mask: u8,
-      }
-
-impl LiquidateCrossInstructionArgs {
-  pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
+pub struct LiquidateCrossInstructionArgs {
+    pub live_mask: u8,
 }
 
+impl LiquidateCrossInstructionArgs {
+    pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
+        borsh::to_vec(self)
+    }
+}
 
 /// Instruction builder for `LiquidateCross`.
 ///
 /// ### Accounts:
 ///
-                ///   0. `[signer]` liquidator
-          ///   1. `[]` margin_account
-                ///   2. `[writable]` user_collateral
-                ///   3. `[writable]` vault
-                ///   4. `[writable]` liquidator_collateral
-          ///   5. `[]` event_authority
-          ///   6. `[]` tempo_program
+///   0. `[signer]` liquidator
+///   1. `[]` margin_account
+///   2. `[writable]` user_collateral
+///   3. `[writable]` vault
+///   4. `[writable]` liquidator_collateral
+///   5. `[]` event_authority
+///   6. `[]` tempo_program
 #[derive(Clone, Debug, Default)]
 pub struct LiquidateCrossBuilder {
-            liquidator: Option<solana_address::Address>,
-                margin_account: Option<solana_address::Address>,
-                user_collateral: Option<solana_address::Address>,
-                vault: Option<solana_address::Address>,
-                liquidator_collateral: Option<solana_address::Address>,
-                event_authority: Option<solana_address::Address>,
-                tempo_program: Option<solana_address::Address>,
-                        live_mask: Option<u8>,
-        __remaining_accounts: Vec<solana_instruction::AccountMeta>,
+    liquidator: Option<solana_address::Address>,
+    margin_account: Option<solana_address::Address>,
+    user_collateral: Option<solana_address::Address>,
+    vault: Option<solana_address::Address>,
+    liquidator_collateral: Option<solana_address::Address>,
+    event_authority: Option<solana_address::Address>,
+    tempo_program: Option<solana_address::Address>,
+    live_mask: Option<u8>,
+    __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
 impl LiquidateCrossBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
-            /// Permissionless caller (paid the penalty)
-#[inline(always)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Permissionless caller (paid the penalty)
+    #[inline(always)]
     pub fn liquidator(&mut self, liquidator: solana_address::Address) -> &mut Self {
-                        self.liquidator = Some(liquidator);
-                    self
+        self.liquidator = Some(liquidator);
+        self
     }
-            /// Owner's group
-#[inline(always)]
+    /// Owner's group
+    #[inline(always)]
     pub fn margin_account(&mut self, margin_account: solana_address::Address) -> &mut Self {
-                        self.margin_account = Some(margin_account);
-                    self
+        self.margin_account = Some(margin_account);
+        self
     }
-            /// Owner's shared ledger
-#[inline(always)]
+    /// Owner's shared ledger
+    #[inline(always)]
     pub fn user_collateral(&mut self, user_collateral: solana_address::Address) -> &mut Self {
-                        self.user_collateral = Some(user_collateral);
-                    self
+        self.user_collateral = Some(user_collateral);
+        self
     }
-            /// Per-collateral vault
-#[inline(always)]
+    /// Per-collateral vault
+    #[inline(always)]
     pub fn vault(&mut self, vault: solana_address::Address) -> &mut Self {
-                        self.vault = Some(vault);
-                    self
+        self.vault = Some(vault);
+        self
     }
-            /// Liquidator's ledger
-#[inline(always)]
-    pub fn liquidator_collateral(&mut self, liquidator_collateral: solana_address::Address) -> &mut Self {
-                        self.liquidator_collateral = Some(liquidator_collateral);
-                    self
+    /// Liquidator's ledger
+    #[inline(always)]
+    pub fn liquidator_collateral(
+        &mut self,
+        liquidator_collateral: solana_address::Address,
+    ) -> &mut Self {
+        self.liquidator_collateral = Some(liquidator_collateral);
+        self
     }
-            /// Event authority PDA
-#[inline(always)]
+    /// Event authority PDA
+    #[inline(always)]
     pub fn event_authority(&mut self, event_authority: solana_address::Address) -> &mut Self {
-                        self.event_authority = Some(event_authority);
-                    self
+        self.event_authority = Some(event_authority);
+        self
     }
-            /// Tempo program (self-CPI)
-#[inline(always)]
+    /// Tempo program (self-CPI)
+    #[inline(always)]
     pub fn tempo_program(&mut self, tempo_program: solana_address::Address) -> &mut Self {
-                        self.tempo_program = Some(tempo_program);
-                    self
+        self.tempo_program = Some(tempo_program);
+        self
     }
-                    #[inline(always)]
-      pub fn live_mask(&mut self, live_mask: u8) -> &mut Self {
+    #[inline(always)]
+    pub fn live_mask(&mut self, live_mask: u8) -> &mut Self {
         self.live_mask = Some(live_mask);
         self
-      }
-        /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
-    self.__remaining_accounts.push(account);
-    self
-  }
-  /// Add additional accounts to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[solana_instruction::AccountMeta]) -> &mut Self {
-    self.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[allow(clippy::clone_on_copy)]
-  pub fn instruction(&self) -> solana_instruction::Instruction {
-    let accounts = LiquidateCross {
-                              liquidator: self.liquidator.expect("liquidator is not set"),
-                                        margin_account: self.margin_account.expect("margin_account is not set"),
-                                        user_collateral: self.user_collateral.expect("user_collateral is not set"),
-                                        vault: self.vault.expect("vault is not set"),
-                                        liquidator_collateral: self.liquidator_collateral.expect("liquidator_collateral is not set"),
-                                        event_authority: self.event_authority.expect("event_authority is not set"),
-                                        tempo_program: self.tempo_program.expect("tempo_program is not set"),
-                      };
-          let args = LiquidateCrossInstructionArgs {
-                                                              live_mask: self.live_mask.clone().expect("live_mask is not set"),
-                                    };
-    
-    accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
-  }
+    }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
+        self.__remaining_accounts.push(account);
+        self
+    }
+    /// Add additional accounts to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[solana_instruction::AccountMeta],
+    ) -> &mut Self {
+        self.__remaining_accounts.extend_from_slice(accounts);
+        self
+    }
+    #[allow(clippy::clone_on_copy)]
+    pub fn instruction(&self) -> solana_instruction::Instruction {
+        let accounts = LiquidateCross {
+            liquidator: self.liquidator.expect("liquidator is not set"),
+            margin_account: self.margin_account.expect("margin_account is not set"),
+            user_collateral: self.user_collateral.expect("user_collateral is not set"),
+            vault: self.vault.expect("vault is not set"),
+            liquidator_collateral: self
+                .liquidator_collateral
+                .expect("liquidator_collateral is not set"),
+            event_authority: self.event_authority.expect("event_authority is not set"),
+            tempo_program: self.tempo_program.expect("tempo_program is not set"),
+        };
+        let args = LiquidateCrossInstructionArgs {
+            live_mask: self.live_mask.clone().expect("live_mask is not set"),
+        };
+
+        accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
+    }
 }
 
-  /// `liquidate_cross` CPI accounts.
-  pub struct LiquidateCrossCpiAccounts<'a, 'b> {
-                  /// Permissionless caller (paid the penalty)
-
-      
-                    
-              pub liquidator: &'b solana_account_info::AccountInfo<'a>,
-                        /// Owner's group
-
-      
-                    
-              pub margin_account: &'b solana_account_info::AccountInfo<'a>,
-                        /// Owner's shared ledger
-
-      
-                    
-              pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
-                        /// Per-collateral vault
-
-      
-                    
-              pub vault: &'b solana_account_info::AccountInfo<'a>,
-                        /// Liquidator's ledger
-
-      
-                    
-              pub liquidator_collateral: &'b solana_account_info::AccountInfo<'a>,
-                        /// Event authority PDA
-
-      
-                    
-              pub event_authority: &'b solana_account_info::AccountInfo<'a>,
-                        /// Tempo program (self-CPI)
-
-      
-                    
-              pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
-            }
+/// `liquidate_cross` CPI accounts.
+pub struct LiquidateCrossCpiAccounts<'a, 'b> {
+    /// Permissionless caller (paid the penalty)
+    pub liquidator: &'b solana_account_info::AccountInfo<'a>,
+    /// Owner's group
+    pub margin_account: &'b solana_account_info::AccountInfo<'a>,
+    /// Owner's shared ledger
+    pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
+    /// Per-collateral vault
+    pub vault: &'b solana_account_info::AccountInfo<'a>,
+    /// Liquidator's ledger
+    pub liquidator_collateral: &'b solana_account_info::AccountInfo<'a>,
+    /// Event authority PDA
+    pub event_authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Tempo program (self-CPI)
+    pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
+}
 
 /// `liquidate_cross` CPI instruction.
 pub struct LiquidateCrossCpi<'a, 'b> {
-  /// The program to invoke.
-  pub __program: &'b solana_account_info::AccountInfo<'a>,
-            /// Permissionless caller (paid the penalty)
-
-    
-              
-          pub liquidator: &'b solana_account_info::AccountInfo<'a>,
-                /// Owner's group
-
-    
-              
-          pub margin_account: &'b solana_account_info::AccountInfo<'a>,
-                /// Owner's shared ledger
-
-    
-              
-          pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
-                /// Per-collateral vault
-
-    
-              
-          pub vault: &'b solana_account_info::AccountInfo<'a>,
-                /// Liquidator's ledger
-
-    
-              
-          pub liquidator_collateral: &'b solana_account_info::AccountInfo<'a>,
-                /// Event authority PDA
-
-    
-              
-          pub event_authority: &'b solana_account_info::AccountInfo<'a>,
-                /// Tempo program (self-CPI)
-
-    
-              
-          pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
-            /// The arguments for the instruction.
+    /// The program to invoke.
+    pub __program: &'b solana_account_info::AccountInfo<'a>,
+    /// Permissionless caller (paid the penalty)
+    pub liquidator: &'b solana_account_info::AccountInfo<'a>,
+    /// Owner's group
+    pub margin_account: &'b solana_account_info::AccountInfo<'a>,
+    /// Owner's shared ledger
+    pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
+    /// Per-collateral vault
+    pub vault: &'b solana_account_info::AccountInfo<'a>,
+    /// Liquidator's ledger
+    pub liquidator_collateral: &'b solana_account_info::AccountInfo<'a>,
+    /// Event authority PDA
+    pub event_authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Tempo program (self-CPI)
+    pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
+    /// The arguments for the instruction.
     pub __args: LiquidateCrossInstructionArgs,
-  }
+}
 
 impl<'a, 'b> LiquidateCrossCpi<'a, 'b> {
-  pub fn new(
-    program: &'b solana_account_info::AccountInfo<'a>,
-          accounts: LiquidateCrossCpiAccounts<'a, 'b>,
-              args: LiquidateCrossInstructionArgs,
-      ) -> Self {
-    Self {
-      __program: program,
-              liquidator: accounts.liquidator,
-              margin_account: accounts.margin_account,
-              user_collateral: accounts.user_collateral,
-              vault: accounts.vault,
-              liquidator_collateral: accounts.liquidator_collateral,
-              event_authority: accounts.event_authority,
-              tempo_program: accounts.tempo_program,
-                    __args: args,
-          }
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], &[])
-  }
-  #[inline(always)]
-  pub fn invoke_with_remaining_accounts(&self, remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
-  }
-  #[inline(always)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed_with_remaining_accounts(
-    &self,
-    signers_seeds: &[&[&[u8]]],
-    remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]
-  ) -> solana_program_error::ProgramResult {
-    let mut accounts = Vec::with_capacity(7+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.liquidator.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.margin_account.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.user_collateral.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.vault.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.liquidator_collateral.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.event_authority.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.tempo_program.key,
-            false
-          ));
-                      remaining_accounts.iter().for_each(|remaining_account| {
-      accounts.push(solana_instruction::AccountMeta {
-          pubkey: *remaining_account.0.key,
-          is_signer: remaining_account.1,
-          is_writable: remaining_account.2,
-      })
-    });
-    let mut data = LiquidateCrossInstructionData::new().try_to_vec().unwrap();
-          let mut args = self.__args.try_to_vec().unwrap();
-      data.append(&mut args);
-    
-    let instruction = solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
-    };
-    let mut account_infos = Vec::with_capacity(8 + remaining_accounts.len());
-    account_infos.push(self.__program.clone());
-                  account_infos.push(self.liquidator.clone());
-                        account_infos.push(self.margin_account.clone());
-                        account_infos.push(self.user_collateral.clone());
-                        account_infos.push(self.vault.clone());
-                        account_infos.push(self.liquidator_collateral.clone());
-                        account_infos.push(self.event_authority.clone());
-                        account_infos.push(self.tempo_program.clone());
-              remaining_accounts.iter().for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
-
-    if signers_seeds.is_empty() {
-      solana_cpi::invoke(&instruction, &account_infos)
-    } else {
-      solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+    pub fn new(
+        program: &'b solana_account_info::AccountInfo<'a>,
+        accounts: LiquidateCrossCpiAccounts<'a, 'b>,
+        args: LiquidateCrossInstructionArgs,
+    ) -> Self {
+        Self {
+            __program: program,
+            liquidator: accounts.liquidator,
+            margin_account: accounts.margin_account,
+            user_collateral: accounts.user_collateral,
+            vault: accounts.vault,
+            liquidator_collateral: accounts.liquidator_collateral,
+            event_authority: accounts.event_authority,
+            tempo_program: accounts.tempo_program,
+            __args: args,
+        }
     }
-  }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], &[])
+    }
+    #[inline(always)]
+    pub fn invoke_with_remaining_accounts(
+        &self,
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
+    }
+    #[inline(always)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed_with_remaining_accounts(
+        &self,
+        signers_seeds: &[&[&[u8]]],
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        let mut accounts = Vec::with_capacity(7 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.liquidator.key,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.margin_account.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.user_collateral.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(*self.vault.key, false));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.liquidator_collateral.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.event_authority.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.tempo_program.key,
+            false,
+        ));
+        remaining_accounts.iter().for_each(|remaining_account| {
+            accounts.push(solana_instruction::AccountMeta {
+                pubkey: *remaining_account.0.key,
+                is_signer: remaining_account.1,
+                is_writable: remaining_account.2,
+            })
+        });
+        let mut data = LiquidateCrossInstructionData::new().try_to_vec().unwrap();
+        let mut args = self.__args.try_to_vec().unwrap();
+        data.append(&mut args);
+
+        let instruction = solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        };
+        let mut account_infos = Vec::with_capacity(8 + remaining_accounts.len());
+        account_infos.push(self.__program.clone());
+        account_infos.push(self.liquidator.clone());
+        account_infos.push(self.margin_account.clone());
+        account_infos.push(self.user_collateral.clone());
+        account_infos.push(self.vault.clone());
+        account_infos.push(self.liquidator_collateral.clone());
+        account_infos.push(self.event_authority.clone());
+        account_infos.push(self.tempo_program.clone());
+        remaining_accounts
+            .iter()
+            .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
+
+        if signers_seeds.is_empty() {
+            solana_cpi::invoke(&instruction, &account_infos)
+        } else {
+            solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+        }
+    }
 }
 
 /// Instruction builder for `LiquidateCross` via CPI.
 ///
 /// ### Accounts:
 ///
-                ///   0. `[signer]` liquidator
-          ///   1. `[]` margin_account
-                ///   2. `[writable]` user_collateral
-                ///   3. `[writable]` vault
-                ///   4. `[writable]` liquidator_collateral
-          ///   5. `[]` event_authority
-          ///   6. `[]` tempo_program
+///   0. `[signer]` liquidator
+///   1. `[]` margin_account
+///   2. `[writable]` user_collateral
+///   3. `[writable]` vault
+///   4. `[writable]` liquidator_collateral
+///   5. `[]` event_authority
+///   6. `[]` tempo_program
 #[derive(Clone, Debug)]
 pub struct LiquidateCrossCpiBuilder<'a, 'b> {
-  instruction: Box<LiquidateCrossCpiBuilderInstruction<'a, 'b>>,
+    instruction: Box<LiquidateCrossCpiBuilderInstruction<'a, 'b>>,
 }
 
 impl<'a, 'b> LiquidateCrossCpiBuilder<'a, 'b> {
-  pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
-    let instruction = Box::new(LiquidateCrossCpiBuilderInstruction {
-      __program: program,
-              liquidator: None,
-              margin_account: None,
-              user_collateral: None,
-              vault: None,
-              liquidator_collateral: None,
-              event_authority: None,
-              tempo_program: None,
-                                            live_mask: None,
-                    __remaining_accounts: Vec::new(),
-    });
-    Self { instruction }
-  }
-      /// Permissionless caller (paid the penalty)
-#[inline(always)]
-    pub fn liquidator(&mut self, liquidator: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.liquidator = Some(liquidator);
-                    self
+    pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
+        let instruction = Box::new(LiquidateCrossCpiBuilderInstruction {
+            __program: program,
+            liquidator: None,
+            margin_account: None,
+            user_collateral: None,
+            vault: None,
+            liquidator_collateral: None,
+            event_authority: None,
+            tempo_program: None,
+            live_mask: None,
+            __remaining_accounts: Vec::new(),
+        });
+        Self { instruction }
     }
-      /// Owner's group
-#[inline(always)]
-    pub fn margin_account(&mut self, margin_account: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.margin_account = Some(margin_account);
-                    self
+    /// Permissionless caller (paid the penalty)
+    #[inline(always)]
+    pub fn liquidator(
+        &mut self,
+        liquidator: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.liquidator = Some(liquidator);
+        self
     }
-      /// Owner's shared ledger
-#[inline(always)]
-    pub fn user_collateral(&mut self, user_collateral: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.user_collateral = Some(user_collateral);
-                    self
+    /// Owner's group
+    #[inline(always)]
+    pub fn margin_account(
+        &mut self,
+        margin_account: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.margin_account = Some(margin_account);
+        self
     }
-      /// Per-collateral vault
-#[inline(always)]
+    /// Owner's shared ledger
+    #[inline(always)]
+    pub fn user_collateral(
+        &mut self,
+        user_collateral: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.user_collateral = Some(user_collateral);
+        self
+    }
+    /// Per-collateral vault
+    #[inline(always)]
     pub fn vault(&mut self, vault: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.vault = Some(vault);
-                    self
+        self.instruction.vault = Some(vault);
+        self
     }
-      /// Liquidator's ledger
-#[inline(always)]
-    pub fn liquidator_collateral(&mut self, liquidator_collateral: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.liquidator_collateral = Some(liquidator_collateral);
-                    self
+    /// Liquidator's ledger
+    #[inline(always)]
+    pub fn liquidator_collateral(
+        &mut self,
+        liquidator_collateral: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.liquidator_collateral = Some(liquidator_collateral);
+        self
     }
-      /// Event authority PDA
-#[inline(always)]
-    pub fn event_authority(&mut self, event_authority: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.event_authority = Some(event_authority);
-                    self
+    /// Event authority PDA
+    #[inline(always)]
+    pub fn event_authority(
+        &mut self,
+        event_authority: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.event_authority = Some(event_authority);
+        self
     }
-      /// Tempo program (self-CPI)
-#[inline(always)]
-    pub fn tempo_program(&mut self, tempo_program: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.tempo_program = Some(tempo_program);
-                    self
+    /// Tempo program (self-CPI)
+    #[inline(always)]
+    pub fn tempo_program(
+        &mut self,
+        tempo_program: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.tempo_program = Some(tempo_program);
+        self
     }
-                    #[inline(always)]
-      pub fn live_mask(&mut self, live_mask: u8) -> &mut Self {
+    #[inline(always)]
+    pub fn live_mask(&mut self, live_mask: u8) -> &mut Self {
         self.instruction.live_mask = Some(live_mask);
         self
-      }
-        /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: &'b solana_account_info::AccountInfo<'a>, is_writable: bool, is_signer: bool) -> &mut Self {
-    self.instruction.__remaining_accounts.push((account, is_writable, is_signer));
-    self
-  }
-  /// Add additional accounts to the instruction.
-  ///
-  /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
-  /// and a `bool` indicating whether the account is a signer or not.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> &mut Self {
-    self.instruction.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed(&[])
-  }
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-          let args = LiquidateCrossInstructionArgs {
-                                                              live_mask: self.instruction.live_mask.clone().expect("live_mask is not set"),
-                                    };
+    }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(
+        &mut self,
+        account: &'b solana_account_info::AccountInfo<'a>,
+        is_writable: bool,
+        is_signer: bool,
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .push((account, is_writable, is_signer));
+        self
+    }
+    /// Add additional accounts to the instruction.
+    ///
+    /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
+    /// and a `bool` indicating whether the account is a signer or not.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .extend_from_slice(accounts);
+        self
+    }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed(&[])
+    }
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        let args = LiquidateCrossInstructionArgs {
+            live_mask: self
+                .instruction
+                .live_mask
+                .clone()
+                .expect("live_mask is not set"),
+        };
         let instruction = LiquidateCrossCpi {
-        __program: self.instruction.__program,
-                  
-          liquidator: self.instruction.liquidator.expect("liquidator is not set"),
-                  
-          margin_account: self.instruction.margin_account.expect("margin_account is not set"),
-                  
-          user_collateral: self.instruction.user_collateral.expect("user_collateral is not set"),
-                  
-          vault: self.instruction.vault.expect("vault is not set"),
-                  
-          liquidator_collateral: self.instruction.liquidator_collateral.expect("liquidator_collateral is not set"),
-                  
-          event_authority: self.instruction.event_authority.expect("event_authority is not set"),
-                  
-          tempo_program: self.instruction.tempo_program.expect("tempo_program is not set"),
-                          __args: args,
-            };
-    instruction.invoke_signed_with_remaining_accounts(signers_seeds, &self.instruction.__remaining_accounts)
-  }
+            __program: self.instruction.__program,
+
+            liquidator: self.instruction.liquidator.expect("liquidator is not set"),
+
+            margin_account: self
+                .instruction
+                .margin_account
+                .expect("margin_account is not set"),
+
+            user_collateral: self
+                .instruction
+                .user_collateral
+                .expect("user_collateral is not set"),
+
+            vault: self.instruction.vault.expect("vault is not set"),
+
+            liquidator_collateral: self
+                .instruction
+                .liquidator_collateral
+                .expect("liquidator_collateral is not set"),
+
+            event_authority: self
+                .instruction
+                .event_authority
+                .expect("event_authority is not set"),
+
+            tempo_program: self
+                .instruction
+                .tempo_program
+                .expect("tempo_program is not set"),
+            __args: args,
+        };
+        instruction.invoke_signed_with_remaining_accounts(
+            signers_seeds,
+            &self.instruction.__remaining_accounts,
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
 struct LiquidateCrossCpiBuilderInstruction<'a, 'b> {
-  __program: &'b solana_account_info::AccountInfo<'a>,
-            liquidator: Option<&'b solana_account_info::AccountInfo<'a>>,
-                margin_account: Option<&'b solana_account_info::AccountInfo<'a>>,
-                user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
-                vault: Option<&'b solana_account_info::AccountInfo<'a>>,
-                liquidator_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
-                event_authority: Option<&'b solana_account_info::AccountInfo<'a>>,
-                tempo_program: Option<&'b solana_account_info::AccountInfo<'a>>,
-                        live_mask: Option<u8>,
-        /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
-  __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
+    __program: &'b solana_account_info::AccountInfo<'a>,
+    liquidator: Option<&'b solana_account_info::AccountInfo<'a>>,
+    margin_account: Option<&'b solana_account_info::AccountInfo<'a>>,
+    user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    vault: Option<&'b solana_account_info::AccountInfo<'a>>,
+    liquidator_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    event_authority: Option<&'b solana_account_info::AccountInfo<'a>>,
+    tempo_program: Option<&'b solana_account_info::AccountInfo<'a>>,
+    live_mask: Option<u8>,
+    /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
+    __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }
-

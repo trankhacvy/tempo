@@ -14,7 +14,9 @@ use solana_system_interface::instruction as system_instruction;
 
 use tempo_common::load_keypair_file;
 use tempo_sdk::accounts::UserCollateralView;
-use tempo_sdk::ix::{InitVault, InitVaultInstructionArgs, InitializeMarket, InitializeMarketInstructionArgs};
+use tempo_sdk::ix::{
+    InitVault, InitVaultInstructionArgs, InitializeMarket, InitializeMarketInstructionArgs,
+};
 use tempo_sdk::{ix, pda, MarketPdas, SOL_USD_FEED_ID, TEMPO_PROGRAM_ID};
 
 use crate::artifact::{AgentEntry, SimArtifact, TraderEntry};
@@ -177,7 +179,11 @@ fn account_exists(rpc: &RpcClient, key: &Pubkey) -> bool {
     rpc.get_account(key).is_ok()
 }
 
-fn ensure_mint(rpc: &RpcClient, master: &Keypair, cfg: &ProvisionConfig) -> Result<Pubkey, SimError> {
+fn ensure_mint(
+    rpc: &RpcClient,
+    master: &Keypair,
+    cfg: &ProvisionConfig,
+) -> Result<Pubkey, SimError> {
     let (mint_kp, _) = load_or_create(&cfg.keys_dir, "collateral-mint")?;
     if !account_exists(rpc, &mint_kp.pubkey()) {
         spl::create_mint(rpc, master, &mint_kp, cfg.collateral_decimals)?;

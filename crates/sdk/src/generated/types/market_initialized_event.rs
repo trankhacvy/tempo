@@ -5,17 +5,15 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use solana_address::Address;
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
+use solana_address::Address;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
 pub struct MarketInitializedEvent {
-pub market: Address,
-pub authority: Address,
-pub tick_size: u64,
-pub num_ticks: u32,
-pub orders_per_auction_cap: u32,
+    pub market: Address,
+    pub authority: Address,
+    pub tick_size: u64,
+    pub num_ticks: u32,
+    pub orders_per_auction_cap: u32,
 }
-
-

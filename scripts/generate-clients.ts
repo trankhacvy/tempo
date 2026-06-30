@@ -42,7 +42,7 @@ fs.rmSync(path.join(rustClientDir, 'src', 'generated'), { recursive: true, force
 codama.accept(
     renderRustVisitor(rustClientDir, {
         deleteFolderBeforeRendering: false,
-        formatCode: false,
+        formatCode: true,
     }),
 );
 

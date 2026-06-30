@@ -48,7 +48,9 @@ pub async fn run(
                 sol = lamports as f64 / LAMPORTS_PER_SOL as f64,
                 "master airdrop requested"
             ),
-            Err(e) => tracing::warn!(%master, error = %e, "master airdrop failed (devnet rate-limited?)"),
+            Err(e) => {
+                tracing::warn!(%master, error = %e, "master airdrop failed (devnet rate-limited?)")
+            }
         }
     }
 }
@@ -80,7 +82,11 @@ pub async fn topup_run(
             }
         }
         for agent in &agents {
-            let bal = match client.pool().call(2, async |rpc| rpc.get_balance(agent).await).await {
+            let bal = match client
+                .pool()
+                .call(2, async |rpc| rpc.get_balance(agent).await)
+                .await
+            {
                 Ok(b) => b,
                 Err(e) => {
                     tracing::warn!(%agent, error = %e, "topup: balance check failed");
@@ -102,7 +108,9 @@ pub async fn topup_run(
                     sol = amount as f64 / LAMPORTS_PER_SOL as f64,
                     "topup: refilled agent"
                 ),
-                Err(e) => tracing::warn!(%agent, error = %e, "topup: transfer failed (master out of SOL?)"),
+                Err(e) => {
+                    tracing::warn!(%agent, error = %e, "topup: transfer failed (master out of SOL?)")
+                }
             }
         }
     }

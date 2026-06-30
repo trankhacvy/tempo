@@ -5,461 +5,471 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
 
 pub const INIT_MAKER_QUOTE_DISCRIMINATOR: u8 = 16;
 
 /// Accounts.
 #[derive(Debug)]
 pub struct InitMakerQuote {
-            /// Maker (pays rent, owns the quote)
-
-    
-              
-          pub maker: solana_address::Address,
-                /// Market the quote belongs to
-
-    
-              
-          pub market: solana_address::Address,
-                /// MakerQuote PDA to create
-
-    
-              
-          pub maker_quote: solana_address::Address,
-                /// System program
-
-    
-              
-          pub system_program: solana_address::Address,
-      }
+    /// Maker (pays rent, owns the quote)
+    pub maker: solana_address::Address,
+    /// Market the quote belongs to
+    pub market: solana_address::Address,
+    /// MakerQuote PDA to create
+    pub maker_quote: solana_address::Address,
+    /// System program
+    pub system_program: solana_address::Address,
+}
 
 impl InitMakerQuote {
-  pub fn instruction(&self, args: InitMakerQuoteInstructionArgs) -> solana_instruction::Instruction {
-    self.instruction_with_remaining_accounts(args, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn instruction_with_remaining_accounts(&self, args: InitMakerQuoteInstructionArgs, remaining_accounts: &[solana_instruction::AccountMeta]) -> solana_instruction::Instruction {
-    let mut accounts = Vec::with_capacity(4+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new(
-            self.maker,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.market,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.maker_quote,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.system_program,
-            false
-          ));
-                      accounts.extend_from_slice(remaining_accounts);
-    let mut data = InitMakerQuoteInstructionData::new().try_to_vec().unwrap();
-          let mut args = args.try_to_vec().unwrap();
-      data.append(&mut args);
-    
-    solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
+    pub fn instruction(
+        &self,
+        args: InitMakerQuoteInstructionArgs,
+    ) -> solana_instruction::Instruction {
+        self.instruction_with_remaining_accounts(args, &[])
     }
-  }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn instruction_with_remaining_accounts(
+        &self,
+        args: InitMakerQuoteInstructionArgs,
+        remaining_accounts: &[solana_instruction::AccountMeta],
+    ) -> solana_instruction::Instruction {
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new(self.maker, true));
+        accounts.push(solana_instruction::AccountMeta::new(self.market, false));
+        accounts.push(solana_instruction::AccountMeta::new(
+            self.maker_quote,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.system_program,
+            false,
+        ));
+        accounts.extend_from_slice(remaining_accounts);
+        let mut data = InitMakerQuoteInstructionData::new().try_to_vec().unwrap();
+        let mut args = args.try_to_vec().unwrap();
+        data.append(&mut args);
+
+        solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct InitMakerQuoteInstructionData {
-            discriminator: u8,
-                        }
+pub struct InitMakerQuoteInstructionData {
+    discriminator: u8,
+}
 
 impl InitMakerQuoteInstructionData {
-  pub fn new() -> Self {
-    Self {
-                        discriminator: 16,
-                                                            }
-  }
+    pub fn new() -> Self {
+        Self { discriminator: 16 }
+    }
 
     pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
-  }
+        borsh::to_vec(self)
+    }
+}
 
 impl Default for InitMakerQuoteInstructionData {
-  fn default() -> Self {
-    Self::new()
-  }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct InitMakerQuoteInstructionArgs {
-                  pub maker_quote_bump: u8,
-                pub expiry_slots: u64,
-                pub delegate: [u8; 32],
-      }
-
-impl InitMakerQuoteInstructionArgs {
-  pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
+pub struct InitMakerQuoteInstructionArgs {
+    pub maker_quote_bump: u8,
+    pub expiry_slots: u64,
+    pub delegate: [u8; 32],
 }
 
+impl InitMakerQuoteInstructionArgs {
+    pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
+        borsh::to_vec(self)
+    }
+}
 
 /// Instruction builder for `InitMakerQuote`.
 ///
 /// ### Accounts:
 ///
-                      ///   0. `[writable, signer]` maker
-                ///   1. `[writable]` market
-                ///   2. `[writable]` maker_quote
-                ///   3. `[optional]` system_program (default to `11111111111111111111111111111111`)
+///   0. `[writable, signer]` maker
+///   1. `[writable]` market
+///   2. `[writable]` maker_quote
+///   3. `[optional]` system_program (default to `11111111111111111111111111111111`)
 #[derive(Clone, Debug, Default)]
 pub struct InitMakerQuoteBuilder {
-            maker: Option<solana_address::Address>,
-                market: Option<solana_address::Address>,
-                maker_quote: Option<solana_address::Address>,
-                system_program: Option<solana_address::Address>,
-                        maker_quote_bump: Option<u8>,
-                expiry_slots: Option<u64>,
-                delegate: Option<[u8; 32]>,
-        __remaining_accounts: Vec<solana_instruction::AccountMeta>,
+    maker: Option<solana_address::Address>,
+    market: Option<solana_address::Address>,
+    maker_quote: Option<solana_address::Address>,
+    system_program: Option<solana_address::Address>,
+    maker_quote_bump: Option<u8>,
+    expiry_slots: Option<u64>,
+    delegate: Option<[u8; 32]>,
+    __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
 impl InitMakerQuoteBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
-            /// Maker (pays rent, owns the quote)
-#[inline(always)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Maker (pays rent, owns the quote)
+    #[inline(always)]
     pub fn maker(&mut self, maker: solana_address::Address) -> &mut Self {
-                        self.maker = Some(maker);
-                    self
+        self.maker = Some(maker);
+        self
     }
-            /// Market the quote belongs to
-#[inline(always)]
+    /// Market the quote belongs to
+    #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
-                        self.market = Some(market);
-                    self
+        self.market = Some(market);
+        self
     }
-            /// MakerQuote PDA to create
-#[inline(always)]
+    /// MakerQuote PDA to create
+    #[inline(always)]
     pub fn maker_quote(&mut self, maker_quote: solana_address::Address) -> &mut Self {
-                        self.maker_quote = Some(maker_quote);
-                    self
+        self.maker_quote = Some(maker_quote);
+        self
     }
-            /// `[optional account, default to '11111111111111111111111111111111']`
-/// System program
-#[inline(always)]
+    /// `[optional account, default to '11111111111111111111111111111111']`
+    /// System program
+    #[inline(always)]
     pub fn system_program(&mut self, system_program: solana_address::Address) -> &mut Self {
-                        self.system_program = Some(system_program);
-                    self
+        self.system_program = Some(system_program);
+        self
     }
-                    #[inline(always)]
-      pub fn maker_quote_bump(&mut self, maker_quote_bump: u8) -> &mut Self {
+    #[inline(always)]
+    pub fn maker_quote_bump(&mut self, maker_quote_bump: u8) -> &mut Self {
         self.maker_quote_bump = Some(maker_quote_bump);
         self
-      }
-                #[inline(always)]
-      pub fn expiry_slots(&mut self, expiry_slots: u64) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn expiry_slots(&mut self, expiry_slots: u64) -> &mut Self {
         self.expiry_slots = Some(expiry_slots);
         self
-      }
-                #[inline(always)]
-      pub fn delegate(&mut self, delegate: [u8; 32]) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn delegate(&mut self, delegate: [u8; 32]) -> &mut Self {
         self.delegate = Some(delegate);
         self
-      }
-        /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
-    self.__remaining_accounts.push(account);
-    self
-  }
-  /// Add additional accounts to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[solana_instruction::AccountMeta]) -> &mut Self {
-    self.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[allow(clippy::clone_on_copy)]
-  pub fn instruction(&self) -> solana_instruction::Instruction {
-    let accounts = InitMakerQuote {
-                              maker: self.maker.expect("maker is not set"),
-                                        market: self.market.expect("market is not set"),
-                                        maker_quote: self.maker_quote.expect("maker_quote is not set"),
-                                        system_program: self.system_program.unwrap_or(solana_address::address!("11111111111111111111111111111111")),
-                      };
-          let args = InitMakerQuoteInstructionArgs {
-                                                              maker_quote_bump: self.maker_quote_bump.clone().expect("maker_quote_bump is not set"),
-                                                                  expiry_slots: self.expiry_slots.clone().expect("expiry_slots is not set"),
-                                                                  delegate: self.delegate.clone().expect("delegate is not set"),
-                                    };
-    
-    accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
-  }
+    }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
+        self.__remaining_accounts.push(account);
+        self
+    }
+    /// Add additional accounts to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[solana_instruction::AccountMeta],
+    ) -> &mut Self {
+        self.__remaining_accounts.extend_from_slice(accounts);
+        self
+    }
+    #[allow(clippy::clone_on_copy)]
+    pub fn instruction(&self) -> solana_instruction::Instruction {
+        let accounts = InitMakerQuote {
+            maker: self.maker.expect("maker is not set"),
+            market: self.market.expect("market is not set"),
+            maker_quote: self.maker_quote.expect("maker_quote is not set"),
+            system_program: self
+                .system_program
+                .unwrap_or(solana_address::address!("11111111111111111111111111111111")),
+        };
+        let args = InitMakerQuoteInstructionArgs {
+            maker_quote_bump: self
+                .maker_quote_bump
+                .clone()
+                .expect("maker_quote_bump is not set"),
+            expiry_slots: self.expiry_slots.clone().expect("expiry_slots is not set"),
+            delegate: self.delegate.clone().expect("delegate is not set"),
+        };
+
+        accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
+    }
 }
 
-  /// `init_maker_quote` CPI accounts.
-  pub struct InitMakerQuoteCpiAccounts<'a, 'b> {
-                  /// Maker (pays rent, owns the quote)
-
-      
-                    
-              pub maker: &'b solana_account_info::AccountInfo<'a>,
-                        /// Market the quote belongs to
-
-      
-                    
-              pub market: &'b solana_account_info::AccountInfo<'a>,
-                        /// MakerQuote PDA to create
-
-      
-                    
-              pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
-                        /// System program
-
-      
-                    
-              pub system_program: &'b solana_account_info::AccountInfo<'a>,
-            }
+/// `init_maker_quote` CPI accounts.
+pub struct InitMakerQuoteCpiAccounts<'a, 'b> {
+    /// Maker (pays rent, owns the quote)
+    pub maker: &'b solana_account_info::AccountInfo<'a>,
+    /// Market the quote belongs to
+    pub market: &'b solana_account_info::AccountInfo<'a>,
+    /// MakerQuote PDA to create
+    pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    /// System program
+    pub system_program: &'b solana_account_info::AccountInfo<'a>,
+}
 
 /// `init_maker_quote` CPI instruction.
 pub struct InitMakerQuoteCpi<'a, 'b> {
-  /// The program to invoke.
-  pub __program: &'b solana_account_info::AccountInfo<'a>,
-            /// Maker (pays rent, owns the quote)
-
-    
-              
-          pub maker: &'b solana_account_info::AccountInfo<'a>,
-                /// Market the quote belongs to
-
-    
-              
-          pub market: &'b solana_account_info::AccountInfo<'a>,
-                /// MakerQuote PDA to create
-
-    
-              
-          pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
-                /// System program
-
-    
-              
-          pub system_program: &'b solana_account_info::AccountInfo<'a>,
-            /// The arguments for the instruction.
+    /// The program to invoke.
+    pub __program: &'b solana_account_info::AccountInfo<'a>,
+    /// Maker (pays rent, owns the quote)
+    pub maker: &'b solana_account_info::AccountInfo<'a>,
+    /// Market the quote belongs to
+    pub market: &'b solana_account_info::AccountInfo<'a>,
+    /// MakerQuote PDA to create
+    pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    /// System program
+    pub system_program: &'b solana_account_info::AccountInfo<'a>,
+    /// The arguments for the instruction.
     pub __args: InitMakerQuoteInstructionArgs,
-  }
+}
 
 impl<'a, 'b> InitMakerQuoteCpi<'a, 'b> {
-  pub fn new(
-    program: &'b solana_account_info::AccountInfo<'a>,
-          accounts: InitMakerQuoteCpiAccounts<'a, 'b>,
-              args: InitMakerQuoteInstructionArgs,
-      ) -> Self {
-    Self {
-      __program: program,
-              maker: accounts.maker,
-              market: accounts.market,
-              maker_quote: accounts.maker_quote,
-              system_program: accounts.system_program,
-                    __args: args,
-          }
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], &[])
-  }
-  #[inline(always)]
-  pub fn invoke_with_remaining_accounts(&self, remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
-  }
-  #[inline(always)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed_with_remaining_accounts(
-    &self,
-    signers_seeds: &[&[&[u8]]],
-    remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]
-  ) -> solana_program_error::ProgramResult {
-    let mut accounts = Vec::with_capacity(4+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new(
-            *self.maker.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.market.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.maker_quote.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.system_program.key,
-            false
-          ));
-                      remaining_accounts.iter().for_each(|remaining_account| {
-      accounts.push(solana_instruction::AccountMeta {
-          pubkey: *remaining_account.0.key,
-          is_signer: remaining_account.1,
-          is_writable: remaining_account.2,
-      })
-    });
-    let mut data = InitMakerQuoteInstructionData::new().try_to_vec().unwrap();
-          let mut args = self.__args.try_to_vec().unwrap();
-      data.append(&mut args);
-    
-    let instruction = solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
-    };
-    let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
-    account_infos.push(self.__program.clone());
-                  account_infos.push(self.maker.clone());
-                        account_infos.push(self.market.clone());
-                        account_infos.push(self.maker_quote.clone());
-                        account_infos.push(self.system_program.clone());
-              remaining_accounts.iter().for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
-
-    if signers_seeds.is_empty() {
-      solana_cpi::invoke(&instruction, &account_infos)
-    } else {
-      solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+    pub fn new(
+        program: &'b solana_account_info::AccountInfo<'a>,
+        accounts: InitMakerQuoteCpiAccounts<'a, 'b>,
+        args: InitMakerQuoteInstructionArgs,
+    ) -> Self {
+        Self {
+            __program: program,
+            maker: accounts.maker,
+            market: accounts.market,
+            maker_quote: accounts.maker_quote,
+            system_program: accounts.system_program,
+            __args: args,
+        }
     }
-  }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], &[])
+    }
+    #[inline(always)]
+    pub fn invoke_with_remaining_accounts(
+        &self,
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
+    }
+    #[inline(always)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed_with_remaining_accounts(
+        &self,
+        signers_seeds: &[&[&[u8]]],
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new(*self.maker.key, true));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.market.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.maker_quote.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.system_program.key,
+            false,
+        ));
+        remaining_accounts.iter().for_each(|remaining_account| {
+            accounts.push(solana_instruction::AccountMeta {
+                pubkey: *remaining_account.0.key,
+                is_signer: remaining_account.1,
+                is_writable: remaining_account.2,
+            })
+        });
+        let mut data = InitMakerQuoteInstructionData::new().try_to_vec().unwrap();
+        let mut args = self.__args.try_to_vec().unwrap();
+        data.append(&mut args);
+
+        let instruction = solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        };
+        let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
+        account_infos.push(self.__program.clone());
+        account_infos.push(self.maker.clone());
+        account_infos.push(self.market.clone());
+        account_infos.push(self.maker_quote.clone());
+        account_infos.push(self.system_program.clone());
+        remaining_accounts
+            .iter()
+            .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
+
+        if signers_seeds.is_empty() {
+            solana_cpi::invoke(&instruction, &account_infos)
+        } else {
+            solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+        }
+    }
 }
 
 /// Instruction builder for `InitMakerQuote` via CPI.
 ///
 /// ### Accounts:
 ///
-                      ///   0. `[writable, signer]` maker
-                ///   1. `[writable]` market
-                ///   2. `[writable]` maker_quote
-          ///   3. `[]` system_program
+///   0. `[writable, signer]` maker
+///   1. `[writable]` market
+///   2. `[writable]` maker_quote
+///   3. `[]` system_program
 #[derive(Clone, Debug)]
 pub struct InitMakerQuoteCpiBuilder<'a, 'b> {
-  instruction: Box<InitMakerQuoteCpiBuilderInstruction<'a, 'b>>,
+    instruction: Box<InitMakerQuoteCpiBuilderInstruction<'a, 'b>>,
 }
 
 impl<'a, 'b> InitMakerQuoteCpiBuilder<'a, 'b> {
-  pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
-    let instruction = Box::new(InitMakerQuoteCpiBuilderInstruction {
-      __program: program,
-              maker: None,
-              market: None,
-              maker_quote: None,
-              system_program: None,
-                                            maker_quote_bump: None,
-                                expiry_slots: None,
-                                delegate: None,
-                    __remaining_accounts: Vec::new(),
-    });
-    Self { instruction }
-  }
-      /// Maker (pays rent, owns the quote)
-#[inline(always)]
+    pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
+        let instruction = Box::new(InitMakerQuoteCpiBuilderInstruction {
+            __program: program,
+            maker: None,
+            market: None,
+            maker_quote: None,
+            system_program: None,
+            maker_quote_bump: None,
+            expiry_slots: None,
+            delegate: None,
+            __remaining_accounts: Vec::new(),
+        });
+        Self { instruction }
+    }
+    /// Maker (pays rent, owns the quote)
+    #[inline(always)]
     pub fn maker(&mut self, maker: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.maker = Some(maker);
-                    self
+        self.instruction.maker = Some(maker);
+        self
     }
-      /// Market the quote belongs to
-#[inline(always)]
+    /// Market the quote belongs to
+    #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.market = Some(market);
-                    self
+        self.instruction.market = Some(market);
+        self
     }
-      /// MakerQuote PDA to create
-#[inline(always)]
-    pub fn maker_quote(&mut self, maker_quote: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.maker_quote = Some(maker_quote);
-                    self
+    /// MakerQuote PDA to create
+    #[inline(always)]
+    pub fn maker_quote(
+        &mut self,
+        maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.maker_quote = Some(maker_quote);
+        self
     }
-      /// System program
-#[inline(always)]
-    pub fn system_program(&mut self, system_program: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.system_program = Some(system_program);
-                    self
+    /// System program
+    #[inline(always)]
+    pub fn system_program(
+        &mut self,
+        system_program: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.system_program = Some(system_program);
+        self
     }
-                    #[inline(always)]
-      pub fn maker_quote_bump(&mut self, maker_quote_bump: u8) -> &mut Self {
+    #[inline(always)]
+    pub fn maker_quote_bump(&mut self, maker_quote_bump: u8) -> &mut Self {
         self.instruction.maker_quote_bump = Some(maker_quote_bump);
         self
-      }
-                #[inline(always)]
-      pub fn expiry_slots(&mut self, expiry_slots: u64) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn expiry_slots(&mut self, expiry_slots: u64) -> &mut Self {
         self.instruction.expiry_slots = Some(expiry_slots);
         self
-      }
-                #[inline(always)]
-      pub fn delegate(&mut self, delegate: [u8; 32]) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn delegate(&mut self, delegate: [u8; 32]) -> &mut Self {
         self.instruction.delegate = Some(delegate);
         self
-      }
-        /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: &'b solana_account_info::AccountInfo<'a>, is_writable: bool, is_signer: bool) -> &mut Self {
-    self.instruction.__remaining_accounts.push((account, is_writable, is_signer));
-    self
-  }
-  /// Add additional accounts to the instruction.
-  ///
-  /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
-  /// and a `bool` indicating whether the account is a signer or not.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> &mut Self {
-    self.instruction.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed(&[])
-  }
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-          let args = InitMakerQuoteInstructionArgs {
-                                                              maker_quote_bump: self.instruction.maker_quote_bump.clone().expect("maker_quote_bump is not set"),
-                                                                  expiry_slots: self.instruction.expiry_slots.clone().expect("expiry_slots is not set"),
-                                                                  delegate: self.instruction.delegate.clone().expect("delegate is not set"),
-                                    };
+    }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(
+        &mut self,
+        account: &'b solana_account_info::AccountInfo<'a>,
+        is_writable: bool,
+        is_signer: bool,
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .push((account, is_writable, is_signer));
+        self
+    }
+    /// Add additional accounts to the instruction.
+    ///
+    /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
+    /// and a `bool` indicating whether the account is a signer or not.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .extend_from_slice(accounts);
+        self
+    }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed(&[])
+    }
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        let args = InitMakerQuoteInstructionArgs {
+            maker_quote_bump: self
+                .instruction
+                .maker_quote_bump
+                .clone()
+                .expect("maker_quote_bump is not set"),
+            expiry_slots: self
+                .instruction
+                .expiry_slots
+                .clone()
+                .expect("expiry_slots is not set"),
+            delegate: self
+                .instruction
+                .delegate
+                .clone()
+                .expect("delegate is not set"),
+        };
         let instruction = InitMakerQuoteCpi {
-        __program: self.instruction.__program,
-                  
-          maker: self.instruction.maker.expect("maker is not set"),
-                  
-          market: self.instruction.market.expect("market is not set"),
-                  
-          maker_quote: self.instruction.maker_quote.expect("maker_quote is not set"),
-                  
-          system_program: self.instruction.system_program.expect("system_program is not set"),
-                          __args: args,
-            };
-    instruction.invoke_signed_with_remaining_accounts(signers_seeds, &self.instruction.__remaining_accounts)
-  }
+            __program: self.instruction.__program,
+
+            maker: self.instruction.maker.expect("maker is not set"),
+
+            market: self.instruction.market.expect("market is not set"),
+
+            maker_quote: self
+                .instruction
+                .maker_quote
+                .expect("maker_quote is not set"),
+
+            system_program: self
+                .instruction
+                .system_program
+                .expect("system_program is not set"),
+            __args: args,
+        };
+        instruction.invoke_signed_with_remaining_accounts(
+            signers_seeds,
+            &self.instruction.__remaining_accounts,
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
 struct InitMakerQuoteCpiBuilderInstruction<'a, 'b> {
-  __program: &'b solana_account_info::AccountInfo<'a>,
-            maker: Option<&'b solana_account_info::AccountInfo<'a>>,
-                market: Option<&'b solana_account_info::AccountInfo<'a>>,
-                maker_quote: Option<&'b solana_account_info::AccountInfo<'a>>,
-                system_program: Option<&'b solana_account_info::AccountInfo<'a>>,
-                        maker_quote_bump: Option<u8>,
-                expiry_slots: Option<u64>,
-                delegate: Option<[u8; 32]>,
-        /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
-  __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
+    __program: &'b solana_account_info::AccountInfo<'a>,
+    maker: Option<&'b solana_account_info::AccountInfo<'a>>,
+    market: Option<&'b solana_account_info::AccountInfo<'a>>,
+    maker_quote: Option<&'b solana_account_info::AccountInfo<'a>>,
+    system_program: Option<&'b solana_account_info::AccountInfo<'a>>,
+    maker_quote_bump: Option<u8>,
+    expiry_slots: Option<u64>,
+    delegate: Option<[u8; 32]>,
+    /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
+    __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }
-

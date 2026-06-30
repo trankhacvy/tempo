@@ -5,17 +5,15 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use solana_address::Address;
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
+use solana_address::Address;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
 pub struct OraclePriceReadEvent {
-pub market: Address,
-pub oracle_price1_e8: u64,
-pub exponent: i32,
-pub publish_time: i64,
-pub mark_price: u64,
+    pub market: Address,
+    pub oracle_price1_e8: u64,
+    pub exponent: i32,
+    pub publish_time: i64,
+    pub mark_price: u64,
 }
-
-

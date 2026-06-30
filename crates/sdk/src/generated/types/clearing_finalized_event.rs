@@ -5,18 +5,16 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use solana_address::Address;
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
+use solana_address::Address;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
 pub struct ClearingFinalizedEvent {
-pub market: Address,
-pub auction_id: u64,
-pub bid_clearing_price: u64,
-pub bid_matched_volume: u64,
-pub ask_clearing_price: u64,
-pub ask_matched_volume: u64,
+    pub market: Address,
+    pub auction_id: u64,
+    pub bid_clearing_price: u64,
+    pub bid_matched_volume: u64,
+    pub ask_clearing_price: u64,
+    pub ask_matched_volume: u64,
 }
-
-

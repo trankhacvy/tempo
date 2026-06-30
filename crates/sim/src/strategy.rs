@@ -88,15 +88,11 @@ pub fn build_orders(
             _ => (mid - off).clamp(0, num_ticks as i64 - 1),
         } as u32;
 
-        let price = match tick_to_price(
-            tick,
-            market.window_floor_price,
-            market.tick_size,
-            num_ticks,
-        ) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
+        let price =
+            match tick_to_price(tick, market.window_floor_price, market.tick_size, num_ticks) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
 
         let want = cfg
             .base_size
@@ -188,7 +184,13 @@ mod tests {
     fn crossing_buys_price_above_mid_sells_below() {
         let m = market(64); // mid tick 32
         let mut rng = SimRng::new(1);
-        let orders = build_orders(&m, None, UNMETERED_COLLATERAL, &mut rng, &cfg(Persona::Momentum));
+        let orders = build_orders(
+            &m,
+            None,
+            UNMETERED_COLLATERAL,
+            &mut rng,
+            &cfg(Persona::Momentum),
+        );
         assert!(!orders.is_empty());
         let mid_price = m.tick_size * 32 + m.window_floor_price;
         for o in &orders {
@@ -205,7 +207,13 @@ mod tests {
         let m = market(64);
         let mut rng = SimRng::new(2);
         // inner_spread 1 → passive offset 0 → price == mid (does not cross).
-        let orders = build_orders(&m, None, UNMETERED_COLLATERAL, &mut rng, &cfg(Persona::Passive));
+        let orders = build_orders(
+            &m,
+            None,
+            UNMETERED_COLLATERAL,
+            &mut rng,
+            &cfg(Persona::Passive),
+        );
         let mid_price = m.tick_size * 32 + m.window_floor_price;
         for o in &orders {
             assert_eq!(o.price, mid_price, "passive rests at mid (offset 0)");
@@ -217,8 +225,13 @@ mod tests {
         let m = market(64);
         let mut rng = SimRng::new(3);
         for _ in 0..500 {
-            let orders =
-                build_orders(&m, None, UNMETERED_COLLATERAL, &mut rng, &cfg(Persona::Noise));
+            let orders = build_orders(
+                &m,
+                None,
+                UNMETERED_COLLATERAL,
+                &mut rng,
+                &cfg(Persona::Noise),
+            );
             assert!(orders.len() <= 3);
         }
     }
@@ -229,8 +242,13 @@ mod tests {
         let mut rng = SimRng::new(4);
         let top = m.window_top_price();
         for _ in 0..200 {
-            let orders =
-                build_orders(&m, None, UNMETERED_COLLATERAL, &mut rng, &cfg(Persona::Reckless));
+            let orders = build_orders(
+                &m,
+                None,
+                UNMETERED_COLLATERAL,
+                &mut rng,
+                &cfg(Persona::Reckless),
+            );
             for o in &orders {
                 assert!(o.price >= m.window_floor_price && o.price <= top);
                 assert_eq!((o.price - m.window_floor_price) % m.tick_size, 0);
@@ -243,8 +261,13 @@ mod tests {
         let m = market(64);
         let mut big = SimRng::new(5);
         let mut small = SimRng::new(5); // same seed → same intents pre-cap
-        let unconstrained =
-            build_orders(&m, None, UNMETERED_COLLATERAL, &mut big, &cfg(Persona::Momentum));
+        let unconstrained = build_orders(
+            &m,
+            None,
+            UNMETERED_COLLATERAL,
+            &mut big,
+            &cfg(Persona::Momentum),
+        );
         // Tiny budget: only a handful of base units of margin.
         let constrained = build_orders(&m, None, 5_000, &mut small, &cfg(Persona::Momentum));
         let big_total: u64 = unconstrained.iter().map(|o| o.quantity).sum();

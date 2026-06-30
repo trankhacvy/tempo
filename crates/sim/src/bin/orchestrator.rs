@@ -60,7 +60,10 @@ async fn main() -> Result<(), SimError> {
 
     let pool = RpcPool::from_urls(&cfg.common.rpc_url, cfg.common.commitment_config())
         .map_err(SimError::Common)?;
-    let client = Arc::new(TempoClient::new(pool, cfg.common.priority_fee_micro_lamports));
+    let client = Arc::new(TempoClient::new(
+        pool,
+        cfg.common.priority_fee_micro_lamports,
+    ));
 
     let poll = Duration::from_millis(cfg.poll_ms);
     let funding_secs: u64 = env_parse("TEMPO_FUNDING_INTERVAL_SECS", 60);
@@ -136,7 +139,8 @@ async fn main() -> Result<(), SimError> {
     }
 
     // --- keeper + funding ---
-    let keeper_kp = Arc::new(load_keypair_file(&art.keeper.keypair_path).map_err(SimError::Common)?);
+    let keeper_kp =
+        Arc::new(load_keypair_file(&art.keeper.keypair_path).map_err(SimError::Common)?);
     let keeper_ctx = KeeperCtx {
         client: client.clone(),
         cranker: keeper_kp,
@@ -187,7 +191,12 @@ async fn main() -> Result<(), SimError> {
         };
         let lh = tempo_liquidator::health::Health::new(env_parse("TEMPO_LIQ_STALE_SCAN_SECS", 30));
         let liq_poll = Duration::from_millis(env_parse("TEMPO_LIQ_POLL_MS", 2000));
-        tasks.push(Box::pin(tempo_liquidator::run(liq_ctx, lh, liq_poll, rx.clone())));
+        tasks.push(Box::pin(tempo_liquidator::run(
+            liq_ctx,
+            lh,
+            liq_poll,
+            rx.clone(),
+        )));
     }
 
     // --- trader fleet ---

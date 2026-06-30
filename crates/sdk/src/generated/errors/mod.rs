@@ -5,7 +5,6 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-      pub(crate) mod tempo_program;
-  
-      pub use self::tempo_program::TempoProgramError;
-  
+pub(crate) mod tempo_program;
+
+pub use self::tempo_program::TempoProgramError;

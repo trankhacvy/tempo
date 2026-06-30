@@ -5,429 +5,434 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
 
 pub const INIT_MARGIN_ACCOUNT_DISCRIMINATOR: u8 = 22;
 
 /// Accounts.
 #[derive(Debug)]
 pub struct InitMarginAccount {
-            /// Pays for the group account
-
-    
-              
-          pub payer: solana_address::Address,
-                /// Owner the group belongs to
-
-    
-              
-          pub owner: solana_address::Address,
-                /// MarginAccount PDA to create
-
-    
-              
-          pub margin_account: solana_address::Address,
-                /// System program
-
-    
-              
-          pub system_program: solana_address::Address,
-      }
+    /// Pays for the group account
+    pub payer: solana_address::Address,
+    /// Owner the group belongs to
+    pub owner: solana_address::Address,
+    /// MarginAccount PDA to create
+    pub margin_account: solana_address::Address,
+    /// System program
+    pub system_program: solana_address::Address,
+}
 
 impl InitMarginAccount {
-  pub fn instruction(&self, args: InitMarginAccountInstructionArgs) -> solana_instruction::Instruction {
-    self.instruction_with_remaining_accounts(args, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn instruction_with_remaining_accounts(&self, args: InitMarginAccountInstructionArgs, remaining_accounts: &[solana_instruction::AccountMeta]) -> solana_instruction::Instruction {
-    let mut accounts = Vec::with_capacity(4+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new(
-            self.payer,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.owner,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.margin_account,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.system_program,
-            false
-          ));
-                      accounts.extend_from_slice(remaining_accounts);
-    let mut data = InitMarginAccountInstructionData::new().try_to_vec().unwrap();
-          let mut args = args.try_to_vec().unwrap();
-      data.append(&mut args);
-    
-    solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
+    pub fn instruction(
+        &self,
+        args: InitMarginAccountInstructionArgs,
+    ) -> solana_instruction::Instruction {
+        self.instruction_with_remaining_accounts(args, &[])
     }
-  }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn instruction_with_remaining_accounts(
+        &self,
+        args: InitMarginAccountInstructionArgs,
+        remaining_accounts: &[solana_instruction::AccountMeta],
+    ) -> solana_instruction::Instruction {
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new(self.payer, true));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.owner, true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            self.margin_account,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.system_program,
+            false,
+        ));
+        accounts.extend_from_slice(remaining_accounts);
+        let mut data = InitMarginAccountInstructionData::new()
+            .try_to_vec()
+            .unwrap();
+        let mut args = args.try_to_vec().unwrap();
+        data.append(&mut args);
+
+        solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct InitMarginAccountInstructionData {
-            discriminator: u8,
-            }
+pub struct InitMarginAccountInstructionData {
+    discriminator: u8,
+}
 
 impl InitMarginAccountInstructionData {
-  pub fn new() -> Self {
-    Self {
-                        discriminator: 22,
-                                }
-  }
+    pub fn new() -> Self {
+        Self { discriminator: 22 }
+    }
 
     pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
-  }
+        borsh::to_vec(self)
+    }
+}
 
 impl Default for InitMarginAccountInstructionData {
-  fn default() -> Self {
-    Self::new()
-  }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct InitMarginAccountInstructionArgs {
-                  pub margin_bump: u8,
-      }
-
-impl InitMarginAccountInstructionArgs {
-  pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
+pub struct InitMarginAccountInstructionArgs {
+    pub margin_bump: u8,
 }
 
+impl InitMarginAccountInstructionArgs {
+    pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
+        borsh::to_vec(self)
+    }
+}
 
 /// Instruction builder for `InitMarginAccount`.
 ///
 /// ### Accounts:
 ///
-                      ///   0. `[writable, signer]` payer
-                ///   1. `[signer]` owner
-                ///   2. `[writable]` margin_account
-                ///   3. `[optional]` system_program (default to `11111111111111111111111111111111`)
+///   0. `[writable, signer]` payer
+///   1. `[signer]` owner
+///   2. `[writable]` margin_account
+///   3. `[optional]` system_program (default to `11111111111111111111111111111111`)
 #[derive(Clone, Debug, Default)]
 pub struct InitMarginAccountBuilder {
-            payer: Option<solana_address::Address>,
-                owner: Option<solana_address::Address>,
-                margin_account: Option<solana_address::Address>,
-                system_program: Option<solana_address::Address>,
-                        margin_bump: Option<u8>,
-        __remaining_accounts: Vec<solana_instruction::AccountMeta>,
+    payer: Option<solana_address::Address>,
+    owner: Option<solana_address::Address>,
+    margin_account: Option<solana_address::Address>,
+    system_program: Option<solana_address::Address>,
+    margin_bump: Option<u8>,
+    __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
 impl InitMarginAccountBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
-            /// Pays for the group account
-#[inline(always)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Pays for the group account
+    #[inline(always)]
     pub fn payer(&mut self, payer: solana_address::Address) -> &mut Self {
-                        self.payer = Some(payer);
-                    self
+        self.payer = Some(payer);
+        self
     }
-            /// Owner the group belongs to
-#[inline(always)]
+    /// Owner the group belongs to
+    #[inline(always)]
     pub fn owner(&mut self, owner: solana_address::Address) -> &mut Self {
-                        self.owner = Some(owner);
-                    self
+        self.owner = Some(owner);
+        self
     }
-            /// MarginAccount PDA to create
-#[inline(always)]
+    /// MarginAccount PDA to create
+    #[inline(always)]
     pub fn margin_account(&mut self, margin_account: solana_address::Address) -> &mut Self {
-                        self.margin_account = Some(margin_account);
-                    self
+        self.margin_account = Some(margin_account);
+        self
     }
-            /// `[optional account, default to '11111111111111111111111111111111']`
-/// System program
-#[inline(always)]
+    /// `[optional account, default to '11111111111111111111111111111111']`
+    /// System program
+    #[inline(always)]
     pub fn system_program(&mut self, system_program: solana_address::Address) -> &mut Self {
-                        self.system_program = Some(system_program);
-                    self
+        self.system_program = Some(system_program);
+        self
     }
-                    #[inline(always)]
-      pub fn margin_bump(&mut self, margin_bump: u8) -> &mut Self {
+    #[inline(always)]
+    pub fn margin_bump(&mut self, margin_bump: u8) -> &mut Self {
         self.margin_bump = Some(margin_bump);
         self
-      }
-        /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
-    self.__remaining_accounts.push(account);
-    self
-  }
-  /// Add additional accounts to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[solana_instruction::AccountMeta]) -> &mut Self {
-    self.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[allow(clippy::clone_on_copy)]
-  pub fn instruction(&self) -> solana_instruction::Instruction {
-    let accounts = InitMarginAccount {
-                              payer: self.payer.expect("payer is not set"),
-                                        owner: self.owner.expect("owner is not set"),
-                                        margin_account: self.margin_account.expect("margin_account is not set"),
-                                        system_program: self.system_program.unwrap_or(solana_address::address!("11111111111111111111111111111111")),
-                      };
-          let args = InitMarginAccountInstructionArgs {
-                                                              margin_bump: self.margin_bump.clone().expect("margin_bump is not set"),
-                                    };
-    
-    accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
-  }
+    }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
+        self.__remaining_accounts.push(account);
+        self
+    }
+    /// Add additional accounts to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[solana_instruction::AccountMeta],
+    ) -> &mut Self {
+        self.__remaining_accounts.extend_from_slice(accounts);
+        self
+    }
+    #[allow(clippy::clone_on_copy)]
+    pub fn instruction(&self) -> solana_instruction::Instruction {
+        let accounts = InitMarginAccount {
+            payer: self.payer.expect("payer is not set"),
+            owner: self.owner.expect("owner is not set"),
+            margin_account: self.margin_account.expect("margin_account is not set"),
+            system_program: self
+                .system_program
+                .unwrap_or(solana_address::address!("11111111111111111111111111111111")),
+        };
+        let args = InitMarginAccountInstructionArgs {
+            margin_bump: self.margin_bump.clone().expect("margin_bump is not set"),
+        };
+
+        accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
+    }
 }
 
-  /// `init_margin_account` CPI accounts.
-  pub struct InitMarginAccountCpiAccounts<'a, 'b> {
-                  /// Pays for the group account
-
-      
-                    
-              pub payer: &'b solana_account_info::AccountInfo<'a>,
-                        /// Owner the group belongs to
-
-      
-                    
-              pub owner: &'b solana_account_info::AccountInfo<'a>,
-                        /// MarginAccount PDA to create
-
-      
-                    
-              pub margin_account: &'b solana_account_info::AccountInfo<'a>,
-                        /// System program
-
-      
-                    
-              pub system_program: &'b solana_account_info::AccountInfo<'a>,
-            }
+/// `init_margin_account` CPI accounts.
+pub struct InitMarginAccountCpiAccounts<'a, 'b> {
+    /// Pays for the group account
+    pub payer: &'b solana_account_info::AccountInfo<'a>,
+    /// Owner the group belongs to
+    pub owner: &'b solana_account_info::AccountInfo<'a>,
+    /// MarginAccount PDA to create
+    pub margin_account: &'b solana_account_info::AccountInfo<'a>,
+    /// System program
+    pub system_program: &'b solana_account_info::AccountInfo<'a>,
+}
 
 /// `init_margin_account` CPI instruction.
 pub struct InitMarginAccountCpi<'a, 'b> {
-  /// The program to invoke.
-  pub __program: &'b solana_account_info::AccountInfo<'a>,
-            /// Pays for the group account
-
-    
-              
-          pub payer: &'b solana_account_info::AccountInfo<'a>,
-                /// Owner the group belongs to
-
-    
-              
-          pub owner: &'b solana_account_info::AccountInfo<'a>,
-                /// MarginAccount PDA to create
-
-    
-              
-          pub margin_account: &'b solana_account_info::AccountInfo<'a>,
-                /// System program
-
-    
-              
-          pub system_program: &'b solana_account_info::AccountInfo<'a>,
-            /// The arguments for the instruction.
+    /// The program to invoke.
+    pub __program: &'b solana_account_info::AccountInfo<'a>,
+    /// Pays for the group account
+    pub payer: &'b solana_account_info::AccountInfo<'a>,
+    /// Owner the group belongs to
+    pub owner: &'b solana_account_info::AccountInfo<'a>,
+    /// MarginAccount PDA to create
+    pub margin_account: &'b solana_account_info::AccountInfo<'a>,
+    /// System program
+    pub system_program: &'b solana_account_info::AccountInfo<'a>,
+    /// The arguments for the instruction.
     pub __args: InitMarginAccountInstructionArgs,
-  }
+}
 
 impl<'a, 'b> InitMarginAccountCpi<'a, 'b> {
-  pub fn new(
-    program: &'b solana_account_info::AccountInfo<'a>,
-          accounts: InitMarginAccountCpiAccounts<'a, 'b>,
-              args: InitMarginAccountInstructionArgs,
-      ) -> Self {
-    Self {
-      __program: program,
-              payer: accounts.payer,
-              owner: accounts.owner,
-              margin_account: accounts.margin_account,
-              system_program: accounts.system_program,
-                    __args: args,
-          }
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], &[])
-  }
-  #[inline(always)]
-  pub fn invoke_with_remaining_accounts(&self, remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
-  }
-  #[inline(always)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed_with_remaining_accounts(
-    &self,
-    signers_seeds: &[&[&[u8]]],
-    remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]
-  ) -> solana_program_error::ProgramResult {
-    let mut accounts = Vec::with_capacity(4+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new(
-            *self.payer.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.owner.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.margin_account.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.system_program.key,
-            false
-          ));
-                      remaining_accounts.iter().for_each(|remaining_account| {
-      accounts.push(solana_instruction::AccountMeta {
-          pubkey: *remaining_account.0.key,
-          is_signer: remaining_account.1,
-          is_writable: remaining_account.2,
-      })
-    });
-    let mut data = InitMarginAccountInstructionData::new().try_to_vec().unwrap();
-          let mut args = self.__args.try_to_vec().unwrap();
-      data.append(&mut args);
-    
-    let instruction = solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
-    };
-    let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
-    account_infos.push(self.__program.clone());
-                  account_infos.push(self.payer.clone());
-                        account_infos.push(self.owner.clone());
-                        account_infos.push(self.margin_account.clone());
-                        account_infos.push(self.system_program.clone());
-              remaining_accounts.iter().for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
-
-    if signers_seeds.is_empty() {
-      solana_cpi::invoke(&instruction, &account_infos)
-    } else {
-      solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+    pub fn new(
+        program: &'b solana_account_info::AccountInfo<'a>,
+        accounts: InitMarginAccountCpiAccounts<'a, 'b>,
+        args: InitMarginAccountInstructionArgs,
+    ) -> Self {
+        Self {
+            __program: program,
+            payer: accounts.payer,
+            owner: accounts.owner,
+            margin_account: accounts.margin_account,
+            system_program: accounts.system_program,
+            __args: args,
+        }
     }
-  }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], &[])
+    }
+    #[inline(always)]
+    pub fn invoke_with_remaining_accounts(
+        &self,
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
+    }
+    #[inline(always)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed_with_remaining_accounts(
+        &self,
+        signers_seeds: &[&[&[u8]]],
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new(*self.payer.key, true));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.owner.key,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.margin_account.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.system_program.key,
+            false,
+        ));
+        remaining_accounts.iter().for_each(|remaining_account| {
+            accounts.push(solana_instruction::AccountMeta {
+                pubkey: *remaining_account.0.key,
+                is_signer: remaining_account.1,
+                is_writable: remaining_account.2,
+            })
+        });
+        let mut data = InitMarginAccountInstructionData::new()
+            .try_to_vec()
+            .unwrap();
+        let mut args = self.__args.try_to_vec().unwrap();
+        data.append(&mut args);
+
+        let instruction = solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        };
+        let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
+        account_infos.push(self.__program.clone());
+        account_infos.push(self.payer.clone());
+        account_infos.push(self.owner.clone());
+        account_infos.push(self.margin_account.clone());
+        account_infos.push(self.system_program.clone());
+        remaining_accounts
+            .iter()
+            .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
+
+        if signers_seeds.is_empty() {
+            solana_cpi::invoke(&instruction, &account_infos)
+        } else {
+            solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+        }
+    }
 }
 
 /// Instruction builder for `InitMarginAccount` via CPI.
 ///
 /// ### Accounts:
 ///
-                      ///   0. `[writable, signer]` payer
-                ///   1. `[signer]` owner
-                ///   2. `[writable]` margin_account
-          ///   3. `[]` system_program
+///   0. `[writable, signer]` payer
+///   1. `[signer]` owner
+///   2. `[writable]` margin_account
+///   3. `[]` system_program
 #[derive(Clone, Debug)]
 pub struct InitMarginAccountCpiBuilder<'a, 'b> {
-  instruction: Box<InitMarginAccountCpiBuilderInstruction<'a, 'b>>,
+    instruction: Box<InitMarginAccountCpiBuilderInstruction<'a, 'b>>,
 }
 
 impl<'a, 'b> InitMarginAccountCpiBuilder<'a, 'b> {
-  pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
-    let instruction = Box::new(InitMarginAccountCpiBuilderInstruction {
-      __program: program,
-              payer: None,
-              owner: None,
-              margin_account: None,
-              system_program: None,
-                                            margin_bump: None,
-                    __remaining_accounts: Vec::new(),
-    });
-    Self { instruction }
-  }
-      /// Pays for the group account
-#[inline(always)]
+    pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
+        let instruction = Box::new(InitMarginAccountCpiBuilderInstruction {
+            __program: program,
+            payer: None,
+            owner: None,
+            margin_account: None,
+            system_program: None,
+            margin_bump: None,
+            __remaining_accounts: Vec::new(),
+        });
+        Self { instruction }
+    }
+    /// Pays for the group account
+    #[inline(always)]
     pub fn payer(&mut self, payer: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.payer = Some(payer);
-                    self
+        self.instruction.payer = Some(payer);
+        self
     }
-      /// Owner the group belongs to
-#[inline(always)]
+    /// Owner the group belongs to
+    #[inline(always)]
     pub fn owner(&mut self, owner: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.owner = Some(owner);
-                    self
+        self.instruction.owner = Some(owner);
+        self
     }
-      /// MarginAccount PDA to create
-#[inline(always)]
-    pub fn margin_account(&mut self, margin_account: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.margin_account = Some(margin_account);
-                    self
+    /// MarginAccount PDA to create
+    #[inline(always)]
+    pub fn margin_account(
+        &mut self,
+        margin_account: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.margin_account = Some(margin_account);
+        self
     }
-      /// System program
-#[inline(always)]
-    pub fn system_program(&mut self, system_program: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.system_program = Some(system_program);
-                    self
+    /// System program
+    #[inline(always)]
+    pub fn system_program(
+        &mut self,
+        system_program: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.system_program = Some(system_program);
+        self
     }
-                    #[inline(always)]
-      pub fn margin_bump(&mut self, margin_bump: u8) -> &mut Self {
+    #[inline(always)]
+    pub fn margin_bump(&mut self, margin_bump: u8) -> &mut Self {
         self.instruction.margin_bump = Some(margin_bump);
         self
-      }
-        /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: &'b solana_account_info::AccountInfo<'a>, is_writable: bool, is_signer: bool) -> &mut Self {
-    self.instruction.__remaining_accounts.push((account, is_writable, is_signer));
-    self
-  }
-  /// Add additional accounts to the instruction.
-  ///
-  /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
-  /// and a `bool` indicating whether the account is a signer or not.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> &mut Self {
-    self.instruction.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed(&[])
-  }
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-          let args = InitMarginAccountInstructionArgs {
-                                                              margin_bump: self.instruction.margin_bump.clone().expect("margin_bump is not set"),
-                                    };
+    }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(
+        &mut self,
+        account: &'b solana_account_info::AccountInfo<'a>,
+        is_writable: bool,
+        is_signer: bool,
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .push((account, is_writable, is_signer));
+        self
+    }
+    /// Add additional accounts to the instruction.
+    ///
+    /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
+    /// and a `bool` indicating whether the account is a signer or not.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .extend_from_slice(accounts);
+        self
+    }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed(&[])
+    }
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        let args = InitMarginAccountInstructionArgs {
+            margin_bump: self
+                .instruction
+                .margin_bump
+                .clone()
+                .expect("margin_bump is not set"),
+        };
         let instruction = InitMarginAccountCpi {
-        __program: self.instruction.__program,
-                  
-          payer: self.instruction.payer.expect("payer is not set"),
-                  
-          owner: self.instruction.owner.expect("owner is not set"),
-                  
-          margin_account: self.instruction.margin_account.expect("margin_account is not set"),
-                  
-          system_program: self.instruction.system_program.expect("system_program is not set"),
-                          __args: args,
-            };
-    instruction.invoke_signed_with_remaining_accounts(signers_seeds, &self.instruction.__remaining_accounts)
-  }
+            __program: self.instruction.__program,
+
+            payer: self.instruction.payer.expect("payer is not set"),
+
+            owner: self.instruction.owner.expect("owner is not set"),
+
+            margin_account: self
+                .instruction
+                .margin_account
+                .expect("margin_account is not set"),
+
+            system_program: self
+                .instruction
+                .system_program
+                .expect("system_program is not set"),
+            __args: args,
+        };
+        instruction.invoke_signed_with_remaining_accounts(
+            signers_seeds,
+            &self.instruction.__remaining_accounts,
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
 struct InitMarginAccountCpiBuilderInstruction<'a, 'b> {
-  __program: &'b solana_account_info::AccountInfo<'a>,
-            payer: Option<&'b solana_account_info::AccountInfo<'a>>,
-                owner: Option<&'b solana_account_info::AccountInfo<'a>>,
-                margin_account: Option<&'b solana_account_info::AccountInfo<'a>>,
-                system_program: Option<&'b solana_account_info::AccountInfo<'a>>,
-                        margin_bump: Option<u8>,
-        /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
-  __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
+    __program: &'b solana_account_info::AccountInfo<'a>,
+    payer: Option<&'b solana_account_info::AccountInfo<'a>>,
+    owner: Option<&'b solana_account_info::AccountInfo<'a>>,
+    margin_account: Option<&'b solana_account_info::AccountInfo<'a>>,
+    system_program: Option<&'b solana_account_info::AccountInfo<'a>>,
+    margin_bump: Option<u8>,
+    /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
+    __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }
-

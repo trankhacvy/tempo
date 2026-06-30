@@ -7,7 +7,5 @@
 
 use solana_address::{address, Address};
 
-
-  /// `tempo_program` program ID.
-  pub const TEMPO_PROGRAM_ID: Address = address!("8gpzMDNnKNz422jW3hs54TRmZK2H5uEwgfEQbjWAwnJD");
-
+/// `tempo_program` program ID.
+pub const TEMPO_PROGRAM_ID: Address = address!("8gpzMDNnKNz422jW3hs54TRmZK2H5uEwgfEQbjWAwnJD");

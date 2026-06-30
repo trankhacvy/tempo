@@ -5,586 +5,541 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
 
 pub const SETTLE_MAKER_QUOTE_DISCRIMINATOR: u8 = 21;
 
 /// Accounts.
 #[derive(Debug)]
 pub struct SettleMakerQuote {
-            /// Permissionless caller
-
-    
-              
-          pub cranker: solana_address::Address,
-                /// Market being settled
-
-    
-              
-          pub market: solana_address::Address,
-                /// Published clearing result
-
-    
-              
-          pub clearing_result: solana_address::Address,
-                /// OrderSlab (scanned for marginal-tick orders)
-
-    
-              
-          pub order_slab: solana_address::Address,
-                /// MakerQuote to settle
-
-    
-              
-          pub maker_quote: solana_address::Address,
-                /// Maker's Position
-
-    
-              
-          pub position: solana_address::Address,
-                /// (Optional) maker's collateral ledger
-
-    
-              
-          pub user_collateral: Option<solana_address::Address>,
-                /// (Optional) fee/insurance pool
-
-    
-              
-          pub vault: Option<solana_address::Address>,
-      }
+    /// Permissionless caller
+    pub cranker: solana_address::Address,
+    /// Market being settled
+    pub market: solana_address::Address,
+    /// Published clearing result
+    pub clearing_result: solana_address::Address,
+    /// OrderSlab (scanned for marginal-tick orders)
+    pub order_slab: solana_address::Address,
+    /// MakerQuote to settle
+    pub maker_quote: solana_address::Address,
+    /// Maker's Position
+    pub position: solana_address::Address,
+    /// (Optional) maker's collateral ledger
+    pub user_collateral: Option<solana_address::Address>,
+    /// (Optional) fee/insurance pool
+    pub vault: Option<solana_address::Address>,
+}
 
 impl SettleMakerQuote {
-  pub fn instruction(&self) -> solana_instruction::Instruction {
-    self.instruction_with_remaining_accounts(&[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn instruction_with_remaining_accounts(&self, remaining_accounts: &[solana_instruction::AccountMeta]) -> solana_instruction::Instruction {
-    let mut accounts = Vec::with_capacity(8+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.cranker,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.market,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.clearing_result,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.order_slab,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.maker_quote,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.position,
-            false
-          ));
-                                                      if let Some(user_collateral) = self.user_collateral {
-              accounts.push(solana_instruction::AccountMeta::new(
-                user_collateral,
-                false,
-              ));
-            }
-                                                                if let Some(vault) = self.vault {
-              accounts.push(solana_instruction::AccountMeta::new(
-                vault,
-                false,
-              ));
-            }
-                                accounts.extend_from_slice(remaining_accounts);
-    let data = SettleMakerQuoteInstructionData::new().try_to_vec().unwrap();
-    
-    solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
+    pub fn instruction(&self) -> solana_instruction::Instruction {
+        self.instruction_with_remaining_accounts(&[])
     }
-  }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn instruction_with_remaining_accounts(
+        &self,
+        remaining_accounts: &[solana_instruction::AccountMeta],
+    ) -> solana_instruction::Instruction {
+        let mut accounts = Vec::with_capacity(8 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.cranker,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.market, false));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.clearing_result,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.order_slab,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            self.maker_quote,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.position, false));
+        if let Some(user_collateral) = self.user_collateral {
+            accounts.push(solana_instruction::AccountMeta::new(user_collateral, false));
+        }
+        if let Some(vault) = self.vault {
+            accounts.push(solana_instruction::AccountMeta::new(vault, false));
+        }
+        accounts.extend_from_slice(remaining_accounts);
+        let data = SettleMakerQuoteInstructionData::new().try_to_vec().unwrap();
+
+        solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct SettleMakerQuoteInstructionData {
-            discriminator: u8,
-      }
-
-impl SettleMakerQuoteInstructionData {
-  pub fn new() -> Self {
-    Self {
-                        discriminator: 21,
-                  }
-  }
-
-    pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
-  }
-
-impl Default for SettleMakerQuoteInstructionData {
-  fn default() -> Self {
-    Self::new()
-  }
+pub struct SettleMakerQuoteInstructionData {
+    discriminator: u8,
 }
 
+impl SettleMakerQuoteInstructionData {
+    pub fn new() -> Self {
+        Self { discriminator: 21 }
+    }
 
+    pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
+        borsh::to_vec(self)
+    }
+}
+
+impl Default for SettleMakerQuoteInstructionData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Instruction builder for `SettleMakerQuote`.
 ///
 /// ### Accounts:
 ///
-                ///   0. `[signer]` cranker
-                ///   1. `[writable]` market
-          ///   2. `[]` clearing_result
-          ///   3. `[]` order_slab
-                ///   4. `[writable]` maker_quote
-                ///   5. `[writable]` position
-                      ///   6. `[writable, optional]` user_collateral
-                      ///   7. `[writable, optional]` vault
+///   0. `[signer]` cranker
+///   1. `[writable]` market
+///   2. `[]` clearing_result
+///   3. `[]` order_slab
+///   4. `[writable]` maker_quote
+///   5. `[writable]` position
+///   6. `[writable, optional]` user_collateral
+///   7. `[writable, optional]` vault
 #[derive(Clone, Debug, Default)]
 pub struct SettleMakerQuoteBuilder {
-            cranker: Option<solana_address::Address>,
-                market: Option<solana_address::Address>,
-                clearing_result: Option<solana_address::Address>,
-                order_slab: Option<solana_address::Address>,
-                maker_quote: Option<solana_address::Address>,
-                position: Option<solana_address::Address>,
-                user_collateral: Option<solana_address::Address>,
-                vault: Option<solana_address::Address>,
-                __remaining_accounts: Vec<solana_instruction::AccountMeta>,
+    cranker: Option<solana_address::Address>,
+    market: Option<solana_address::Address>,
+    clearing_result: Option<solana_address::Address>,
+    order_slab: Option<solana_address::Address>,
+    maker_quote: Option<solana_address::Address>,
+    position: Option<solana_address::Address>,
+    user_collateral: Option<solana_address::Address>,
+    vault: Option<solana_address::Address>,
+    __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
 impl SettleMakerQuoteBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
-            /// Permissionless caller
-#[inline(always)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Permissionless caller
+    #[inline(always)]
     pub fn cranker(&mut self, cranker: solana_address::Address) -> &mut Self {
-                        self.cranker = Some(cranker);
-                    self
+        self.cranker = Some(cranker);
+        self
     }
-            /// Market being settled
-#[inline(always)]
+    /// Market being settled
+    #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
-                        self.market = Some(market);
-                    self
+        self.market = Some(market);
+        self
     }
-            /// Published clearing result
-#[inline(always)]
+    /// Published clearing result
+    #[inline(always)]
     pub fn clearing_result(&mut self, clearing_result: solana_address::Address) -> &mut Self {
-                        self.clearing_result = Some(clearing_result);
-                    self
+        self.clearing_result = Some(clearing_result);
+        self
     }
-            /// OrderSlab (scanned for marginal-tick orders)
-#[inline(always)]
+    /// OrderSlab (scanned for marginal-tick orders)
+    #[inline(always)]
     pub fn order_slab(&mut self, order_slab: solana_address::Address) -> &mut Self {
-                        self.order_slab = Some(order_slab);
-                    self
+        self.order_slab = Some(order_slab);
+        self
     }
-            /// MakerQuote to settle
-#[inline(always)]
+    /// MakerQuote to settle
+    #[inline(always)]
     pub fn maker_quote(&mut self, maker_quote: solana_address::Address) -> &mut Self {
-                        self.maker_quote = Some(maker_quote);
-                    self
+        self.maker_quote = Some(maker_quote);
+        self
     }
-            /// Maker's Position
-#[inline(always)]
+    /// Maker's Position
+    #[inline(always)]
     pub fn position(&mut self, position: solana_address::Address) -> &mut Self {
-                        self.position = Some(position);
-                    self
+        self.position = Some(position);
+        self
     }
-            /// `[optional account]`
-/// (Optional) maker's collateral ledger
-#[inline(always)]
-    pub fn user_collateral(&mut self, user_collateral: Option<solana_address::Address>) -> &mut Self {
-                        self.user_collateral = user_collateral;
-                    self
+    /// `[optional account]`
+    /// (Optional) maker's collateral ledger
+    #[inline(always)]
+    pub fn user_collateral(
+        &mut self,
+        user_collateral: Option<solana_address::Address>,
+    ) -> &mut Self {
+        self.user_collateral = user_collateral;
+        self
     }
-            /// `[optional account]`
-/// (Optional) fee/insurance pool
-#[inline(always)]
+    /// `[optional account]`
+    /// (Optional) fee/insurance pool
+    #[inline(always)]
     pub fn vault(&mut self, vault: Option<solana_address::Address>) -> &mut Self {
-                        self.vault = vault;
-                    self
+        self.vault = vault;
+        self
     }
-            /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
-    self.__remaining_accounts.push(account);
-    self
-  }
-  /// Add additional accounts to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[solana_instruction::AccountMeta]) -> &mut Self {
-    self.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[allow(clippy::clone_on_copy)]
-  pub fn instruction(&self) -> solana_instruction::Instruction {
-    let accounts = SettleMakerQuote {
-                              cranker: self.cranker.expect("cranker is not set"),
-                                        market: self.market.expect("market is not set"),
-                                        clearing_result: self.clearing_result.expect("clearing_result is not set"),
-                                        order_slab: self.order_slab.expect("order_slab is not set"),
-                                        maker_quote: self.maker_quote.expect("maker_quote is not set"),
-                                        position: self.position.expect("position is not set"),
-                                        user_collateral: self.user_collateral,
-                                        vault: self.vault,
-                      };
-    
-    accounts.instruction_with_remaining_accounts(&self.__remaining_accounts)
-  }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
+        self.__remaining_accounts.push(account);
+        self
+    }
+    /// Add additional accounts to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[solana_instruction::AccountMeta],
+    ) -> &mut Self {
+        self.__remaining_accounts.extend_from_slice(accounts);
+        self
+    }
+    #[allow(clippy::clone_on_copy)]
+    pub fn instruction(&self) -> solana_instruction::Instruction {
+        let accounts = SettleMakerQuote {
+            cranker: self.cranker.expect("cranker is not set"),
+            market: self.market.expect("market is not set"),
+            clearing_result: self.clearing_result.expect("clearing_result is not set"),
+            order_slab: self.order_slab.expect("order_slab is not set"),
+            maker_quote: self.maker_quote.expect("maker_quote is not set"),
+            position: self.position.expect("position is not set"),
+            user_collateral: self.user_collateral,
+            vault: self.vault,
+        };
+
+        accounts.instruction_with_remaining_accounts(&self.__remaining_accounts)
+    }
 }
 
-  /// `settle_maker_quote` CPI accounts.
-  pub struct SettleMakerQuoteCpiAccounts<'a, 'b> {
-                  /// Permissionless caller
-
-      
-                    
-              pub cranker: &'b solana_account_info::AccountInfo<'a>,
-                        /// Market being settled
-
-      
-                    
-              pub market: &'b solana_account_info::AccountInfo<'a>,
-                        /// Published clearing result
-
-      
-                    
-              pub clearing_result: &'b solana_account_info::AccountInfo<'a>,
-                        /// OrderSlab (scanned for marginal-tick orders)
-
-      
-                    
-              pub order_slab: &'b solana_account_info::AccountInfo<'a>,
-                        /// MakerQuote to settle
-
-      
-                    
-              pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
-                        /// Maker's Position
-
-      
-                    
-              pub position: &'b solana_account_info::AccountInfo<'a>,
-                        /// (Optional) maker's collateral ledger
-
-      
-                    
-              pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
-                        /// (Optional) fee/insurance pool
-
-      
-                    
-              pub vault: Option<&'b solana_account_info::AccountInfo<'a>>,
-            }
+/// `settle_maker_quote` CPI accounts.
+pub struct SettleMakerQuoteCpiAccounts<'a, 'b> {
+    /// Permissionless caller
+    pub cranker: &'b solana_account_info::AccountInfo<'a>,
+    /// Market being settled
+    pub market: &'b solana_account_info::AccountInfo<'a>,
+    /// Published clearing result
+    pub clearing_result: &'b solana_account_info::AccountInfo<'a>,
+    /// OrderSlab (scanned for marginal-tick orders)
+    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
+    /// MakerQuote to settle
+    pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    /// Maker's Position
+    pub position: &'b solana_account_info::AccountInfo<'a>,
+    /// (Optional) maker's collateral ledger
+    pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    /// (Optional) fee/insurance pool
+    pub vault: Option<&'b solana_account_info::AccountInfo<'a>>,
+}
 
 /// `settle_maker_quote` CPI instruction.
 pub struct SettleMakerQuoteCpi<'a, 'b> {
-  /// The program to invoke.
-  pub __program: &'b solana_account_info::AccountInfo<'a>,
-            /// Permissionless caller
-
-    
-              
-          pub cranker: &'b solana_account_info::AccountInfo<'a>,
-                /// Market being settled
-
-    
-              
-          pub market: &'b solana_account_info::AccountInfo<'a>,
-                /// Published clearing result
-
-    
-              
-          pub clearing_result: &'b solana_account_info::AccountInfo<'a>,
-                /// OrderSlab (scanned for marginal-tick orders)
-
-    
-              
-          pub order_slab: &'b solana_account_info::AccountInfo<'a>,
-                /// MakerQuote to settle
-
-    
-              
-          pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
-                /// Maker's Position
-
-    
-              
-          pub position: &'b solana_account_info::AccountInfo<'a>,
-                /// (Optional) maker's collateral ledger
-
-    
-              
-          pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
-                /// (Optional) fee/insurance pool
-
-    
-              
-          pub vault: Option<&'b solana_account_info::AccountInfo<'a>>,
-        }
+    /// The program to invoke.
+    pub __program: &'b solana_account_info::AccountInfo<'a>,
+    /// Permissionless caller
+    pub cranker: &'b solana_account_info::AccountInfo<'a>,
+    /// Market being settled
+    pub market: &'b solana_account_info::AccountInfo<'a>,
+    /// Published clearing result
+    pub clearing_result: &'b solana_account_info::AccountInfo<'a>,
+    /// OrderSlab (scanned for marginal-tick orders)
+    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
+    /// MakerQuote to settle
+    pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    /// Maker's Position
+    pub position: &'b solana_account_info::AccountInfo<'a>,
+    /// (Optional) maker's collateral ledger
+    pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    /// (Optional) fee/insurance pool
+    pub vault: Option<&'b solana_account_info::AccountInfo<'a>>,
+}
 
 impl<'a, 'b> SettleMakerQuoteCpi<'a, 'b> {
-  pub fn new(
-    program: &'b solana_account_info::AccountInfo<'a>,
-          accounts: SettleMakerQuoteCpiAccounts<'a, 'b>,
-          ) -> Self {
-    Self {
-      __program: program,
-              cranker: accounts.cranker,
-              market: accounts.market,
-              clearing_result: accounts.clearing_result,
-              order_slab: accounts.order_slab,
-              maker_quote: accounts.maker_quote,
-              position: accounts.position,
-              user_collateral: accounts.user_collateral,
-              vault: accounts.vault,
-                }
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], &[])
-  }
-  #[inline(always)]
-  pub fn invoke_with_remaining_accounts(&self, remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
-  }
-  #[inline(always)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed_with_remaining_accounts(
-    &self,
-    signers_seeds: &[&[&[u8]]],
-    remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]
-  ) -> solana_program_error::ProgramResult {
-    let mut accounts = Vec::with_capacity(8+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.cranker.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.market.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.clearing_result.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.order_slab.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.maker_quote.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.position.key,
-            false
-          ));
-                                          if let Some(user_collateral) = self.user_collateral {
-            accounts.push(solana_instruction::AccountMeta::new(
-              *user_collateral.key,
-              false,
-            ));
-          }
-                                          if let Some(vault) = self.vault {
-            accounts.push(solana_instruction::AccountMeta::new(
-              *vault.key,
-              false,
-            ));
-          }
-                      remaining_accounts.iter().for_each(|remaining_account| {
-      accounts.push(solana_instruction::AccountMeta {
-          pubkey: *remaining_account.0.key,
-          is_signer: remaining_account.1,
-          is_writable: remaining_account.2,
-      })
-    });
-    let data = SettleMakerQuoteInstructionData::new().try_to_vec().unwrap();
-    
-    let instruction = solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
-    };
-    let mut account_infos = Vec::with_capacity(9 + remaining_accounts.len());
-    account_infos.push(self.__program.clone());
-                  account_infos.push(self.cranker.clone());
-                        account_infos.push(self.market.clone());
-                        account_infos.push(self.clearing_result.clone());
-                        account_infos.push(self.order_slab.clone());
-                        account_infos.push(self.maker_quote.clone());
-                        account_infos.push(self.position.clone());
-                        if let Some(user_collateral) = self.user_collateral {
-          account_infos.push(user_collateral.clone());
+    pub fn new(
+        program: &'b solana_account_info::AccountInfo<'a>,
+        accounts: SettleMakerQuoteCpiAccounts<'a, 'b>,
+    ) -> Self {
+        Self {
+            __program: program,
+            cranker: accounts.cranker,
+            market: accounts.market,
+            clearing_result: accounts.clearing_result,
+            order_slab: accounts.order_slab,
+            maker_quote: accounts.maker_quote,
+            position: accounts.position,
+            user_collateral: accounts.user_collateral,
+            vault: accounts.vault,
         }
-                        if let Some(vault) = self.vault {
-          account_infos.push(vault.clone());
-        }
-              remaining_accounts.iter().for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
-
-    if signers_seeds.is_empty() {
-      solana_cpi::invoke(&instruction, &account_infos)
-    } else {
-      solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
     }
-  }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], &[])
+    }
+    #[inline(always)]
+    pub fn invoke_with_remaining_accounts(
+        &self,
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
+    }
+    #[inline(always)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed_with_remaining_accounts(
+        &self,
+        signers_seeds: &[&[&[u8]]],
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        let mut accounts = Vec::with_capacity(8 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.cranker.key,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.market.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.clearing_result.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.order_slab.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.maker_quote.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.position.key,
+            false,
+        ));
+        if let Some(user_collateral) = self.user_collateral {
+            accounts.push(solana_instruction::AccountMeta::new(
+                *user_collateral.key,
+                false,
+            ));
+        }
+        if let Some(vault) = self.vault {
+            accounts.push(solana_instruction::AccountMeta::new(*vault.key, false));
+        }
+        remaining_accounts.iter().for_each(|remaining_account| {
+            accounts.push(solana_instruction::AccountMeta {
+                pubkey: *remaining_account.0.key,
+                is_signer: remaining_account.1,
+                is_writable: remaining_account.2,
+            })
+        });
+        let data = SettleMakerQuoteInstructionData::new().try_to_vec().unwrap();
+
+        let instruction = solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        };
+        let mut account_infos = Vec::with_capacity(9 + remaining_accounts.len());
+        account_infos.push(self.__program.clone());
+        account_infos.push(self.cranker.clone());
+        account_infos.push(self.market.clone());
+        account_infos.push(self.clearing_result.clone());
+        account_infos.push(self.order_slab.clone());
+        account_infos.push(self.maker_quote.clone());
+        account_infos.push(self.position.clone());
+        if let Some(user_collateral) = self.user_collateral {
+            account_infos.push(user_collateral.clone());
+        }
+        if let Some(vault) = self.vault {
+            account_infos.push(vault.clone());
+        }
+        remaining_accounts
+            .iter()
+            .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
+
+        if signers_seeds.is_empty() {
+            solana_cpi::invoke(&instruction, &account_infos)
+        } else {
+            solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+        }
+    }
 }
 
 /// Instruction builder for `SettleMakerQuote` via CPI.
 ///
 /// ### Accounts:
 ///
-                ///   0. `[signer]` cranker
-                ///   1. `[writable]` market
-          ///   2. `[]` clearing_result
-          ///   3. `[]` order_slab
-                ///   4. `[writable]` maker_quote
-                ///   5. `[writable]` position
-                      ///   6. `[writable, optional]` user_collateral
-                      ///   7. `[writable, optional]` vault
+///   0. `[signer]` cranker
+///   1. `[writable]` market
+///   2. `[]` clearing_result
+///   3. `[]` order_slab
+///   4. `[writable]` maker_quote
+///   5. `[writable]` position
+///   6. `[writable, optional]` user_collateral
+///   7. `[writable, optional]` vault
 #[derive(Clone, Debug)]
 pub struct SettleMakerQuoteCpiBuilder<'a, 'b> {
-  instruction: Box<SettleMakerQuoteCpiBuilderInstruction<'a, 'b>>,
+    instruction: Box<SettleMakerQuoteCpiBuilderInstruction<'a, 'b>>,
 }
 
 impl<'a, 'b> SettleMakerQuoteCpiBuilder<'a, 'b> {
-  pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
-    let instruction = Box::new(SettleMakerQuoteCpiBuilderInstruction {
-      __program: program,
-              cranker: None,
-              market: None,
-              clearing_result: None,
-              order_slab: None,
-              maker_quote: None,
-              position: None,
-              user_collateral: None,
-              vault: None,
-                                __remaining_accounts: Vec::new(),
-    });
-    Self { instruction }
-  }
-      /// Permissionless caller
-#[inline(always)]
+    pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
+        let instruction = Box::new(SettleMakerQuoteCpiBuilderInstruction {
+            __program: program,
+            cranker: None,
+            market: None,
+            clearing_result: None,
+            order_slab: None,
+            maker_quote: None,
+            position: None,
+            user_collateral: None,
+            vault: None,
+            __remaining_accounts: Vec::new(),
+        });
+        Self { instruction }
+    }
+    /// Permissionless caller
+    #[inline(always)]
     pub fn cranker(&mut self, cranker: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.cranker = Some(cranker);
-                    self
+        self.instruction.cranker = Some(cranker);
+        self
     }
-      /// Market being settled
-#[inline(always)]
+    /// Market being settled
+    #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.market = Some(market);
-                    self
+        self.instruction.market = Some(market);
+        self
     }
-      /// Published clearing result
-#[inline(always)]
-    pub fn clearing_result(&mut self, clearing_result: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.clearing_result = Some(clearing_result);
-                    self
+    /// Published clearing result
+    #[inline(always)]
+    pub fn clearing_result(
+        &mut self,
+        clearing_result: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.clearing_result = Some(clearing_result);
+        self
     }
-      /// OrderSlab (scanned for marginal-tick orders)
-#[inline(always)]
-    pub fn order_slab(&mut self, order_slab: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.order_slab = Some(order_slab);
-                    self
+    /// OrderSlab (scanned for marginal-tick orders)
+    #[inline(always)]
+    pub fn order_slab(
+        &mut self,
+        order_slab: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.order_slab = Some(order_slab);
+        self
     }
-      /// MakerQuote to settle
-#[inline(always)]
-    pub fn maker_quote(&mut self, maker_quote: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.maker_quote = Some(maker_quote);
-                    self
+    /// MakerQuote to settle
+    #[inline(always)]
+    pub fn maker_quote(
+        &mut self,
+        maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.maker_quote = Some(maker_quote);
+        self
     }
-      /// Maker's Position
-#[inline(always)]
+    /// Maker's Position
+    #[inline(always)]
     pub fn position(&mut self, position: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.position = Some(position);
-                    self
+        self.instruction.position = Some(position);
+        self
     }
-      /// `[optional account]`
-/// (Optional) maker's collateral ledger
-#[inline(always)]
-    pub fn user_collateral(&mut self, user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>) -> &mut Self {
-                        self.instruction.user_collateral = user_collateral;
-                    self
+    /// `[optional account]`
+    /// (Optional) maker's collateral ledger
+    #[inline(always)]
+    pub fn user_collateral(
+        &mut self,
+        user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    ) -> &mut Self {
+        self.instruction.user_collateral = user_collateral;
+        self
     }
-      /// `[optional account]`
-/// (Optional) fee/insurance pool
-#[inline(always)]
+    /// `[optional account]`
+    /// (Optional) fee/insurance pool
+    #[inline(always)]
     pub fn vault(&mut self, vault: Option<&'b solana_account_info::AccountInfo<'a>>) -> &mut Self {
-                        self.instruction.vault = vault;
-                    self
+        self.instruction.vault = vault;
+        self
     }
-            /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: &'b solana_account_info::AccountInfo<'a>, is_writable: bool, is_signer: bool) -> &mut Self {
-    self.instruction.__remaining_accounts.push((account, is_writable, is_signer));
-    self
-  }
-  /// Add additional accounts to the instruction.
-  ///
-  /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
-  /// and a `bool` indicating whether the account is a signer or not.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> &mut Self {
-    self.instruction.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed(&[])
-  }
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(
+        &mut self,
+        account: &'b solana_account_info::AccountInfo<'a>,
+        is_writable: bool,
+        is_signer: bool,
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .push((account, is_writable, is_signer));
+        self
+    }
+    /// Add additional accounts to the instruction.
+    ///
+    /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
+    /// and a `bool` indicating whether the account is a signer or not.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .extend_from_slice(accounts);
+        self
+    }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed(&[])
+    }
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
         let instruction = SettleMakerQuoteCpi {
-        __program: self.instruction.__program,
-                  
-          cranker: self.instruction.cranker.expect("cranker is not set"),
-                  
-          market: self.instruction.market.expect("market is not set"),
-                  
-          clearing_result: self.instruction.clearing_result.expect("clearing_result is not set"),
-                  
-          order_slab: self.instruction.order_slab.expect("order_slab is not set"),
-                  
-          maker_quote: self.instruction.maker_quote.expect("maker_quote is not set"),
-                  
-          position: self.instruction.position.expect("position is not set"),
-                  
-          user_collateral: self.instruction.user_collateral,
-                  
-          vault: self.instruction.vault,
-                    };
-    instruction.invoke_signed_with_remaining_accounts(signers_seeds, &self.instruction.__remaining_accounts)
-  }
+            __program: self.instruction.__program,
+
+            cranker: self.instruction.cranker.expect("cranker is not set"),
+
+            market: self.instruction.market.expect("market is not set"),
+
+            clearing_result: self
+                .instruction
+                .clearing_result
+                .expect("clearing_result is not set"),
+
+            order_slab: self.instruction.order_slab.expect("order_slab is not set"),
+
+            maker_quote: self
+                .instruction
+                .maker_quote
+                .expect("maker_quote is not set"),
+
+            position: self.instruction.position.expect("position is not set"),
+
+            user_collateral: self.instruction.user_collateral,
+
+            vault: self.instruction.vault,
+        };
+        instruction.invoke_signed_with_remaining_accounts(
+            signers_seeds,
+            &self.instruction.__remaining_accounts,
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
 struct SettleMakerQuoteCpiBuilderInstruction<'a, 'b> {
-  __program: &'b solana_account_info::AccountInfo<'a>,
-            cranker: Option<&'b solana_account_info::AccountInfo<'a>>,
-                market: Option<&'b solana_account_info::AccountInfo<'a>>,
-                clearing_result: Option<&'b solana_account_info::AccountInfo<'a>>,
-                order_slab: Option<&'b solana_account_info::AccountInfo<'a>>,
-                maker_quote: Option<&'b solana_account_info::AccountInfo<'a>>,
-                position: Option<&'b solana_account_info::AccountInfo<'a>>,
-                user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
-                vault: Option<&'b solana_account_info::AccountInfo<'a>>,
-                /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
-  __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
+    __program: &'b solana_account_info::AccountInfo<'a>,
+    cranker: Option<&'b solana_account_info::AccountInfo<'a>>,
+    market: Option<&'b solana_account_info::AccountInfo<'a>>,
+    clearing_result: Option<&'b solana_account_info::AccountInfo<'a>>,
+    order_slab: Option<&'b solana_account_info::AccountInfo<'a>>,
+    maker_quote: Option<&'b solana_account_info::AccountInfo<'a>>,
+    position: Option<&'b solana_account_info::AccountInfo<'a>>,
+    user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    vault: Option<&'b solana_account_info::AccountInfo<'a>>,
+    /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
+    __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }
-

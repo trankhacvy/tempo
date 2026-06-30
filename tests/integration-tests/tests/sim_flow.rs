@@ -92,6 +92,7 @@ fn passive_orders_are_also_accepted() {
             intent.reduce_only,
             &SubmitMoney::default(),
         );
-        ctx.send_ix(ixn, &[&trader]).expect("passive order accepted");
+        ctx.send_ix(ixn, &[&trader])
+            .expect("passive order accepted");
     }
 }

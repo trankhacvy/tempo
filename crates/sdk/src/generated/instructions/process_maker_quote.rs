@@ -5,390 +5,379 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
 
 pub const PROCESS_MAKER_QUOTE_DISCRIMINATOR: u8 = 20;
 
 /// Accounts.
 #[derive(Debug)]
 pub struct ProcessMakerQuote {
-            /// Permissionless caller
-
-    
-              
-          pub cranker: solana_address::Address,
-                /// Market being accumulated
-
-    
-              
-          pub market: solana_address::Address,
-                /// AuctionHistogram fold target
-
-    
-              
-          pub histogram: solana_address::Address,
-                /// MakerQuote to fold
-
-    
-              
-          pub maker_quote: solana_address::Address,
-      }
+    /// Permissionless caller
+    pub cranker: solana_address::Address,
+    /// Market being accumulated
+    pub market: solana_address::Address,
+    /// AuctionHistogram fold target
+    pub histogram: solana_address::Address,
+    /// MakerQuote to fold
+    pub maker_quote: solana_address::Address,
+}
 
 impl ProcessMakerQuote {
-  pub fn instruction(&self) -> solana_instruction::Instruction {
-    self.instruction_with_remaining_accounts(&[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn instruction_with_remaining_accounts(&self, remaining_accounts: &[solana_instruction::AccountMeta]) -> solana_instruction::Instruction {
-    let mut accounts = Vec::with_capacity(4+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.cranker,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.market,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.histogram,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.maker_quote,
-            false
-          ));
-                      accounts.extend_from_slice(remaining_accounts);
-    let data = ProcessMakerQuoteInstructionData::new().try_to_vec().unwrap();
-    
-    solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
+    pub fn instruction(&self) -> solana_instruction::Instruction {
+        self.instruction_with_remaining_accounts(&[])
     }
-  }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn instruction_with_remaining_accounts(
+        &self,
+        remaining_accounts: &[solana_instruction::AccountMeta],
+    ) -> solana_instruction::Instruction {
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.cranker,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.market, false));
+        accounts.push(solana_instruction::AccountMeta::new(self.histogram, false));
+        accounts.push(solana_instruction::AccountMeta::new(
+            self.maker_quote,
+            false,
+        ));
+        accounts.extend_from_slice(remaining_accounts);
+        let data = ProcessMakerQuoteInstructionData::new()
+            .try_to_vec()
+            .unwrap();
+
+        solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct ProcessMakerQuoteInstructionData {
-            discriminator: u8,
-      }
-
-impl ProcessMakerQuoteInstructionData {
-  pub fn new() -> Self {
-    Self {
-                        discriminator: 20,
-                  }
-  }
-
-    pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
-  }
-
-impl Default for ProcessMakerQuoteInstructionData {
-  fn default() -> Self {
-    Self::new()
-  }
+pub struct ProcessMakerQuoteInstructionData {
+    discriminator: u8,
 }
 
+impl ProcessMakerQuoteInstructionData {
+    pub fn new() -> Self {
+        Self { discriminator: 20 }
+    }
 
+    pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
+        borsh::to_vec(self)
+    }
+}
+
+impl Default for ProcessMakerQuoteInstructionData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Instruction builder for `ProcessMakerQuote`.
 ///
 /// ### Accounts:
 ///
-                ///   0. `[signer]` cranker
-                ///   1. `[writable]` market
-                ///   2. `[writable]` histogram
-                ///   3. `[writable]` maker_quote
+///   0. `[signer]` cranker
+///   1. `[writable]` market
+///   2. `[writable]` histogram
+///   3. `[writable]` maker_quote
 #[derive(Clone, Debug, Default)]
 pub struct ProcessMakerQuoteBuilder {
-            cranker: Option<solana_address::Address>,
-                market: Option<solana_address::Address>,
-                histogram: Option<solana_address::Address>,
-                maker_quote: Option<solana_address::Address>,
-                __remaining_accounts: Vec<solana_instruction::AccountMeta>,
+    cranker: Option<solana_address::Address>,
+    market: Option<solana_address::Address>,
+    histogram: Option<solana_address::Address>,
+    maker_quote: Option<solana_address::Address>,
+    __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
 impl ProcessMakerQuoteBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
-            /// Permissionless caller
-#[inline(always)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Permissionless caller
+    #[inline(always)]
     pub fn cranker(&mut self, cranker: solana_address::Address) -> &mut Self {
-                        self.cranker = Some(cranker);
-                    self
+        self.cranker = Some(cranker);
+        self
     }
-            /// Market being accumulated
-#[inline(always)]
+    /// Market being accumulated
+    #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
-                        self.market = Some(market);
-                    self
+        self.market = Some(market);
+        self
     }
-            /// AuctionHistogram fold target
-#[inline(always)]
+    /// AuctionHistogram fold target
+    #[inline(always)]
     pub fn histogram(&mut self, histogram: solana_address::Address) -> &mut Self {
-                        self.histogram = Some(histogram);
-                    self
+        self.histogram = Some(histogram);
+        self
     }
-            /// MakerQuote to fold
-#[inline(always)]
+    /// MakerQuote to fold
+    #[inline(always)]
     pub fn maker_quote(&mut self, maker_quote: solana_address::Address) -> &mut Self {
-                        self.maker_quote = Some(maker_quote);
-                    self
+        self.maker_quote = Some(maker_quote);
+        self
     }
-            /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
-    self.__remaining_accounts.push(account);
-    self
-  }
-  /// Add additional accounts to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[solana_instruction::AccountMeta]) -> &mut Self {
-    self.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[allow(clippy::clone_on_copy)]
-  pub fn instruction(&self) -> solana_instruction::Instruction {
-    let accounts = ProcessMakerQuote {
-                              cranker: self.cranker.expect("cranker is not set"),
-                                        market: self.market.expect("market is not set"),
-                                        histogram: self.histogram.expect("histogram is not set"),
-                                        maker_quote: self.maker_quote.expect("maker_quote is not set"),
-                      };
-    
-    accounts.instruction_with_remaining_accounts(&self.__remaining_accounts)
-  }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
+        self.__remaining_accounts.push(account);
+        self
+    }
+    /// Add additional accounts to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[solana_instruction::AccountMeta],
+    ) -> &mut Self {
+        self.__remaining_accounts.extend_from_slice(accounts);
+        self
+    }
+    #[allow(clippy::clone_on_copy)]
+    pub fn instruction(&self) -> solana_instruction::Instruction {
+        let accounts = ProcessMakerQuote {
+            cranker: self.cranker.expect("cranker is not set"),
+            market: self.market.expect("market is not set"),
+            histogram: self.histogram.expect("histogram is not set"),
+            maker_quote: self.maker_quote.expect("maker_quote is not set"),
+        };
+
+        accounts.instruction_with_remaining_accounts(&self.__remaining_accounts)
+    }
 }
 
-  /// `process_maker_quote` CPI accounts.
-  pub struct ProcessMakerQuoteCpiAccounts<'a, 'b> {
-                  /// Permissionless caller
-
-      
-                    
-              pub cranker: &'b solana_account_info::AccountInfo<'a>,
-                        /// Market being accumulated
-
-      
-                    
-              pub market: &'b solana_account_info::AccountInfo<'a>,
-                        /// AuctionHistogram fold target
-
-      
-                    
-              pub histogram: &'b solana_account_info::AccountInfo<'a>,
-                        /// MakerQuote to fold
-
-      
-                    
-              pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
-            }
+/// `process_maker_quote` CPI accounts.
+pub struct ProcessMakerQuoteCpiAccounts<'a, 'b> {
+    /// Permissionless caller
+    pub cranker: &'b solana_account_info::AccountInfo<'a>,
+    /// Market being accumulated
+    pub market: &'b solana_account_info::AccountInfo<'a>,
+    /// AuctionHistogram fold target
+    pub histogram: &'b solana_account_info::AccountInfo<'a>,
+    /// MakerQuote to fold
+    pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
+}
 
 /// `process_maker_quote` CPI instruction.
 pub struct ProcessMakerQuoteCpi<'a, 'b> {
-  /// The program to invoke.
-  pub __program: &'b solana_account_info::AccountInfo<'a>,
-            /// Permissionless caller
-
-    
-              
-          pub cranker: &'b solana_account_info::AccountInfo<'a>,
-                /// Market being accumulated
-
-    
-              
-          pub market: &'b solana_account_info::AccountInfo<'a>,
-                /// AuctionHistogram fold target
-
-    
-              
-          pub histogram: &'b solana_account_info::AccountInfo<'a>,
-                /// MakerQuote to fold
-
-    
-              
-          pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
-        }
+    /// The program to invoke.
+    pub __program: &'b solana_account_info::AccountInfo<'a>,
+    /// Permissionless caller
+    pub cranker: &'b solana_account_info::AccountInfo<'a>,
+    /// Market being accumulated
+    pub market: &'b solana_account_info::AccountInfo<'a>,
+    /// AuctionHistogram fold target
+    pub histogram: &'b solana_account_info::AccountInfo<'a>,
+    /// MakerQuote to fold
+    pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
+}
 
 impl<'a, 'b> ProcessMakerQuoteCpi<'a, 'b> {
-  pub fn new(
-    program: &'b solana_account_info::AccountInfo<'a>,
-          accounts: ProcessMakerQuoteCpiAccounts<'a, 'b>,
-          ) -> Self {
-    Self {
-      __program: program,
-              cranker: accounts.cranker,
-              market: accounts.market,
-              histogram: accounts.histogram,
-              maker_quote: accounts.maker_quote,
-                }
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], &[])
-  }
-  #[inline(always)]
-  pub fn invoke_with_remaining_accounts(&self, remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
-  }
-  #[inline(always)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed_with_remaining_accounts(
-    &self,
-    signers_seeds: &[&[&[u8]]],
-    remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]
-  ) -> solana_program_error::ProgramResult {
-    let mut accounts = Vec::with_capacity(4+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.cranker.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.market.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.histogram.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.maker_quote.key,
-            false
-          ));
-                      remaining_accounts.iter().for_each(|remaining_account| {
-      accounts.push(solana_instruction::AccountMeta {
-          pubkey: *remaining_account.0.key,
-          is_signer: remaining_account.1,
-          is_writable: remaining_account.2,
-      })
-    });
-    let data = ProcessMakerQuoteInstructionData::new().try_to_vec().unwrap();
-    
-    let instruction = solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
-    };
-    let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
-    account_infos.push(self.__program.clone());
-                  account_infos.push(self.cranker.clone());
-                        account_infos.push(self.market.clone());
-                        account_infos.push(self.histogram.clone());
-                        account_infos.push(self.maker_quote.clone());
-              remaining_accounts.iter().for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
-
-    if signers_seeds.is_empty() {
-      solana_cpi::invoke(&instruction, &account_infos)
-    } else {
-      solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+    pub fn new(
+        program: &'b solana_account_info::AccountInfo<'a>,
+        accounts: ProcessMakerQuoteCpiAccounts<'a, 'b>,
+    ) -> Self {
+        Self {
+            __program: program,
+            cranker: accounts.cranker,
+            market: accounts.market,
+            histogram: accounts.histogram,
+            maker_quote: accounts.maker_quote,
+        }
     }
-  }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], &[])
+    }
+    #[inline(always)]
+    pub fn invoke_with_remaining_accounts(
+        &self,
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
+    }
+    #[inline(always)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed_with_remaining_accounts(
+        &self,
+        signers_seeds: &[&[&[u8]]],
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.cranker.key,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.market.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.histogram.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.maker_quote.key,
+            false,
+        ));
+        remaining_accounts.iter().for_each(|remaining_account| {
+            accounts.push(solana_instruction::AccountMeta {
+                pubkey: *remaining_account.0.key,
+                is_signer: remaining_account.1,
+                is_writable: remaining_account.2,
+            })
+        });
+        let data = ProcessMakerQuoteInstructionData::new()
+            .try_to_vec()
+            .unwrap();
+
+        let instruction = solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        };
+        let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
+        account_infos.push(self.__program.clone());
+        account_infos.push(self.cranker.clone());
+        account_infos.push(self.market.clone());
+        account_infos.push(self.histogram.clone());
+        account_infos.push(self.maker_quote.clone());
+        remaining_accounts
+            .iter()
+            .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
+
+        if signers_seeds.is_empty() {
+            solana_cpi::invoke(&instruction, &account_infos)
+        } else {
+            solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+        }
+    }
 }
 
 /// Instruction builder for `ProcessMakerQuote` via CPI.
 ///
 /// ### Accounts:
 ///
-                ///   0. `[signer]` cranker
-                ///   1. `[writable]` market
-                ///   2. `[writable]` histogram
-                ///   3. `[writable]` maker_quote
+///   0. `[signer]` cranker
+///   1. `[writable]` market
+///   2. `[writable]` histogram
+///   3. `[writable]` maker_quote
 #[derive(Clone, Debug)]
 pub struct ProcessMakerQuoteCpiBuilder<'a, 'b> {
-  instruction: Box<ProcessMakerQuoteCpiBuilderInstruction<'a, 'b>>,
+    instruction: Box<ProcessMakerQuoteCpiBuilderInstruction<'a, 'b>>,
 }
 
 impl<'a, 'b> ProcessMakerQuoteCpiBuilder<'a, 'b> {
-  pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
-    let instruction = Box::new(ProcessMakerQuoteCpiBuilderInstruction {
-      __program: program,
-              cranker: None,
-              market: None,
-              histogram: None,
-              maker_quote: None,
-                                __remaining_accounts: Vec::new(),
-    });
-    Self { instruction }
-  }
-      /// Permissionless caller
-#[inline(always)]
+    pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
+        let instruction = Box::new(ProcessMakerQuoteCpiBuilderInstruction {
+            __program: program,
+            cranker: None,
+            market: None,
+            histogram: None,
+            maker_quote: None,
+            __remaining_accounts: Vec::new(),
+        });
+        Self { instruction }
+    }
+    /// Permissionless caller
+    #[inline(always)]
     pub fn cranker(&mut self, cranker: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.cranker = Some(cranker);
-                    self
+        self.instruction.cranker = Some(cranker);
+        self
     }
-      /// Market being accumulated
-#[inline(always)]
+    /// Market being accumulated
+    #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.market = Some(market);
-                    self
+        self.instruction.market = Some(market);
+        self
     }
-      /// AuctionHistogram fold target
-#[inline(always)]
+    /// AuctionHistogram fold target
+    #[inline(always)]
     pub fn histogram(&mut self, histogram: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.histogram = Some(histogram);
-                    self
+        self.instruction.histogram = Some(histogram);
+        self
     }
-      /// MakerQuote to fold
-#[inline(always)]
-    pub fn maker_quote(&mut self, maker_quote: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.maker_quote = Some(maker_quote);
-                    self
+    /// MakerQuote to fold
+    #[inline(always)]
+    pub fn maker_quote(
+        &mut self,
+        maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.maker_quote = Some(maker_quote);
+        self
     }
-            /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: &'b solana_account_info::AccountInfo<'a>, is_writable: bool, is_signer: bool) -> &mut Self {
-    self.instruction.__remaining_accounts.push((account, is_writable, is_signer));
-    self
-  }
-  /// Add additional accounts to the instruction.
-  ///
-  /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
-  /// and a `bool` indicating whether the account is a signer or not.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> &mut Self {
-    self.instruction.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed(&[])
-  }
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(
+        &mut self,
+        account: &'b solana_account_info::AccountInfo<'a>,
+        is_writable: bool,
+        is_signer: bool,
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .push((account, is_writable, is_signer));
+        self
+    }
+    /// Add additional accounts to the instruction.
+    ///
+    /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
+    /// and a `bool` indicating whether the account is a signer or not.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .extend_from_slice(accounts);
+        self
+    }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed(&[])
+    }
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
         let instruction = ProcessMakerQuoteCpi {
-        __program: self.instruction.__program,
-                  
-          cranker: self.instruction.cranker.expect("cranker is not set"),
-                  
-          market: self.instruction.market.expect("market is not set"),
-                  
-          histogram: self.instruction.histogram.expect("histogram is not set"),
-                  
-          maker_quote: self.instruction.maker_quote.expect("maker_quote is not set"),
-                    };
-    instruction.invoke_signed_with_remaining_accounts(signers_seeds, &self.instruction.__remaining_accounts)
-  }
+            __program: self.instruction.__program,
+
+            cranker: self.instruction.cranker.expect("cranker is not set"),
+
+            market: self.instruction.market.expect("market is not set"),
+
+            histogram: self.instruction.histogram.expect("histogram is not set"),
+
+            maker_quote: self
+                .instruction
+                .maker_quote
+                .expect("maker_quote is not set"),
+        };
+        instruction.invoke_signed_with_remaining_accounts(
+            signers_seeds,
+            &self.instruction.__remaining_accounts,
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
 struct ProcessMakerQuoteCpiBuilderInstruction<'a, 'b> {
-  __program: &'b solana_account_info::AccountInfo<'a>,
-            cranker: Option<&'b solana_account_info::AccountInfo<'a>>,
-                market: Option<&'b solana_account_info::AccountInfo<'a>>,
-                histogram: Option<&'b solana_account_info::AccountInfo<'a>>,
-                maker_quote: Option<&'b solana_account_info::AccountInfo<'a>>,
-                /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
-  __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
+    __program: &'b solana_account_info::AccountInfo<'a>,
+    cranker: Option<&'b solana_account_info::AccountInfo<'a>>,
+    market: Option<&'b solana_account_info::AccountInfo<'a>>,
+    histogram: Option<&'b solana_account_info::AccountInfo<'a>>,
+    maker_quote: Option<&'b solana_account_info::AccountInfo<'a>>,
+    /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
+    __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }
-

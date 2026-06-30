@@ -29,7 +29,8 @@ pub struct SimConfig {
 impl SimConfig {
     pub fn load() -> Result<Self, SimError> {
         let common = tempo_common::Config::load().map_err(SimError::Common)?;
-        let max_orders = env_parse::<u8>("TEMPO_SIM_MAX_ORDERS", 3).clamp(1, MAX_ORDERS_PER_TRADER as u8);
+        let max_orders =
+            env_parse::<u8>("TEMPO_SIM_MAX_ORDERS", 3).clamp(1, MAX_ORDERS_PER_TRADER as u8);
         Ok(Self {
             common,
             persona: Persona::parse(

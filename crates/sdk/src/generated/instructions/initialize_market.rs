@@ -5,971 +5,1035 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-use borsh::BorshSerialize;
 use borsh::BorshDeserialize;
+use borsh::BorshSerialize;
 
 pub const INITIALIZE_MARKET_DISCRIMINATOR: u8 = 0;
 
 /// Accounts.
 #[derive(Debug)]
 pub struct InitializeMarket {
-            /// Pays for account creation
-
-    
-              
-          pub payer: solana_address::Address,
-                /// Market authority / admin
-
-    
-              
-          pub authority: solana_address::Address,
-                /// Random keypair seed for the market PDA
-
-    
-              
-          pub market_seed: solana_address::Address,
-                /// Market PDA to be created
-
-    
-              
-          pub market: solana_address::Address,
-                /// AuctionHistogram PDA (the mailboxes) to be created
-
-    
-              
-          pub histogram: solana_address::Address,
-                /// OrderSlab PDA (bounded resting-order slots) to be created
-
-    
-              
-          pub order_slab: solana_address::Address,
-                /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
-
-    
-              
-          pub oracle: solana_address::Address,
-                /// System program
-
-    
-              
-          pub system_program: solana_address::Address,
-                /// Event authority PDA for CPI event emission
-
-    
-              
-          pub event_authority: solana_address::Address,
-                /// Tempo program, for self-CPI event emission
-
-    
-              
-          pub tempo_program: solana_address::Address,
-      }
+    /// Pays for account creation
+    pub payer: solana_address::Address,
+    /// Market authority / admin
+    pub authority: solana_address::Address,
+    /// Random keypair seed for the market PDA
+    pub market_seed: solana_address::Address,
+    /// Market PDA to be created
+    pub market: solana_address::Address,
+    /// AuctionHistogram PDA (the mailboxes) to be created
+    pub histogram: solana_address::Address,
+    /// OrderSlab PDA (bounded resting-order slots) to be created
+    pub order_slab: solana_address::Address,
+    /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
+    pub oracle: solana_address::Address,
+    /// System program
+    pub system_program: solana_address::Address,
+    /// Event authority PDA for CPI event emission
+    pub event_authority: solana_address::Address,
+    /// Tempo program, for self-CPI event emission
+    pub tempo_program: solana_address::Address,
+}
 
 impl InitializeMarket {
-  pub fn instruction(&self, args: InitializeMarketInstructionArgs) -> solana_instruction::Instruction {
-    self.instruction_with_remaining_accounts(args, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn instruction_with_remaining_accounts(&self, args: InitializeMarketInstructionArgs, remaining_accounts: &[solana_instruction::AccountMeta]) -> solana_instruction::Instruction {
-    let mut accounts = Vec::with_capacity(10+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new(
-            self.payer,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.authority,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.market_seed,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.market,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.histogram,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            self.order_slab,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.oracle,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.system_program,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.event_authority,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.tempo_program,
-            false
-          ));
-                      accounts.extend_from_slice(remaining_accounts);
-    let mut data = InitializeMarketInstructionData::new().try_to_vec().unwrap();
-          let mut args = args.try_to_vec().unwrap();
-      data.append(&mut args);
-    
-    solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
+    pub fn instruction(
+        &self,
+        args: InitializeMarketInstructionArgs,
+    ) -> solana_instruction::Instruction {
+        self.instruction_with_remaining_accounts(args, &[])
     }
-  }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn instruction_with_remaining_accounts(
+        &self,
+        args: InitializeMarketInstructionArgs,
+        remaining_accounts: &[solana_instruction::AccountMeta],
+    ) -> solana_instruction::Instruction {
+        let mut accounts = Vec::with_capacity(10 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new(self.payer, true));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.authority,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.market_seed,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.market, false));
+        accounts.push(solana_instruction::AccountMeta::new(self.histogram, false));
+        accounts.push(solana_instruction::AccountMeta::new(self.order_slab, false));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.oracle,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.system_program,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.event_authority,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.tempo_program,
+            false,
+        ));
+        accounts.extend_from_slice(remaining_accounts);
+        let mut data = InitializeMarketInstructionData::new().try_to_vec().unwrap();
+        let mut args = args.try_to_vec().unwrap();
+        data.append(&mut args);
+
+        solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct InitializeMarketInstructionData {
-            discriminator: u8,
-                                                                                                                  }
+pub struct InitializeMarketInstructionData {
+    discriminator: u8,
+}
 
 impl InitializeMarketInstructionData {
-  pub fn new() -> Self {
-    Self {
-                        discriminator: 0,
-                                                                                                                                                                                                                                                                              }
-  }
+    pub fn new() -> Self {
+        Self { discriminator: 0 }
+    }
 
     pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
-  }
+        borsh::to_vec(self)
+    }
+}
 
 impl Default for InitializeMarketInstructionData {
-  fn default() -> Self {
-    Self::new()
-  }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
- pub struct InitializeMarketInstructionArgs {
-                  pub market_bump: u8,
-                pub histogram_bump: u8,
-                pub order_slab_bump: u8,
-                pub tick_size: u64,
-                pub num_ticks: u32,
-                pub orders_per_auction_cap: u32,
-                pub oracle_feed_id: [u8; 32],
-                pub maintenance_margin_bps: u16,
-                pub liquidation_penalty_bps: u16,
-                pub maker_fee_bps: i16,
-                pub taker_fee_bps: i16,
-                pub integrator_share_bps: u16,
-                pub crank_fee: u64,
-                pub collateral_mint: [u8; 32],
-                pub max_price_move_bps_per_slot: u16,
-                pub soft_stale_slots: u64,
-                pub initial_margin_bps: u16,
-                pub max_position_notional: u128,
-      }
-
-impl InitializeMarketInstructionArgs {
-  pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-    borsh::to_vec(self)
-  }
+pub struct InitializeMarketInstructionArgs {
+    pub market_bump: u8,
+    pub histogram_bump: u8,
+    pub order_slab_bump: u8,
+    pub tick_size: u64,
+    pub num_ticks: u32,
+    pub orders_per_auction_cap: u32,
+    pub oracle_feed_id: [u8; 32],
+    pub maintenance_margin_bps: u16,
+    pub liquidation_penalty_bps: u16,
+    pub maker_fee_bps: i16,
+    pub taker_fee_bps: i16,
+    pub integrator_share_bps: u16,
+    pub crank_fee: u64,
+    pub collateral_mint: [u8; 32],
+    pub max_price_move_bps_per_slot: u16,
+    pub soft_stale_slots: u64,
+    pub initial_margin_bps: u16,
+    pub max_position_notional: u128,
 }
 
+impl InitializeMarketInstructionArgs {
+    pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
+        borsh::to_vec(self)
+    }
+}
 
 /// Instruction builder for `InitializeMarket`.
 ///
 /// ### Accounts:
 ///
-                      ///   0. `[writable, signer]` payer
-                ///   1. `[signer]` authority
-                ///   2. `[signer]` market_seed
-                ///   3. `[writable]` market
-                ///   4. `[writable]` histogram
-                ///   5. `[writable]` order_slab
-          ///   6. `[]` oracle
-                ///   7. `[optional]` system_program (default to `11111111111111111111111111111111`)
-          ///   8. `[]` event_authority
-          ///   9. `[]` tempo_program
+///   0. `[writable, signer]` payer
+///   1. `[signer]` authority
+///   2. `[signer]` market_seed
+///   3. `[writable]` market
+///   4. `[writable]` histogram
+///   5. `[writable]` order_slab
+///   6. `[]` oracle
+///   7. `[optional]` system_program (default to `11111111111111111111111111111111`)
+///   8. `[]` event_authority
+///   9. `[]` tempo_program
 #[derive(Clone, Debug, Default)]
 pub struct InitializeMarketBuilder {
-            payer: Option<solana_address::Address>,
-                authority: Option<solana_address::Address>,
-                market_seed: Option<solana_address::Address>,
-                market: Option<solana_address::Address>,
-                histogram: Option<solana_address::Address>,
-                order_slab: Option<solana_address::Address>,
-                oracle: Option<solana_address::Address>,
-                system_program: Option<solana_address::Address>,
-                event_authority: Option<solana_address::Address>,
-                tempo_program: Option<solana_address::Address>,
-                        market_bump: Option<u8>,
-                histogram_bump: Option<u8>,
-                order_slab_bump: Option<u8>,
-                tick_size: Option<u64>,
-                num_ticks: Option<u32>,
-                orders_per_auction_cap: Option<u32>,
-                oracle_feed_id: Option<[u8; 32]>,
-                maintenance_margin_bps: Option<u16>,
-                liquidation_penalty_bps: Option<u16>,
-                maker_fee_bps: Option<i16>,
-                taker_fee_bps: Option<i16>,
-                integrator_share_bps: Option<u16>,
-                crank_fee: Option<u64>,
-                collateral_mint: Option<[u8; 32]>,
-                max_price_move_bps_per_slot: Option<u16>,
-                soft_stale_slots: Option<u64>,
-                initial_margin_bps: Option<u16>,
-                max_position_notional: Option<u128>,
-        __remaining_accounts: Vec<solana_instruction::AccountMeta>,
+    payer: Option<solana_address::Address>,
+    authority: Option<solana_address::Address>,
+    market_seed: Option<solana_address::Address>,
+    market: Option<solana_address::Address>,
+    histogram: Option<solana_address::Address>,
+    order_slab: Option<solana_address::Address>,
+    oracle: Option<solana_address::Address>,
+    system_program: Option<solana_address::Address>,
+    event_authority: Option<solana_address::Address>,
+    tempo_program: Option<solana_address::Address>,
+    market_bump: Option<u8>,
+    histogram_bump: Option<u8>,
+    order_slab_bump: Option<u8>,
+    tick_size: Option<u64>,
+    num_ticks: Option<u32>,
+    orders_per_auction_cap: Option<u32>,
+    oracle_feed_id: Option<[u8; 32]>,
+    maintenance_margin_bps: Option<u16>,
+    liquidation_penalty_bps: Option<u16>,
+    maker_fee_bps: Option<i16>,
+    taker_fee_bps: Option<i16>,
+    integrator_share_bps: Option<u16>,
+    crank_fee: Option<u64>,
+    collateral_mint: Option<[u8; 32]>,
+    max_price_move_bps_per_slot: Option<u16>,
+    soft_stale_slots: Option<u64>,
+    initial_margin_bps: Option<u16>,
+    max_position_notional: Option<u128>,
+    __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
 impl InitializeMarketBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
-            /// Pays for account creation
-#[inline(always)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Pays for account creation
+    #[inline(always)]
     pub fn payer(&mut self, payer: solana_address::Address) -> &mut Self {
-                        self.payer = Some(payer);
-                    self
+        self.payer = Some(payer);
+        self
     }
-            /// Market authority / admin
-#[inline(always)]
+    /// Market authority / admin
+    #[inline(always)]
     pub fn authority(&mut self, authority: solana_address::Address) -> &mut Self {
-                        self.authority = Some(authority);
-                    self
+        self.authority = Some(authority);
+        self
     }
-            /// Random keypair seed for the market PDA
-#[inline(always)]
+    /// Random keypair seed for the market PDA
+    #[inline(always)]
     pub fn market_seed(&mut self, market_seed: solana_address::Address) -> &mut Self {
-                        self.market_seed = Some(market_seed);
-                    self
+        self.market_seed = Some(market_seed);
+        self
     }
-            /// Market PDA to be created
-#[inline(always)]
+    /// Market PDA to be created
+    #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
-                        self.market = Some(market);
-                    self
+        self.market = Some(market);
+        self
     }
-            /// AuctionHistogram PDA (the mailboxes) to be created
-#[inline(always)]
+    /// AuctionHistogram PDA (the mailboxes) to be created
+    #[inline(always)]
     pub fn histogram(&mut self, histogram: solana_address::Address) -> &mut Self {
-                        self.histogram = Some(histogram);
-                    self
+        self.histogram = Some(histogram);
+        self
     }
-            /// OrderSlab PDA (bounded resting-order slots) to be created
-#[inline(always)]
+    /// OrderSlab PDA (bounded resting-order slots) to be created
+    #[inline(always)]
     pub fn order_slab(&mut self, order_slab: solana_address::Address) -> &mut Self {
-                        self.order_slab = Some(order_slab);
-                    self
+        self.order_slab = Some(order_slab);
+        self
     }
-            /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
-#[inline(always)]
+    /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
+    #[inline(always)]
     pub fn oracle(&mut self, oracle: solana_address::Address) -> &mut Self {
-                        self.oracle = Some(oracle);
-                    self
+        self.oracle = Some(oracle);
+        self
     }
-            /// `[optional account, default to '11111111111111111111111111111111']`
-/// System program
-#[inline(always)]
+    /// `[optional account, default to '11111111111111111111111111111111']`
+    /// System program
+    #[inline(always)]
     pub fn system_program(&mut self, system_program: solana_address::Address) -> &mut Self {
-                        self.system_program = Some(system_program);
-                    self
+        self.system_program = Some(system_program);
+        self
     }
-            /// Event authority PDA for CPI event emission
-#[inline(always)]
+    /// Event authority PDA for CPI event emission
+    #[inline(always)]
     pub fn event_authority(&mut self, event_authority: solana_address::Address) -> &mut Self {
-                        self.event_authority = Some(event_authority);
-                    self
+        self.event_authority = Some(event_authority);
+        self
     }
-            /// Tempo program, for self-CPI event emission
-#[inline(always)]
+    /// Tempo program, for self-CPI event emission
+    #[inline(always)]
     pub fn tempo_program(&mut self, tempo_program: solana_address::Address) -> &mut Self {
-                        self.tempo_program = Some(tempo_program);
-                    self
+        self.tempo_program = Some(tempo_program);
+        self
     }
-                    #[inline(always)]
-      pub fn market_bump(&mut self, market_bump: u8) -> &mut Self {
+    #[inline(always)]
+    pub fn market_bump(&mut self, market_bump: u8) -> &mut Self {
         self.market_bump = Some(market_bump);
         self
-      }
-                #[inline(always)]
-      pub fn histogram_bump(&mut self, histogram_bump: u8) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn histogram_bump(&mut self, histogram_bump: u8) -> &mut Self {
         self.histogram_bump = Some(histogram_bump);
         self
-      }
-                #[inline(always)]
-      pub fn order_slab_bump(&mut self, order_slab_bump: u8) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn order_slab_bump(&mut self, order_slab_bump: u8) -> &mut Self {
         self.order_slab_bump = Some(order_slab_bump);
         self
-      }
-                #[inline(always)]
-      pub fn tick_size(&mut self, tick_size: u64) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn tick_size(&mut self, tick_size: u64) -> &mut Self {
         self.tick_size = Some(tick_size);
         self
-      }
-                #[inline(always)]
-      pub fn num_ticks(&mut self, num_ticks: u32) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn num_ticks(&mut self, num_ticks: u32) -> &mut Self {
         self.num_ticks = Some(num_ticks);
         self
-      }
-                #[inline(always)]
-      pub fn orders_per_auction_cap(&mut self, orders_per_auction_cap: u32) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn orders_per_auction_cap(&mut self, orders_per_auction_cap: u32) -> &mut Self {
         self.orders_per_auction_cap = Some(orders_per_auction_cap);
         self
-      }
-                #[inline(always)]
-      pub fn oracle_feed_id(&mut self, oracle_feed_id: [u8; 32]) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn oracle_feed_id(&mut self, oracle_feed_id: [u8; 32]) -> &mut Self {
         self.oracle_feed_id = Some(oracle_feed_id);
         self
-      }
-                #[inline(always)]
-      pub fn maintenance_margin_bps(&mut self, maintenance_margin_bps: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn maintenance_margin_bps(&mut self, maintenance_margin_bps: u16) -> &mut Self {
         self.maintenance_margin_bps = Some(maintenance_margin_bps);
         self
-      }
-                #[inline(always)]
-      pub fn liquidation_penalty_bps(&mut self, liquidation_penalty_bps: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn liquidation_penalty_bps(&mut self, liquidation_penalty_bps: u16) -> &mut Self {
         self.liquidation_penalty_bps = Some(liquidation_penalty_bps);
         self
-      }
-                #[inline(always)]
-      pub fn maker_fee_bps(&mut self, maker_fee_bps: i16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn maker_fee_bps(&mut self, maker_fee_bps: i16) -> &mut Self {
         self.maker_fee_bps = Some(maker_fee_bps);
         self
-      }
-                #[inline(always)]
-      pub fn taker_fee_bps(&mut self, taker_fee_bps: i16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn taker_fee_bps(&mut self, taker_fee_bps: i16) -> &mut Self {
         self.taker_fee_bps = Some(taker_fee_bps);
         self
-      }
-                #[inline(always)]
-      pub fn integrator_share_bps(&mut self, integrator_share_bps: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn integrator_share_bps(&mut self, integrator_share_bps: u16) -> &mut Self {
         self.integrator_share_bps = Some(integrator_share_bps);
         self
-      }
-                #[inline(always)]
-      pub fn crank_fee(&mut self, crank_fee: u64) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn crank_fee(&mut self, crank_fee: u64) -> &mut Self {
         self.crank_fee = Some(crank_fee);
         self
-      }
-                #[inline(always)]
-      pub fn collateral_mint(&mut self, collateral_mint: [u8; 32]) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn collateral_mint(&mut self, collateral_mint: [u8; 32]) -> &mut Self {
         self.collateral_mint = Some(collateral_mint);
         self
-      }
-                #[inline(always)]
-      pub fn max_price_move_bps_per_slot(&mut self, max_price_move_bps_per_slot: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn max_price_move_bps_per_slot(&mut self, max_price_move_bps_per_slot: u16) -> &mut Self {
         self.max_price_move_bps_per_slot = Some(max_price_move_bps_per_slot);
         self
-      }
-                #[inline(always)]
-      pub fn soft_stale_slots(&mut self, soft_stale_slots: u64) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn soft_stale_slots(&mut self, soft_stale_slots: u64) -> &mut Self {
         self.soft_stale_slots = Some(soft_stale_slots);
         self
-      }
-                #[inline(always)]
-      pub fn initial_margin_bps(&mut self, initial_margin_bps: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn initial_margin_bps(&mut self, initial_margin_bps: u16) -> &mut Self {
         self.initial_margin_bps = Some(initial_margin_bps);
         self
-      }
-                #[inline(always)]
-      pub fn max_position_notional(&mut self, max_position_notional: u128) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn max_position_notional(&mut self, max_position_notional: u128) -> &mut Self {
         self.max_position_notional = Some(max_position_notional);
         self
-      }
-        /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
-    self.__remaining_accounts.push(account);
-    self
-  }
-  /// Add additional accounts to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[solana_instruction::AccountMeta]) -> &mut Self {
-    self.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[allow(clippy::clone_on_copy)]
-  pub fn instruction(&self) -> solana_instruction::Instruction {
-    let accounts = InitializeMarket {
-                              payer: self.payer.expect("payer is not set"),
-                                        authority: self.authority.expect("authority is not set"),
-                                        market_seed: self.market_seed.expect("market_seed is not set"),
-                                        market: self.market.expect("market is not set"),
-                                        histogram: self.histogram.expect("histogram is not set"),
-                                        order_slab: self.order_slab.expect("order_slab is not set"),
-                                        oracle: self.oracle.expect("oracle is not set"),
-                                        system_program: self.system_program.unwrap_or(solana_address::address!("11111111111111111111111111111111")),
-                                        event_authority: self.event_authority.expect("event_authority is not set"),
-                                        tempo_program: self.tempo_program.expect("tempo_program is not set"),
-                      };
-          let args = InitializeMarketInstructionArgs {
-                                                              market_bump: self.market_bump.clone().expect("market_bump is not set"),
-                                                                  histogram_bump: self.histogram_bump.clone().expect("histogram_bump is not set"),
-                                                                  order_slab_bump: self.order_slab_bump.clone().expect("order_slab_bump is not set"),
-                                                                  tick_size: self.tick_size.clone().expect("tick_size is not set"),
-                                                                  num_ticks: self.num_ticks.clone().expect("num_ticks is not set"),
-                                                                  orders_per_auction_cap: self.orders_per_auction_cap.clone().expect("orders_per_auction_cap is not set"),
-                                                                  oracle_feed_id: self.oracle_feed_id.clone().expect("oracle_feed_id is not set"),
-                                                                  maintenance_margin_bps: self.maintenance_margin_bps.clone().expect("maintenance_margin_bps is not set"),
-                                                                  liquidation_penalty_bps: self.liquidation_penalty_bps.clone().expect("liquidation_penalty_bps is not set"),
-                                                                  maker_fee_bps: self.maker_fee_bps.clone().expect("maker_fee_bps is not set"),
-                                                                  taker_fee_bps: self.taker_fee_bps.clone().expect("taker_fee_bps is not set"),
-                                                                  integrator_share_bps: self.integrator_share_bps.clone().expect("integrator_share_bps is not set"),
-                                                                  crank_fee: self.crank_fee.clone().expect("crank_fee is not set"),
-                                                                  collateral_mint: self.collateral_mint.clone().expect("collateral_mint is not set"),
-                                                                  max_price_move_bps_per_slot: self.max_price_move_bps_per_slot.clone().expect("max_price_move_bps_per_slot is not set"),
-                                                                  soft_stale_slots: self.soft_stale_slots.clone().expect("soft_stale_slots is not set"),
-                                                                  initial_margin_bps: self.initial_margin_bps.clone().expect("initial_margin_bps is not set"),
-                                                                  max_position_notional: self.max_position_notional.clone().expect("max_position_notional is not set"),
-                                    };
-    
-    accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
-  }
+    }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
+        self.__remaining_accounts.push(account);
+        self
+    }
+    /// Add additional accounts to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[solana_instruction::AccountMeta],
+    ) -> &mut Self {
+        self.__remaining_accounts.extend_from_slice(accounts);
+        self
+    }
+    #[allow(clippy::clone_on_copy)]
+    pub fn instruction(&self) -> solana_instruction::Instruction {
+        let accounts = InitializeMarket {
+            payer: self.payer.expect("payer is not set"),
+            authority: self.authority.expect("authority is not set"),
+            market_seed: self.market_seed.expect("market_seed is not set"),
+            market: self.market.expect("market is not set"),
+            histogram: self.histogram.expect("histogram is not set"),
+            order_slab: self.order_slab.expect("order_slab is not set"),
+            oracle: self.oracle.expect("oracle is not set"),
+            system_program: self
+                .system_program
+                .unwrap_or(solana_address::address!("11111111111111111111111111111111")),
+            event_authority: self.event_authority.expect("event_authority is not set"),
+            tempo_program: self.tempo_program.expect("tempo_program is not set"),
+        };
+        let args = InitializeMarketInstructionArgs {
+            market_bump: self.market_bump.clone().expect("market_bump is not set"),
+            histogram_bump: self
+                .histogram_bump
+                .clone()
+                .expect("histogram_bump is not set"),
+            order_slab_bump: self
+                .order_slab_bump
+                .clone()
+                .expect("order_slab_bump is not set"),
+            tick_size: self.tick_size.clone().expect("tick_size is not set"),
+            num_ticks: self.num_ticks.clone().expect("num_ticks is not set"),
+            orders_per_auction_cap: self
+                .orders_per_auction_cap
+                .clone()
+                .expect("orders_per_auction_cap is not set"),
+            oracle_feed_id: self
+                .oracle_feed_id
+                .clone()
+                .expect("oracle_feed_id is not set"),
+            maintenance_margin_bps: self
+                .maintenance_margin_bps
+                .clone()
+                .expect("maintenance_margin_bps is not set"),
+            liquidation_penalty_bps: self
+                .liquidation_penalty_bps
+                .clone()
+                .expect("liquidation_penalty_bps is not set"),
+            maker_fee_bps: self
+                .maker_fee_bps
+                .clone()
+                .expect("maker_fee_bps is not set"),
+            taker_fee_bps: self
+                .taker_fee_bps
+                .clone()
+                .expect("taker_fee_bps is not set"),
+            integrator_share_bps: self
+                .integrator_share_bps
+                .clone()
+                .expect("integrator_share_bps is not set"),
+            crank_fee: self.crank_fee.clone().expect("crank_fee is not set"),
+            collateral_mint: self
+                .collateral_mint
+                .clone()
+                .expect("collateral_mint is not set"),
+            max_price_move_bps_per_slot: self
+                .max_price_move_bps_per_slot
+                .clone()
+                .expect("max_price_move_bps_per_slot is not set"),
+            soft_stale_slots: self
+                .soft_stale_slots
+                .clone()
+                .expect("soft_stale_slots is not set"),
+            initial_margin_bps: self
+                .initial_margin_bps
+                .clone()
+                .expect("initial_margin_bps is not set"),
+            max_position_notional: self
+                .max_position_notional
+                .clone()
+                .expect("max_position_notional is not set"),
+        };
+
+        accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
+    }
 }
 
-  /// `initialize_market` CPI accounts.
-  pub struct InitializeMarketCpiAccounts<'a, 'b> {
-                  /// Pays for account creation
-
-      
-                    
-              pub payer: &'b solana_account_info::AccountInfo<'a>,
-                        /// Market authority / admin
-
-      
-                    
-              pub authority: &'b solana_account_info::AccountInfo<'a>,
-                        /// Random keypair seed for the market PDA
-
-      
-                    
-              pub market_seed: &'b solana_account_info::AccountInfo<'a>,
-                        /// Market PDA to be created
-
-      
-                    
-              pub market: &'b solana_account_info::AccountInfo<'a>,
-                        /// AuctionHistogram PDA (the mailboxes) to be created
-
-      
-                    
-              pub histogram: &'b solana_account_info::AccountInfo<'a>,
-                        /// OrderSlab PDA (bounded resting-order slots) to be created
-
-      
-                    
-              pub order_slab: &'b solana_account_info::AccountInfo<'a>,
-                        /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
-
-      
-                    
-              pub oracle: &'b solana_account_info::AccountInfo<'a>,
-                        /// System program
-
-      
-                    
-              pub system_program: &'b solana_account_info::AccountInfo<'a>,
-                        /// Event authority PDA for CPI event emission
-
-      
-                    
-              pub event_authority: &'b solana_account_info::AccountInfo<'a>,
-                        /// Tempo program, for self-CPI event emission
-
-      
-                    
-              pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
-            }
+/// `initialize_market` CPI accounts.
+pub struct InitializeMarketCpiAccounts<'a, 'b> {
+    /// Pays for account creation
+    pub payer: &'b solana_account_info::AccountInfo<'a>,
+    /// Market authority / admin
+    pub authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Random keypair seed for the market PDA
+    pub market_seed: &'b solana_account_info::AccountInfo<'a>,
+    /// Market PDA to be created
+    pub market: &'b solana_account_info::AccountInfo<'a>,
+    /// AuctionHistogram PDA (the mailboxes) to be created
+    pub histogram: &'b solana_account_info::AccountInfo<'a>,
+    /// OrderSlab PDA (bounded resting-order slots) to be created
+    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
+    /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
+    pub oracle: &'b solana_account_info::AccountInfo<'a>,
+    /// System program
+    pub system_program: &'b solana_account_info::AccountInfo<'a>,
+    /// Event authority PDA for CPI event emission
+    pub event_authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Tempo program, for self-CPI event emission
+    pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
+}
 
 /// `initialize_market` CPI instruction.
 pub struct InitializeMarketCpi<'a, 'b> {
-  /// The program to invoke.
-  pub __program: &'b solana_account_info::AccountInfo<'a>,
-            /// Pays for account creation
-
-    
-              
-          pub payer: &'b solana_account_info::AccountInfo<'a>,
-                /// Market authority / admin
-
-    
-              
-          pub authority: &'b solana_account_info::AccountInfo<'a>,
-                /// Random keypair seed for the market PDA
-
-    
-              
-          pub market_seed: &'b solana_account_info::AccountInfo<'a>,
-                /// Market PDA to be created
-
-    
-              
-          pub market: &'b solana_account_info::AccountInfo<'a>,
-                /// AuctionHistogram PDA (the mailboxes) to be created
-
-    
-              
-          pub histogram: &'b solana_account_info::AccountInfo<'a>,
-                /// OrderSlab PDA (bounded resting-order slots) to be created
-
-    
-              
-          pub order_slab: &'b solana_account_info::AccountInfo<'a>,
-                /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
-
-    
-              
-          pub oracle: &'b solana_account_info::AccountInfo<'a>,
-                /// System program
-
-    
-              
-          pub system_program: &'b solana_account_info::AccountInfo<'a>,
-                /// Event authority PDA for CPI event emission
-
-    
-              
-          pub event_authority: &'b solana_account_info::AccountInfo<'a>,
-                /// Tempo program, for self-CPI event emission
-
-    
-              
-          pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
-            /// The arguments for the instruction.
+    /// The program to invoke.
+    pub __program: &'b solana_account_info::AccountInfo<'a>,
+    /// Pays for account creation
+    pub payer: &'b solana_account_info::AccountInfo<'a>,
+    /// Market authority / admin
+    pub authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Random keypair seed for the market PDA
+    pub market_seed: &'b solana_account_info::AccountInfo<'a>,
+    /// Market PDA to be created
+    pub market: &'b solana_account_info::AccountInfo<'a>,
+    /// AuctionHistogram PDA (the mailboxes) to be created
+    pub histogram: &'b solana_account_info::AccountInfo<'a>,
+    /// OrderSlab PDA (bounded resting-order slots) to be created
+    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
+    /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
+    pub oracle: &'b solana_account_info::AccountInfo<'a>,
+    /// System program
+    pub system_program: &'b solana_account_info::AccountInfo<'a>,
+    /// Event authority PDA for CPI event emission
+    pub event_authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Tempo program, for self-CPI event emission
+    pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
+    /// The arguments for the instruction.
     pub __args: InitializeMarketInstructionArgs,
-  }
+}
 
 impl<'a, 'b> InitializeMarketCpi<'a, 'b> {
-  pub fn new(
-    program: &'b solana_account_info::AccountInfo<'a>,
-          accounts: InitializeMarketCpiAccounts<'a, 'b>,
-              args: InitializeMarketInstructionArgs,
-      ) -> Self {
-    Self {
-      __program: program,
-              payer: accounts.payer,
-              authority: accounts.authority,
-              market_seed: accounts.market_seed,
-              market: accounts.market,
-              histogram: accounts.histogram,
-              order_slab: accounts.order_slab,
-              oracle: accounts.oracle,
-              system_program: accounts.system_program,
-              event_authority: accounts.event_authority,
-              tempo_program: accounts.tempo_program,
-                    __args: args,
-          }
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], &[])
-  }
-  #[inline(always)]
-  pub fn invoke_with_remaining_accounts(&self, remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
-  }
-  #[inline(always)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-    self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
-  }
-  #[allow(clippy::arithmetic_side_effects)]
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed_with_remaining_accounts(
-    &self,
-    signers_seeds: &[&[&[u8]]],
-    remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]
-  ) -> solana_program_error::ProgramResult {
-    let mut accounts = Vec::with_capacity(10+ remaining_accounts.len());
-                            accounts.push(solana_instruction::AccountMeta::new(
-            *self.payer.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.authority.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.market_seed.key,
-            true
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.market.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.histogram.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new(
-            *self.order_slab.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.oracle.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.system_program.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.event_authority.key,
-            false
-          ));
-                                          accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.tempo_program.key,
-            false
-          ));
-                      remaining_accounts.iter().for_each(|remaining_account| {
-      accounts.push(solana_instruction::AccountMeta {
-          pubkey: *remaining_account.0.key,
-          is_signer: remaining_account.1,
-          is_writable: remaining_account.2,
-      })
-    });
-    let mut data = InitializeMarketInstructionData::new().try_to_vec().unwrap();
-          let mut args = self.__args.try_to_vec().unwrap();
-      data.append(&mut args);
-    
-    let instruction = solana_instruction::Instruction {
-      program_id: crate::TEMPO_PROGRAM_ID,
-      accounts,
-      data,
-    };
-    let mut account_infos = Vec::with_capacity(11 + remaining_accounts.len());
-    account_infos.push(self.__program.clone());
-                  account_infos.push(self.payer.clone());
-                        account_infos.push(self.authority.clone());
-                        account_infos.push(self.market_seed.clone());
-                        account_infos.push(self.market.clone());
-                        account_infos.push(self.histogram.clone());
-                        account_infos.push(self.order_slab.clone());
-                        account_infos.push(self.oracle.clone());
-                        account_infos.push(self.system_program.clone());
-                        account_infos.push(self.event_authority.clone());
-                        account_infos.push(self.tempo_program.clone());
-              remaining_accounts.iter().for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
-
-    if signers_seeds.is_empty() {
-      solana_cpi::invoke(&instruction, &account_infos)
-    } else {
-      solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+    pub fn new(
+        program: &'b solana_account_info::AccountInfo<'a>,
+        accounts: InitializeMarketCpiAccounts<'a, 'b>,
+        args: InitializeMarketInstructionArgs,
+    ) -> Self {
+        Self {
+            __program: program,
+            payer: accounts.payer,
+            authority: accounts.authority,
+            market_seed: accounts.market_seed,
+            market: accounts.market,
+            histogram: accounts.histogram,
+            order_slab: accounts.order_slab,
+            oracle: accounts.oracle,
+            system_program: accounts.system_program,
+            event_authority: accounts.event_authority,
+            tempo_program: accounts.tempo_program,
+            __args: args,
+        }
     }
-  }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], &[])
+    }
+    #[inline(always)]
+    pub fn invoke_with_remaining_accounts(
+        &self,
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(&[], remaining_accounts)
+    }
+    #[inline(always)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        self.invoke_signed_with_remaining_accounts(signers_seeds, &[])
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed_with_remaining_accounts(
+        &self,
+        signers_seeds: &[&[&[u8]]],
+        remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> solana_program_error::ProgramResult {
+        let mut accounts = Vec::with_capacity(10 + remaining_accounts.len());
+        accounts.push(solana_instruction::AccountMeta::new(*self.payer.key, true));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.authority.key,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.market_seed.key,
+            true,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.market.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.histogram.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new(
+            *self.order_slab.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.oracle.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.system_program.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.event_authority.key,
+            false,
+        ));
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.tempo_program.key,
+            false,
+        ));
+        remaining_accounts.iter().for_each(|remaining_account| {
+            accounts.push(solana_instruction::AccountMeta {
+                pubkey: *remaining_account.0.key,
+                is_signer: remaining_account.1,
+                is_writable: remaining_account.2,
+            })
+        });
+        let mut data = InitializeMarketInstructionData::new().try_to_vec().unwrap();
+        let mut args = self.__args.try_to_vec().unwrap();
+        data.append(&mut args);
+
+        let instruction = solana_instruction::Instruction {
+            program_id: crate::TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        };
+        let mut account_infos = Vec::with_capacity(11 + remaining_accounts.len());
+        account_infos.push(self.__program.clone());
+        account_infos.push(self.payer.clone());
+        account_infos.push(self.authority.clone());
+        account_infos.push(self.market_seed.clone());
+        account_infos.push(self.market.clone());
+        account_infos.push(self.histogram.clone());
+        account_infos.push(self.order_slab.clone());
+        account_infos.push(self.oracle.clone());
+        account_infos.push(self.system_program.clone());
+        account_infos.push(self.event_authority.clone());
+        account_infos.push(self.tempo_program.clone());
+        remaining_accounts
+            .iter()
+            .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
+
+        if signers_seeds.is_empty() {
+            solana_cpi::invoke(&instruction, &account_infos)
+        } else {
+            solana_cpi::invoke_signed(&instruction, &account_infos, signers_seeds)
+        }
+    }
 }
 
 /// Instruction builder for `InitializeMarket` via CPI.
 ///
 /// ### Accounts:
 ///
-                      ///   0. `[writable, signer]` payer
-                ///   1. `[signer]` authority
-                ///   2. `[signer]` market_seed
-                ///   3. `[writable]` market
-                ///   4. `[writable]` histogram
-                ///   5. `[writable]` order_slab
-          ///   6. `[]` oracle
-          ///   7. `[]` system_program
-          ///   8. `[]` event_authority
-          ///   9. `[]` tempo_program
+///   0. `[writable, signer]` payer
+///   1. `[signer]` authority
+///   2. `[signer]` market_seed
+///   3. `[writable]` market
+///   4. `[writable]` histogram
+///   5. `[writable]` order_slab
+///   6. `[]` oracle
+///   7. `[]` system_program
+///   8. `[]` event_authority
+///   9. `[]` tempo_program
 #[derive(Clone, Debug)]
 pub struct InitializeMarketCpiBuilder<'a, 'b> {
-  instruction: Box<InitializeMarketCpiBuilderInstruction<'a, 'b>>,
+    instruction: Box<InitializeMarketCpiBuilderInstruction<'a, 'b>>,
 }
 
 impl<'a, 'b> InitializeMarketCpiBuilder<'a, 'b> {
-  pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
-    let instruction = Box::new(InitializeMarketCpiBuilderInstruction {
-      __program: program,
-              payer: None,
-              authority: None,
-              market_seed: None,
-              market: None,
-              histogram: None,
-              order_slab: None,
-              oracle: None,
-              system_program: None,
-              event_authority: None,
-              tempo_program: None,
-                                            market_bump: None,
-                                histogram_bump: None,
-                                order_slab_bump: None,
-                                tick_size: None,
-                                num_ticks: None,
-                                orders_per_auction_cap: None,
-                                oracle_feed_id: None,
-                                maintenance_margin_bps: None,
-                                liquidation_penalty_bps: None,
-                                maker_fee_bps: None,
-                                taker_fee_bps: None,
-                                integrator_share_bps: None,
-                                crank_fee: None,
-                                collateral_mint: None,
-                                max_price_move_bps_per_slot: None,
-                                soft_stale_slots: None,
-                                initial_margin_bps: None,
-                                max_position_notional: None,
-                    __remaining_accounts: Vec::new(),
-    });
-    Self { instruction }
-  }
-      /// Pays for account creation
-#[inline(always)]
+    pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
+        let instruction = Box::new(InitializeMarketCpiBuilderInstruction {
+            __program: program,
+            payer: None,
+            authority: None,
+            market_seed: None,
+            market: None,
+            histogram: None,
+            order_slab: None,
+            oracle: None,
+            system_program: None,
+            event_authority: None,
+            tempo_program: None,
+            market_bump: None,
+            histogram_bump: None,
+            order_slab_bump: None,
+            tick_size: None,
+            num_ticks: None,
+            orders_per_auction_cap: None,
+            oracle_feed_id: None,
+            maintenance_margin_bps: None,
+            liquidation_penalty_bps: None,
+            maker_fee_bps: None,
+            taker_fee_bps: None,
+            integrator_share_bps: None,
+            crank_fee: None,
+            collateral_mint: None,
+            max_price_move_bps_per_slot: None,
+            soft_stale_slots: None,
+            initial_margin_bps: None,
+            max_position_notional: None,
+            __remaining_accounts: Vec::new(),
+        });
+        Self { instruction }
+    }
+    /// Pays for account creation
+    #[inline(always)]
     pub fn payer(&mut self, payer: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.payer = Some(payer);
-                    self
+        self.instruction.payer = Some(payer);
+        self
     }
-      /// Market authority / admin
-#[inline(always)]
+    /// Market authority / admin
+    #[inline(always)]
     pub fn authority(&mut self, authority: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.authority = Some(authority);
-                    self
+        self.instruction.authority = Some(authority);
+        self
     }
-      /// Random keypair seed for the market PDA
-#[inline(always)]
-    pub fn market_seed(&mut self, market_seed: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.market_seed = Some(market_seed);
-                    self
+    /// Random keypair seed for the market PDA
+    #[inline(always)]
+    pub fn market_seed(
+        &mut self,
+        market_seed: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.market_seed = Some(market_seed);
+        self
     }
-      /// Market PDA to be created
-#[inline(always)]
+    /// Market PDA to be created
+    #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.market = Some(market);
-                    self
+        self.instruction.market = Some(market);
+        self
     }
-      /// AuctionHistogram PDA (the mailboxes) to be created
-#[inline(always)]
+    /// AuctionHistogram PDA (the mailboxes) to be created
+    #[inline(always)]
     pub fn histogram(&mut self, histogram: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.histogram = Some(histogram);
-                    self
+        self.instruction.histogram = Some(histogram);
+        self
     }
-      /// OrderSlab PDA (bounded resting-order slots) to be created
-#[inline(always)]
-    pub fn order_slab(&mut self, order_slab: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.order_slab = Some(order_slab);
-                    self
+    /// OrderSlab PDA (bounded resting-order slots) to be created
+    #[inline(always)]
+    pub fn order_slab(
+        &mut self,
+        order_slab: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.order_slab = Some(order_slab);
+        self
     }
-      /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
-#[inline(always)]
+    /// Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation
+    #[inline(always)]
     pub fn oracle(&mut self, oracle: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.oracle = Some(oracle);
-                    self
+        self.instruction.oracle = Some(oracle);
+        self
     }
-      /// System program
-#[inline(always)]
-    pub fn system_program(&mut self, system_program: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.system_program = Some(system_program);
-                    self
+    /// System program
+    #[inline(always)]
+    pub fn system_program(
+        &mut self,
+        system_program: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.system_program = Some(system_program);
+        self
     }
-      /// Event authority PDA for CPI event emission
-#[inline(always)]
-    pub fn event_authority(&mut self, event_authority: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.event_authority = Some(event_authority);
-                    self
+    /// Event authority PDA for CPI event emission
+    #[inline(always)]
+    pub fn event_authority(
+        &mut self,
+        event_authority: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.event_authority = Some(event_authority);
+        self
     }
-      /// Tempo program, for self-CPI event emission
-#[inline(always)]
-    pub fn tempo_program(&mut self, tempo_program: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-                        self.instruction.tempo_program = Some(tempo_program);
-                    self
+    /// Tempo program, for self-CPI event emission
+    #[inline(always)]
+    pub fn tempo_program(
+        &mut self,
+        tempo_program: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.tempo_program = Some(tempo_program);
+        self
     }
-                    #[inline(always)]
-      pub fn market_bump(&mut self, market_bump: u8) -> &mut Self {
+    #[inline(always)]
+    pub fn market_bump(&mut self, market_bump: u8) -> &mut Self {
         self.instruction.market_bump = Some(market_bump);
         self
-      }
-                #[inline(always)]
-      pub fn histogram_bump(&mut self, histogram_bump: u8) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn histogram_bump(&mut self, histogram_bump: u8) -> &mut Self {
         self.instruction.histogram_bump = Some(histogram_bump);
         self
-      }
-                #[inline(always)]
-      pub fn order_slab_bump(&mut self, order_slab_bump: u8) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn order_slab_bump(&mut self, order_slab_bump: u8) -> &mut Self {
         self.instruction.order_slab_bump = Some(order_slab_bump);
         self
-      }
-                #[inline(always)]
-      pub fn tick_size(&mut self, tick_size: u64) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn tick_size(&mut self, tick_size: u64) -> &mut Self {
         self.instruction.tick_size = Some(tick_size);
         self
-      }
-                #[inline(always)]
-      pub fn num_ticks(&mut self, num_ticks: u32) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn num_ticks(&mut self, num_ticks: u32) -> &mut Self {
         self.instruction.num_ticks = Some(num_ticks);
         self
-      }
-                #[inline(always)]
-      pub fn orders_per_auction_cap(&mut self, orders_per_auction_cap: u32) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn orders_per_auction_cap(&mut self, orders_per_auction_cap: u32) -> &mut Self {
         self.instruction.orders_per_auction_cap = Some(orders_per_auction_cap);
         self
-      }
-                #[inline(always)]
-      pub fn oracle_feed_id(&mut self, oracle_feed_id: [u8; 32]) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn oracle_feed_id(&mut self, oracle_feed_id: [u8; 32]) -> &mut Self {
         self.instruction.oracle_feed_id = Some(oracle_feed_id);
         self
-      }
-                #[inline(always)]
-      pub fn maintenance_margin_bps(&mut self, maintenance_margin_bps: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn maintenance_margin_bps(&mut self, maintenance_margin_bps: u16) -> &mut Self {
         self.instruction.maintenance_margin_bps = Some(maintenance_margin_bps);
         self
-      }
-                #[inline(always)]
-      pub fn liquidation_penalty_bps(&mut self, liquidation_penalty_bps: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn liquidation_penalty_bps(&mut self, liquidation_penalty_bps: u16) -> &mut Self {
         self.instruction.liquidation_penalty_bps = Some(liquidation_penalty_bps);
         self
-      }
-                #[inline(always)]
-      pub fn maker_fee_bps(&mut self, maker_fee_bps: i16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn maker_fee_bps(&mut self, maker_fee_bps: i16) -> &mut Self {
         self.instruction.maker_fee_bps = Some(maker_fee_bps);
         self
-      }
-                #[inline(always)]
-      pub fn taker_fee_bps(&mut self, taker_fee_bps: i16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn taker_fee_bps(&mut self, taker_fee_bps: i16) -> &mut Self {
         self.instruction.taker_fee_bps = Some(taker_fee_bps);
         self
-      }
-                #[inline(always)]
-      pub fn integrator_share_bps(&mut self, integrator_share_bps: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn integrator_share_bps(&mut self, integrator_share_bps: u16) -> &mut Self {
         self.instruction.integrator_share_bps = Some(integrator_share_bps);
         self
-      }
-                #[inline(always)]
-      pub fn crank_fee(&mut self, crank_fee: u64) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn crank_fee(&mut self, crank_fee: u64) -> &mut Self {
         self.instruction.crank_fee = Some(crank_fee);
         self
-      }
-                #[inline(always)]
-      pub fn collateral_mint(&mut self, collateral_mint: [u8; 32]) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn collateral_mint(&mut self, collateral_mint: [u8; 32]) -> &mut Self {
         self.instruction.collateral_mint = Some(collateral_mint);
         self
-      }
-                #[inline(always)]
-      pub fn max_price_move_bps_per_slot(&mut self, max_price_move_bps_per_slot: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn max_price_move_bps_per_slot(&mut self, max_price_move_bps_per_slot: u16) -> &mut Self {
         self.instruction.max_price_move_bps_per_slot = Some(max_price_move_bps_per_slot);
         self
-      }
-                #[inline(always)]
-      pub fn soft_stale_slots(&mut self, soft_stale_slots: u64) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn soft_stale_slots(&mut self, soft_stale_slots: u64) -> &mut Self {
         self.instruction.soft_stale_slots = Some(soft_stale_slots);
         self
-      }
-                #[inline(always)]
-      pub fn initial_margin_bps(&mut self, initial_margin_bps: u16) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn initial_margin_bps(&mut self, initial_margin_bps: u16) -> &mut Self {
         self.instruction.initial_margin_bps = Some(initial_margin_bps);
         self
-      }
-                #[inline(always)]
-      pub fn max_position_notional(&mut self, max_position_notional: u128) -> &mut Self {
+    }
+    #[inline(always)]
+    pub fn max_position_notional(&mut self, max_position_notional: u128) -> &mut Self {
         self.instruction.max_position_notional = Some(max_position_notional);
         self
-      }
-        /// Add an additional account to the instruction.
-  #[inline(always)]
-  pub fn add_remaining_account(&mut self, account: &'b solana_account_info::AccountInfo<'a>, is_writable: bool, is_signer: bool) -> &mut Self {
-    self.instruction.__remaining_accounts.push((account, is_writable, is_signer));
-    self
-  }
-  /// Add additional accounts to the instruction.
-  ///
-  /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
-  /// and a `bool` indicating whether the account is a signer or not.
-  #[inline(always)]
-  pub fn add_remaining_accounts(&mut self, accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)]) -> &mut Self {
-    self.instruction.__remaining_accounts.extend_from_slice(accounts);
-    self
-  }
-  #[inline(always)]
-  pub fn invoke(&self) -> solana_program_error::ProgramResult {
-    self.invoke_signed(&[])
-  }
-  #[allow(clippy::clone_on_copy)]
-  #[allow(clippy::vec_init_then_push)]
-  pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-          let args = InitializeMarketInstructionArgs {
-                                                              market_bump: self.instruction.market_bump.clone().expect("market_bump is not set"),
-                                                                  histogram_bump: self.instruction.histogram_bump.clone().expect("histogram_bump is not set"),
-                                                                  order_slab_bump: self.instruction.order_slab_bump.clone().expect("order_slab_bump is not set"),
-                                                                  tick_size: self.instruction.tick_size.clone().expect("tick_size is not set"),
-                                                                  num_ticks: self.instruction.num_ticks.clone().expect("num_ticks is not set"),
-                                                                  orders_per_auction_cap: self.instruction.orders_per_auction_cap.clone().expect("orders_per_auction_cap is not set"),
-                                                                  oracle_feed_id: self.instruction.oracle_feed_id.clone().expect("oracle_feed_id is not set"),
-                                                                  maintenance_margin_bps: self.instruction.maintenance_margin_bps.clone().expect("maintenance_margin_bps is not set"),
-                                                                  liquidation_penalty_bps: self.instruction.liquidation_penalty_bps.clone().expect("liquidation_penalty_bps is not set"),
-                                                                  maker_fee_bps: self.instruction.maker_fee_bps.clone().expect("maker_fee_bps is not set"),
-                                                                  taker_fee_bps: self.instruction.taker_fee_bps.clone().expect("taker_fee_bps is not set"),
-                                                                  integrator_share_bps: self.instruction.integrator_share_bps.clone().expect("integrator_share_bps is not set"),
-                                                                  crank_fee: self.instruction.crank_fee.clone().expect("crank_fee is not set"),
-                                                                  collateral_mint: self.instruction.collateral_mint.clone().expect("collateral_mint is not set"),
-                                                                  max_price_move_bps_per_slot: self.instruction.max_price_move_bps_per_slot.clone().expect("max_price_move_bps_per_slot is not set"),
-                                                                  soft_stale_slots: self.instruction.soft_stale_slots.clone().expect("soft_stale_slots is not set"),
-                                                                  initial_margin_bps: self.instruction.initial_margin_bps.clone().expect("initial_margin_bps is not set"),
-                                                                  max_position_notional: self.instruction.max_position_notional.clone().expect("max_position_notional is not set"),
-                                    };
+    }
+    /// Add an additional account to the instruction.
+    #[inline(always)]
+    pub fn add_remaining_account(
+        &mut self,
+        account: &'b solana_account_info::AccountInfo<'a>,
+        is_writable: bool,
+        is_signer: bool,
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .push((account, is_writable, is_signer));
+        self
+    }
+    /// Add additional accounts to the instruction.
+    ///
+    /// Each account is represented by a tuple of the `AccountInfo`, a `bool` indicating whether the account is writable or not,
+    /// and a `bool` indicating whether the account is a signer or not.
+    #[inline(always)]
+    pub fn add_remaining_accounts(
+        &mut self,
+        accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
+    ) -> &mut Self {
+        self.instruction
+            .__remaining_accounts
+            .extend_from_slice(accounts);
+        self
+    }
+    #[inline(always)]
+    pub fn invoke(&self) -> solana_program_error::ProgramResult {
+        self.invoke_signed(&[])
+    }
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::vec_init_then_push)]
+    pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
+        let args = InitializeMarketInstructionArgs {
+            market_bump: self
+                .instruction
+                .market_bump
+                .clone()
+                .expect("market_bump is not set"),
+            histogram_bump: self
+                .instruction
+                .histogram_bump
+                .clone()
+                .expect("histogram_bump is not set"),
+            order_slab_bump: self
+                .instruction
+                .order_slab_bump
+                .clone()
+                .expect("order_slab_bump is not set"),
+            tick_size: self
+                .instruction
+                .tick_size
+                .clone()
+                .expect("tick_size is not set"),
+            num_ticks: self
+                .instruction
+                .num_ticks
+                .clone()
+                .expect("num_ticks is not set"),
+            orders_per_auction_cap: self
+                .instruction
+                .orders_per_auction_cap
+                .clone()
+                .expect("orders_per_auction_cap is not set"),
+            oracle_feed_id: self
+                .instruction
+                .oracle_feed_id
+                .clone()
+                .expect("oracle_feed_id is not set"),
+            maintenance_margin_bps: self
+                .instruction
+                .maintenance_margin_bps
+                .clone()
+                .expect("maintenance_margin_bps is not set"),
+            liquidation_penalty_bps: self
+                .instruction
+                .liquidation_penalty_bps
+                .clone()
+                .expect("liquidation_penalty_bps is not set"),
+            maker_fee_bps: self
+                .instruction
+                .maker_fee_bps
+                .clone()
+                .expect("maker_fee_bps is not set"),
+            taker_fee_bps: self
+                .instruction
+                .taker_fee_bps
+                .clone()
+                .expect("taker_fee_bps is not set"),
+            integrator_share_bps: self
+                .instruction
+                .integrator_share_bps
+                .clone()
+                .expect("integrator_share_bps is not set"),
+            crank_fee: self
+                .instruction
+                .crank_fee
+                .clone()
+                .expect("crank_fee is not set"),
+            collateral_mint: self
+                .instruction
+                .collateral_mint
+                .clone()
+                .expect("collateral_mint is not set"),
+            max_price_move_bps_per_slot: self
+                .instruction
+                .max_price_move_bps_per_slot
+                .clone()
+                .expect("max_price_move_bps_per_slot is not set"),
+            soft_stale_slots: self
+                .instruction
+                .soft_stale_slots
+                .clone()
+                .expect("soft_stale_slots is not set"),
+            initial_margin_bps: self
+                .instruction
+                .initial_margin_bps
+                .clone()
+                .expect("initial_margin_bps is not set"),
+            max_position_notional: self
+                .instruction
+                .max_position_notional
+                .clone()
+                .expect("max_position_notional is not set"),
+        };
         let instruction = InitializeMarketCpi {
-        __program: self.instruction.__program,
-                  
-          payer: self.instruction.payer.expect("payer is not set"),
-                  
-          authority: self.instruction.authority.expect("authority is not set"),
-                  
-          market_seed: self.instruction.market_seed.expect("market_seed is not set"),
-                  
-          market: self.instruction.market.expect("market is not set"),
-                  
-          histogram: self.instruction.histogram.expect("histogram is not set"),
-                  
-          order_slab: self.instruction.order_slab.expect("order_slab is not set"),
-                  
-          oracle: self.instruction.oracle.expect("oracle is not set"),
-                  
-          system_program: self.instruction.system_program.expect("system_program is not set"),
-                  
-          event_authority: self.instruction.event_authority.expect("event_authority is not set"),
-                  
-          tempo_program: self.instruction.tempo_program.expect("tempo_program is not set"),
-                          __args: args,
-            };
-    instruction.invoke_signed_with_remaining_accounts(signers_seeds, &self.instruction.__remaining_accounts)
-  }
+            __program: self.instruction.__program,
+
+            payer: self.instruction.payer.expect("payer is not set"),
+
+            authority: self.instruction.authority.expect("authority is not set"),
+
+            market_seed: self
+                .instruction
+                .market_seed
+                .expect("market_seed is not set"),
+
+            market: self.instruction.market.expect("market is not set"),
+
+            histogram: self.instruction.histogram.expect("histogram is not set"),
+
+            order_slab: self.instruction.order_slab.expect("order_slab is not set"),
+
+            oracle: self.instruction.oracle.expect("oracle is not set"),
+
+            system_program: self
+                .instruction
+                .system_program
+                .expect("system_program is not set"),
+
+            event_authority: self
+                .instruction
+                .event_authority
+                .expect("event_authority is not set"),
+
+            tempo_program: self
+                .instruction
+                .tempo_program
+                .expect("tempo_program is not set"),
+            __args: args,
+        };
+        instruction.invoke_signed_with_remaining_accounts(
+            signers_seeds,
+            &self.instruction.__remaining_accounts,
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
 struct InitializeMarketCpiBuilderInstruction<'a, 'b> {
-  __program: &'b solana_account_info::AccountInfo<'a>,
-            payer: Option<&'b solana_account_info::AccountInfo<'a>>,
-                authority: Option<&'b solana_account_info::AccountInfo<'a>>,
-                market_seed: Option<&'b solana_account_info::AccountInfo<'a>>,
-                market: Option<&'b solana_account_info::AccountInfo<'a>>,
-                histogram: Option<&'b solana_account_info::AccountInfo<'a>>,
-                order_slab: Option<&'b solana_account_info::AccountInfo<'a>>,
-                oracle: Option<&'b solana_account_info::AccountInfo<'a>>,
-                system_program: Option<&'b solana_account_info::AccountInfo<'a>>,
-                event_authority: Option<&'b solana_account_info::AccountInfo<'a>>,
-                tempo_program: Option<&'b solana_account_info::AccountInfo<'a>>,
-                        market_bump: Option<u8>,
-                histogram_bump: Option<u8>,
-                order_slab_bump: Option<u8>,
-                tick_size: Option<u64>,
-                num_ticks: Option<u32>,
-                orders_per_auction_cap: Option<u32>,
-                oracle_feed_id: Option<[u8; 32]>,
-                maintenance_margin_bps: Option<u16>,
-                liquidation_penalty_bps: Option<u16>,
-                maker_fee_bps: Option<i16>,
-                taker_fee_bps: Option<i16>,
-                integrator_share_bps: Option<u16>,
-                crank_fee: Option<u64>,
-                collateral_mint: Option<[u8; 32]>,
-                max_price_move_bps_per_slot: Option<u16>,
-                soft_stale_slots: Option<u64>,
-                initial_margin_bps: Option<u16>,
-                max_position_notional: Option<u128>,
-        /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
-  __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
+    __program: &'b solana_account_info::AccountInfo<'a>,
+    payer: Option<&'b solana_account_info::AccountInfo<'a>>,
+    authority: Option<&'b solana_account_info::AccountInfo<'a>>,
+    market_seed: Option<&'b solana_account_info::AccountInfo<'a>>,
+    market: Option<&'b solana_account_info::AccountInfo<'a>>,
+    histogram: Option<&'b solana_account_info::AccountInfo<'a>>,
+    order_slab: Option<&'b solana_account_info::AccountInfo<'a>>,
+    oracle: Option<&'b solana_account_info::AccountInfo<'a>>,
+    system_program: Option<&'b solana_account_info::AccountInfo<'a>>,
+    event_authority: Option<&'b solana_account_info::AccountInfo<'a>>,
+    tempo_program: Option<&'b solana_account_info::AccountInfo<'a>>,
+    market_bump: Option<u8>,
+    histogram_bump: Option<u8>,
+    order_slab_bump: Option<u8>,
+    tick_size: Option<u64>,
+    num_ticks: Option<u32>,
+    orders_per_auction_cap: Option<u32>,
+    oracle_feed_id: Option<[u8; 32]>,
+    maintenance_margin_bps: Option<u16>,
+    liquidation_penalty_bps: Option<u16>,
+    maker_fee_bps: Option<i16>,
+    taker_fee_bps: Option<i16>,
+    integrator_share_bps: Option<u16>,
+    crank_fee: Option<u64>,
+    collateral_mint: Option<[u8; 32]>,
+    max_price_move_bps_per_slot: Option<u16>,
+    soft_stale_slots: Option<u64>,
+    initial_margin_bps: Option<u16>,
+    max_position_notional: Option<u128>,
+    /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
+    __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }
-

@@ -26,7 +26,11 @@ const MINT_LEN: usize = 82;
 
 /// Build, sign (with all `signers`, the first being the fee payer), send, and
 /// confirm a transaction.
-pub fn send(rpc: &RpcClient, signers: &[&Keypair], ixs: &[Instruction]) -> Result<Signature, SimError> {
+pub fn send(
+    rpc: &RpcClient,
+    signers: &[&Keypair],
+    ixs: &[Instruction],
+) -> Result<Signature, SimError> {
     let payer = signers
         .first()
         .ok_or_else(|| SimError::Provision("send: no signers".into()))?;
