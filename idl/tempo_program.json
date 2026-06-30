@@ -3622,11 +3622,11 @@
           },
           {
             "docs": [
-              "(Optional) supplies the maintenance-margin bps"
+              "(Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill)"
             ],
             "isOptional": true,
             "isSigner": false,
-            "isWritable": false,
+            "isWritable": true,
             "kind": "instructionAccountNode",
             "name": "vault"
           },

@@ -10,9 +10,14 @@ use solana_sdk::transaction::Transaction;
 use crate::error::CommonError;
 use crate::rpc::{classify_error, RpcPool};
 
-/// Right-sized compute budget (vs the 200k/ix default). Covers the heaviest
-/// single-ix tx (`finalize_clear`, ~42k) with margin; matches `tx.ts`.
-pub const DEFAULT_CU_LIMIT: u32 = 80_000;
+/// Compute budget per tx. Must cover the heaviest single instruction the keeper
+/// sends: a money-path `settle_maker_quote` / `finalize_clear` (256 ticks) folds in
+/// the position update, funding, socialized-loss, insurance, and fee math, which
+/// can run well past 100k CU. Under-sizing here makes the tx FAIL PREFLIGHT (the
+/// pool sends with `skip_preflight: false`), so it never lands and the round wedges
+/// in `Settling`. 400k stays far under the 1.4M/tx ceiling; you are billed for CU
+/// consumed, not requested, so over-provisioning the limit is free.
+pub const DEFAULT_CU_LIMIT: u32 = 400_000;
 
 const CONFIRM_TIMEOUT: Duration = Duration::from_secs(30);
 const CONFIRM_POLL: Duration = Duration::from_millis(400);

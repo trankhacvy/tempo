@@ -53,7 +53,7 @@ pub struct SettleFill {
     
               
           pub user_collateral: Option<solana_address::Address>,
-                /// (Optional) supplies the maintenance-margin bps
+                /// (Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill)
 
     
               
@@ -110,7 +110,7 @@ impl SettleFill {
               ));
             }
                                                                 if let Some(vault) = self.vault {
-              accounts.push(solana_instruction::AccountMeta::new_readonly(
+              accounts.push(solana_instruction::AccountMeta::new(
                 vault,
                 false,
               ));
@@ -182,7 +182,7 @@ impl SettleFillInstructionArgs {
           ///   5. `[]` tempo_program
                       ///   6. `[writable, optional]` position
                       ///   7. `[writable, optional]` user_collateral
-                ///   8. `[optional]` vault
+                      ///   8. `[writable, optional]` vault
                       ///   9. `[writable, optional]` integrator_collateral
 #[derive(Clone, Debug, Default)]
 pub struct SettleFillBuilder {
@@ -256,7 +256,7 @@ impl SettleFillBuilder {
                     self
     }
             /// `[optional account]`
-/// (Optional) supplies the maintenance-margin bps
+/// (Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill)
 #[inline(always)]
     pub fn vault(&mut self, vault: Option<solana_address::Address>) -> &mut Self {
                         self.vault = vault;
@@ -356,7 +356,7 @@ impl SettleFillBuilder {
       
                     
               pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
-                        /// (Optional) supplies the maintenance-margin bps
+                        /// (Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill)
 
       
                     
@@ -412,7 +412,7 @@ pub struct SettleFillCpi<'a, 'b> {
     
               
           pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
-                /// (Optional) supplies the maintenance-margin bps
+                /// (Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill)
 
     
               
@@ -505,7 +505,7 @@ impl<'a, 'b> SettleFillCpi<'a, 'b> {
             ));
           }
                                           if let Some(vault) = self.vault {
-            accounts.push(solana_instruction::AccountMeta::new_readonly(
+            accounts.push(solana_instruction::AccountMeta::new(
               *vault.key,
               false,
             ));
@@ -574,7 +574,7 @@ impl<'a, 'b> SettleFillCpi<'a, 'b> {
           ///   5. `[]` tempo_program
                       ///   6. `[writable, optional]` position
                       ///   7. `[writable, optional]` user_collateral
-                ///   8. `[optional]` vault
+                      ///   8. `[writable, optional]` vault
                       ///   9. `[writable, optional]` integrator_collateral
 #[derive(Clone, Debug)]
 pub struct SettleFillCpiBuilder<'a, 'b> {
@@ -652,7 +652,7 @@ impl<'a, 'b> SettleFillCpiBuilder<'a, 'b> {
                     self
     }
       /// `[optional account]`
-/// (Optional) supplies the maintenance-margin bps
+/// (Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill)
 #[inline(always)]
     pub fn vault(&mut self, vault: Option<&'b solana_account_info::AccountInfo<'a>>) -> &mut Self {
                         self.instruction.vault = vault;

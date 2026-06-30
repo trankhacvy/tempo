@@ -106,7 +106,7 @@ export type SettleFillInstruction<
         ? []
         : [
             TAccountVault extends string
-              ? ReadonlyAccount<TAccountVault>
+              ? WritableAccount<TAccountVault>
               : TAccountVault,
           ]),
       ...(TAccountIntegratorCollateral extends undefined
@@ -188,7 +188,7 @@ export type SettleFillAsyncInput<
   position?: Address<TAccountPosition>;
   /** (Optional) owner's collateral ledger; locks initial margin on the fill */
   userCollateral?: Address<TAccountUserCollateral>;
-  /** (Optional) supplies the maintenance-margin bps */
+  /** (Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill) */
   vault?: Address<TAccountVault>;
   /** (Optional) integrator ledger to receive a share of a positive fee */
   integratorCollateral?: Address<TAccountIntegratorCollateral>;
@@ -251,7 +251,7 @@ export async function getSettleFillInstructionAsync<
     tempoProgram: { value: input.tempoProgram ?? null, isWritable: false },
     position: { value: input.position ?? null, isWritable: true },
     userCollateral: { value: input.userCollateral ?? null, isWritable: true },
-    vault: { value: input.vault ?? null, isWritable: false },
+    vault: { value: input.vault ?? null, isWritable: true },
     integratorCollateral: {
       value: input.integratorCollateral ?? null,
       isWritable: true,
@@ -344,7 +344,7 @@ export type SettleFillInput<
   position?: Address<TAccountPosition>;
   /** (Optional) owner's collateral ledger; locks initial margin on the fill */
   userCollateral?: Address<TAccountUserCollateral>;
-  /** (Optional) supplies the maintenance-margin bps */
+  /** (Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill) */
   vault?: Address<TAccountVault>;
   /** (Optional) integrator ledger to receive a share of a positive fee */
   integratorCollateral?: Address<TAccountIntegratorCollateral>;
@@ -405,7 +405,7 @@ export function getSettleFillInstruction<
     tempoProgram: { value: input.tempoProgram ?? null, isWritable: false },
     position: { value: input.position ?? null, isWritable: true },
     userCollateral: { value: input.userCollateral ?? null, isWritable: true },
-    vault: { value: input.vault ?? null, isWritable: false },
+    vault: { value: input.vault ?? null, isWritable: true },
     integratorCollateral: {
       value: input.integratorCollateral ?? null,
       isWritable: true,
@@ -474,7 +474,7 @@ export type ParsedSettleFillInstruction<
     position?: TAccountMetas[6] | undefined;
     /** (Optional) owner's collateral ledger; locks initial margin on the fill */
     userCollateral?: TAccountMetas[7] | undefined;
-    /** (Optional) supplies the maintenance-margin bps */
+    /** (Optional) supplies the maintenance-margin bps and the insurance pool that floats PnL/fees/socialized loss (mutated on a non-zero fill) */
     vault?: TAccountMetas[8] | undefined;
     /** (Optional) integrator ledger to receive a share of a positive fee */
     integratorCollateral?: TAccountMetas[9] | undefined;
