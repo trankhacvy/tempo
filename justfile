@@ -3,8 +3,10 @@ install:
     pnpm install
 
 # Generate the Codama IDL from the Rust program (writes idl/tempo_program.json)
+# --tests activates the solana-address dev-dep that provides find_program_address
+# on the host target (pinocchio 0.11 gates it to the solana target otherwise).
 generate-idl:
-    cd program && cargo check --features idl
+    cd program && cargo check --features idl --tests
 
 # Generate TypeScript + Rust clients from the IDL
 generate-clients: generate-idl
