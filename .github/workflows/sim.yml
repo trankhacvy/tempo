@@ -47,44 +47,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build-web:
-    name: Build & push web image
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push web (NEXT_PUBLIC_* are build-time, from repo Variables)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/web/Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE }}-web:latest
-            ${{ env.IMAGE }}-web:${{ github.sha }}
-          build-args: |
-            NEXT_PUBLIC_SOLANA_RPC_URL=${{ vars.NEXT_PUBLIC_SOLANA_RPC_URL }}
-            NEXT_PUBLIC_TEMPO_MARKET=${{ vars.NEXT_PUBLIC_TEMPO_MARKET }}
-            NEXT_PUBLIC_COLLATERAL_MINT=${{ vars.NEXT_PUBLIC_COLLATERAL_MINT }}
-            NEXT_PUBLIC_VAULT_TOKEN_ACCOUNT=${{ vars.NEXT_PUBLIC_VAULT_TOKEN_ACCOUNT }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   deploy:
     name: Trigger Coolify deploy
-    needs: [build, build-web]
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Ping Coolify webhook (pull + redeploy)
