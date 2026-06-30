@@ -81,23 +81,41 @@ function abs(v: bigint): bigint {
     return v < 0n ? -v : v;
 }
 
-// Tick ↔ USD conversion. On-chain prices are tick indices; the program's oracle
-// path treats `price_1e8 ≈ tick · tickSize` (apps/bots/src/sim/pyth.ts
-// `currentOracleTick`: tick = price1e8 / tickSize − 1). Fixed 1e8 fixed-point.
+// Tick ↔ USD conversion. The on-chain window is oracle-anchored (v7): tick 0 is
+// `window_floor_price`, so `price_1e8 = window_floor + tick · tickSize`
+// (Market::tick_to_price). Fixed 1e8 fixed-point.
 const PRICE_SCALE = 100_000_000n;
 
-/** A tick index → USD (number, for display/charting). 0 maps to `null`. */
-export function tickToUsd(tick: bigint, tickSize: bigint): number | null {
-    if (tick <= 0n || tickSize <= 0n) return null;
-    return Number(tick * tickSize) / Number(PRICE_SCALE);
+/** A 1e8 fixed-point price (e.g. a market's `last_bid_fill_price`, already a price
+ *  not a tick) → USD. Non-positive maps to `null`. */
+export function price1e8ToUsd(price1e8: bigint): number | null {
+    if (price1e8 <= 0n) return null;
+    return Number(price1e8) / Number(PRICE_SCALE);
 }
 
-/** A live USD oracle price → the nearest tick index for a market's tick size. */
-export function usdToTick(usd: number, tickSize: bigint): bigint {
-    if (usd <= 0 || tickSize <= 0n) return 1n;
+/** A tick index → USD (number, for display/charting), anchored on the round's
+ *  window floor. A non-positive resulting price maps to `null`. */
+export function tickToUsd(
+    tick: bigint,
+    tickSize: bigint,
+    windowFloor: bigint = 0n,
+): number | null {
+    if (tickSize <= 0n) return null;
+    const price1e8 = windowFloor + tick * tickSize;
+    if (price1e8 <= 0n) return null;
+    return Number(price1e8) / Number(PRICE_SCALE);
+}
+
+/** A live USD price → the nearest in-window tick index for a market's tick size. */
+export function usdToTick(
+    usd: number,
+    tickSize: bigint,
+    windowFloor: bigint = 0n,
+): bigint {
+    if (usd <= 0 || tickSize <= 0n) return 0n;
     const price1e8 = BigInt(Math.round(usd * Number(PRICE_SCALE)));
-    const tick = price1e8 / tickSize;
-    return tick > 0n ? tick : 1n;
+    const tick = (price1e8 - windowFloor) / tickSize;
+    return tick > 0n ? tick : 0n;
 }
 
 /** A base-unit quantity for a USD notional at `usd` price (floor, ≥ 1). */

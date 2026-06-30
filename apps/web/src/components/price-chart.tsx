@@ -15,7 +15,7 @@ import { useEffect, useRef } from "react";
 
 import { type MarketView } from "@/lib/data";
 import { fetchSolUsdHistory, useSolUsdPrice, type OhlcBar } from "@/lib/pyth";
-import { tickToUsd } from "@/lib/tempo-math";
+import { price1e8ToUsd } from "@/lib/tempo-math";
 
 // lightweight-charts requires actual color strings — keep these as constants.
 const C_UP = "#3ecf8e"; // matches --up oklch(0.76 0.17 152)
@@ -39,8 +39,9 @@ function toCandle(bar: OhlcBar): CandlestickData<UTCTimestamp> {
 
 function clearingUsd(view: MarketView | null): number | null {
     if (!view) return null;
-    const bid = tickToUsd(view.lastBidFillPrice, view.tickSize);
-    const ask = tickToUsd(view.lastAskFillPrice, view.tickSize);
+    // last_bid/ask_fill_price are 1e8 prices (not tick indices).
+    const bid = price1e8ToUsd(view.lastBidFillPrice);
+    const ask = price1e8ToUsd(view.lastAskFillPrice);
     if (bid !== null && ask !== null) return (bid + ask) / 2;
     return bid ?? ask;
 }

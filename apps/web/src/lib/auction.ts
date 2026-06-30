@@ -3,7 +3,7 @@ import { address, type Address } from "@solana/kit";
 import { PROGRAM_ID } from "./config";
 import { getRpc } from "./rpc";
 import { readU32le, readU64le, findAuctionHistogramHeaderPda, findOrderSlabHeaderPda } from "./tempo-client";
-import { tickToUsd } from "./tempo-math";
+import { price1e8ToUsd, tickToUsd } from "./tempo-math";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,6 +88,7 @@ const HISTOGRAM_HEADER = 55;
 export async function fetchHistogramView(
     market: string,
     tickSize: bigint,
+    windowFloor: bigint = 0n,
 ): Promise<HistogramView | null> {
     try {
         const [histPda] = await findAuctionHistogramHeaderPda({ market: address(market) });
@@ -159,14 +160,14 @@ export async function fetchHistogramView(
                     tick: t,
                     demand: dm,
                     supply: sp,
-                    priceUsd: tickToUsd(BigInt(t), tickSize),
+                    priceUsd: tickToUsd(BigInt(t), tickSize, windowFloor),
                 });
             }
         }
 
         const estimatedClearingUsd =
             estimatedClearingTick !== null
-                ? tickToUsd(BigInt(estimatedClearingTick), tickSize)
+                ? tickToUsd(BigInt(estimatedClearingTick), tickSize, windowFloor)
                 : null;
 
         return {
@@ -257,7 +258,8 @@ export async function fetchMyOrders(
                 quantity,
                 remaining,
                 status,
-                priceUsd: tickToUsd(price, tickSize),
+                // order.price is a 1e8 price (tick-aligned), not a tick index.
+                priceUsd: price1e8ToUsd(price),
             });
         }
 

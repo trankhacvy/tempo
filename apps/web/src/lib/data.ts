@@ -71,6 +71,8 @@ export interface MarketView {
     phaseDeadlineSlot: bigint;
     tickSize: bigint;
     numTicks: number;
+    /** Price (1e8) of histogram tick 0 — oracle-anchored each round (v7). */
+    windowFloorPrice: bigint;
     lastBidFillPrice: bigint;
     lastAskFillPrice: bigint;
     fundingIndex: bigint;
@@ -82,13 +84,14 @@ export interface MarketView {
     oracle: string;
 }
 
-// Post-prefix offsets (from tests/integration-tests/src/lib.rs):
+// Market VERSION 9 post-prefix offsets (PERF-1 removed the two order-count mirrors
+// that used to sit at 40/48, shifting everything after `last_ask_fill` down 16 bytes):
 //   current_auction_id u64 @ 0, phase_deadline_slot u64 @ 8, tick_size u64 @ 16,
-//   last_bid_fill u64 @ 24, last_ask_fill u64 @ 32, accumulated_order_count @ 40,
-//   active_order_count @ 48, orders_per_auction_cap u32 @ 56, num_ticks u32 @ 60,
-//   authority Address @ 64, market_seed Address @ 96, oracle Address @ 128,
-//   phase u8 @ 160, bump u8 @ 161, funding_index i128 @ 162, last_funding_ts u64 @ 178,
-//   oracle_feed_id [32] @ 186, maintenance_margin_bps u16 @ 218.
+//   last_bid_fill u64 @ 24, last_ask_fill u64 @ 32, orders_per_auction_cap u32 @ 40,
+//   num_ticks u32 @ 44, authority Address @ 48, market_seed Address @ 80,
+//   oracle Address @ 112, phase u8 @ 144, bump u8 @ 145, funding_index i128 @ 146,
+//   last_funding_ts u64 @ 162, oracle_feed_id [32] @ 170, maintenance_margin_bps u16 @ 202,
+//   ... window_floor_price u64 @ 374 (v7). (Mirrors crates/sdk/src/accounts.rs MarketView.)
 function decodeMarket(addr: string, d: Uint8Array): MarketView {
     return {
         address: addr,
@@ -97,15 +100,18 @@ function decodeMarket(addr: string, d: Uint8Array): MarketView {
         tickSize: readU64le(slice(d, 16, 8)),
         lastBidFillPrice: readU64le(slice(d, 24, 8)),
         lastAskFillPrice: readU64le(slice(d, 32, 8)),
-        accumulatedOrderCount: readU64le(slice(d, 40, 8)),
-        activeOrderCount: readU64le(slice(d, 48, 8)),
-        ordersPerAuctionCap: readU32le(slice(d, 56, 4)),
-        numTicks: readU32le(slice(d, 60, 4)),
-        authority: encodeAddress(slice(d, 64, 32)),
-        oracle: encodeAddress(slice(d, 128, 32)),
-        phase: readByte(d, 160),
-        fundingIndex: readI128le(slice(d, 162, 16)),
-        maintenanceMarginBps: readU16le(slice(d, 218, 2)),
+        ordersPerAuctionCap: readU32le(slice(d, 40, 4)),
+        numTicks: readU32le(slice(d, 44, 4)),
+        authority: encodeAddress(slice(d, 48, 32)),
+        oracle: encodeAddress(slice(d, 112, 32)),
+        phase: readByte(d, 144),
+        fundingIndex: readI128le(slice(d, 146, 16)),
+        maintenanceMarginBps: readU16le(slice(d, 202, 2)),
+        windowFloorPrice: readU64le(slice(d, 374, 8)),
+        // Removed from Market in v9: live count is OrderSlab.count, folded count is
+        // AuctionHistogram.accumulated_count. Surfaced as 0 here until plumbed.
+        activeOrderCount: 0n,
+        accumulatedOrderCount: 0n,
     };
 }
 
