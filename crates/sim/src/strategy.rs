@@ -131,7 +131,7 @@ fn cap_by_collateral(qty: u64, price: u64, bps: u16, free: u64) -> u64 {
     }
     let (mut lo, mut hi) = (0u64, qty);
     while lo < hi {
-        let mid = lo + (hi - lo + 1) / 2;
+        let mid = lo + (hi - lo).div_ceil(2);
         if initial_margin(mid, price, bps) as u128 <= free as u128 {
             lo = mid;
         } else {
