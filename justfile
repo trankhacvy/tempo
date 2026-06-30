@@ -44,8 +44,8 @@ check:
 
 # Lint + test the off-chain service crates (tempo-math/common/sdk/keeper/api/mm-bot/liquidator/bench + client)
 services-check:
-    cargo clippy -p tempo-math -p tempo-common -p tempo-sdk -p tempo-client -p tempo-keeper -p tempo-api -p tempo-mm-bot -p tempo-liquidator -p tempo-bench --all-targets -- -D warnings
-    cargo test -p tempo-math -p tempo-common -p tempo-sdk -p tempo-keeper -p tempo-api -p tempo-mm-bot -p tempo-liquidator -p tempo-bench
+    cargo clippy -p tempo-math -p tempo-common -p tempo-sdk -p tempo-client -p tempo-keeper -p tempo-api -p tempo-mm-bot -p tempo-liquidator -p tempo-bench -p tempo-sim --all-targets -- -D warnings
+    cargo test -p tempo-math -p tempo-common -p tempo-sdk -p tempo-keeper -p tempo-api -p tempo-mm-bot -p tempo-liquidator -p tempo-bench -p tempo-sim
 
 # Run the keeper service (pass --help or rely on TEMPO_* env / tempo.toml for config)
 keeper *args:

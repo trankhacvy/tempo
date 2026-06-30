@@ -150,6 +150,55 @@ pub fn settle_fill(
     })
 }
 
+/// The optional money-path accounts a `submit_order` may carry. The program
+/// REQUIRES both whenever the market has a money path (`maintenance_margin_bps > 0`)
+/// and rejects a partial set (submit_order/accounts.rs); a clearing-only market omits
+/// them. Mirrors [`SettleMoney`].
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SubmitMoney {
+    pub position: Option<Pubkey>,
+    pub user_collateral: Option<Pubkey>,
+}
+
+impl SubmitMoney {
+    /// Derive the money accounts for `trader` on a market settling in `collateral_mint`.
+    pub fn for_trader(pdas: &MarketPdas, trader: Pubkey, collateral_mint: Pubkey) -> Self {
+        Self {
+            position: Some(crate::pda::position(&pdas.market, &trader).0),
+            user_collateral: Some(crate::pda::user_collateral(&trader, &collateral_mint).0),
+        }
+    }
+}
+
+/// SUBMIT (`submit_order`): a taker resting order. `price` must be tick-aligned and
+/// in-window; `quantity != 0`. Pass `SubmitMoney::default()` for a clearing-only
+/// market, or `SubmitMoney::for_trader(..)` on a money-path market.
+pub fn submit_order(
+    pdas: &MarketPdas,
+    trader: Pubkey,
+    side: u8,
+    price: u64,
+    quantity: u64,
+    reduce_only: bool,
+    money: &SubmitMoney,
+) -> Instruction {
+    SubmitOrder {
+        trader,
+        market: pdas.market,
+        order_slab: pdas.order_slab,
+        event_authority: pdas.event_authority,
+        tempo_program: TEMPO_PROGRAM_ID,
+        position: money.position,
+        user_collateral: money.user_collateral,
+    }
+    .instruction(SubmitOrderInstructionArgs {
+        side,
+        price,
+        quantity,
+        reduce_only,
+    })
+}
+
 /// Roll to the next round (`start_auction`). `oracle` is the market's bound oracle
 /// (re-snaps the tick window); pass `MarketView::oracle`.
 pub fn start_auction(pdas: &MarketPdas, cranker: Pubkey, oracle: Pubkey) -> Instruction {
@@ -503,6 +552,29 @@ mod tests {
             },
         );
         assert_eq!(full.accounts.len(), 10);
+    }
+
+    #[test]
+    fn test_submit_order_wrapper_account_counts() {
+        let pdas = MarketPdas::derive(Pubkey::new_unique());
+        let trader = Pubkey::new_unique();
+        // Clearing-only (no money path) → 5 accounts.
+        let bare = submit_order(&pdas, trader, 0, 100, 5, false, &SubmitMoney::default());
+        assert_eq!(bare.program_id, TEMPO_PROGRAM_ID);
+        assert_eq!(bare.data[0], SUBMIT_ORDER_DISCRIMINATOR);
+        assert_eq!(bare.accounts.len(), 5);
+        // Money path (position + collateral) → 7 accounts.
+        let mint = Pubkey::new_unique();
+        let full = submit_order(
+            &pdas,
+            trader,
+            1,
+            200,
+            7,
+            true,
+            &SubmitMoney::for_trader(&pdas, trader, mint),
+        );
+        assert_eq!(full.accounts.len(), 7);
     }
 
     #[test]

@@ -34,3 +34,6 @@ tempo-mm-bot = { path = "../../crates/mm-bot" }
 # driven against the real program in LiteSVM to prove it closes underwater positions.
 tempo-liquidator = { path = "../../crates/liquidator" }
 tempo-math = { path = "../../crates/tempo-math" }
+# Simulation: the trader fleet's pure order strategy, driven against the real program
+# in LiteSVM to prove `build_orders` output is accepted by `submit_order`.
+tempo-sim = { path = "../../crates/sim" }
