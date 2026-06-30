@@ -133,6 +133,7 @@ async fn main() -> Result<(), SimError> {
             base_size: cfg.base_size,
             aggression_ticks: cfg.aggression_ticks,
             inner_spread_ticks: cfg.inner_spread_ticks,
+            force_side: cfg.force_side,
         };
         let ctx = TraderCtx {
             client: client.clone(),

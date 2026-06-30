@@ -40,6 +40,12 @@ pub struct TraderConfig {
     pub aggression_ticks: u16,
     /// The maker's inner spread, so our crossing orders clear the best quote.
     pub inner_spread_ticks: u16,
+    /// Force every order to a fixed side (`Some(0)` buy / `Some(1)` sell), overriding
+    /// the persona. With all traders on one side the maker only ever accumulates the
+    /// opposite inventory and never offsets it, so no fill realizes PnL — which keeps
+    /// a v1.1-money-path market from wedging on `InsuranceInsolvent` (the insurance
+    /// pool is only touched by realized PnL). `None` = persona-driven (two-sided).
+    pub force_side: Option<u8>,
 }
 
 /// Build this round's taker orders. `free_collateral == UNMETERED_COLLATERAL` on a
@@ -65,7 +71,10 @@ pub fn build_orders(
 
     let mut out: Vec<OrderIntent> = Vec::with_capacity(plan.count as usize);
     for _ in 0..plan.count.min(cfg.max_orders) {
-        let side = plan.next_side(rng);
+        let side = match cfg.force_side {
+            Some(s) => s,
+            None => plan.next_side(rng),
+        };
 
         // Crossing orders price beyond the maker's inner quote; passive orders rest
         // one tick inside it (so they add depth but do not fill).
@@ -171,6 +180,7 @@ mod tests {
             base_size: 5,
             aggression_ticks: 2,
             inner_spread_ticks: 1,
+            force_side: None,
         }
     }
 

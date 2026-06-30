@@ -20,6 +20,8 @@ pub struct SimConfig {
     pub aggression_ticks: u16,
     pub inner_spread_ticks: u16,
     pub max_orders: u8,
+    /// `Some(0)`/`Some(1)` forces every order to buy/sell (see `TraderConfig::force_side`).
+    pub force_side: Option<u8>,
     pub health_addr: String,
     pub stale_windows: u64,
 }
@@ -39,6 +41,12 @@ impl SimConfig {
             aggression_ticks: env_parse("TEMPO_SIM_AGGRESSION_TICKS", 2),
             inner_spread_ticks: env_parse("TEMPO_SIM_INNER_SPREAD_TICKS", 1),
             max_orders,
+            // TEMPO_SIM_FORCE_SIDE = "buy"/"0" or "sell"/"1"; unset = persona-driven.
+            force_side: match std::env::var("TEMPO_SIM_FORCE_SIDE").ok().as_deref() {
+                Some("buy") | Some("0") => Some(0),
+                Some("sell") | Some("1") => Some(1),
+                _ => None,
+            },
             health_addr: std::env::var("TEMPO_SIM_HEALTH_ADDR")
                 .unwrap_or_else(|_| "127.0.0.1:8083".to_string()),
             stale_windows: env_parse("TEMPO_SIM_STALE_WINDOWS", 5),
@@ -52,6 +60,7 @@ impl SimConfig {
             base_size: self.base_size,
             aggression_ticks: self.aggression_ticks,
             inner_spread_ticks: self.inner_spread_ticks,
+            force_side: self.force_side,
         }
     }
 }
