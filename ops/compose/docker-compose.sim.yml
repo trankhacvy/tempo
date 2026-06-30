@@ -1,25 +1,22 @@
-# Tempo devnet SIMULATION stack: a one-shot provisioner, a trader fleet, plus the
-# reuse services (keeper / market makers / liquidator / read API). This produces
-# SYNTHETIC devnet activity so the UI has a live market — it is NOT organic volume.
+# Tempo devnet SIMULATION stack — pulls a prebuilt image from GHCR (built by
+# .github/workflows/sim.yml) and selects the binary per service via `command:`.
+# Coolify only pulls + runs; it does NOT build. This produces SYNTHETIC devnet
+# activity so the UI has a live market — it is NOT organic volume.
 #
-# Two-step run (the market + mint are created at provision time):
-#   1. cp .env.sim.example .env   # fill TEMPO_RPC_URL + master/agent keys under ./keys
+# First run:
+#   1. cp .env.sim.example .env   # fill TEMPO_RPC_URL (paid devnet) + keys under ./keys
 #   2. docker compose -f docker-compose.sim.yml run --rm provision
 #   3. read ./artifact/sim-artifact.json → put TEMPO_MARKET (+ TEMPO_COLLATERAL_MINT
 #      for a money market) into .env
 #   4. docker compose -f docker-compose.sim.yml up -d
 #
-# NEVER point this at mainnet — the devnet RPC belongs in .env.
+# The GHCR image is private by default — make the package public, or add GHCR pull
+# credentials in Coolify, so the host can pull it. NEVER point this at mainnet.
 name: tempo-sim
 
-# context is the repo root. Coolify runs compose with --project-directory=<repo-root>,
-# which resolves relative paths against the repo root (not this file's dir), so use `.`.
-# For local runs, invoke from the repo root with: --project-directory "$(pwd)".
-x-build: &build
-  context: .
-  dockerfile: ops/docker/Dockerfile
-
 x-svc: &svc
+  image: ghcr.io/trankhacvy/tempo:latest
+  pull_policy: always
   restart: unless-stopped
   env_file: [.env]
   volumes:
@@ -28,54 +25,42 @@ x-svc: &svc
 
 services:
   # One-shot: create the market + money path, fund + init agents, write the artifact.
+  # Needs RW on ./keys (generates agent keypairs) and ./artifact.
   provision:
-    image: tempo/sim-provision:latest
-    build:
-      <<: *build
-      args: { BIN: tempo-sim-provision }
-    env_file: [.env]
+    <<: *svc
+    command: [tempo-sim-provision]
     environment:
       TEMPO_SIM_KEYS_DIR: /keys
       TEMPO_SIM_ARTIFACT: /artifact/sim-artifact.json
     volumes:
       - ./keys:/keys
       - ./artifact:/artifact
-    networks: [tempo-sim]
     restart: "no"
 
   keeper:
     <<: *svc
-    image: tempo/keeper:latest
-    build:
-      <<: *build
-      args: { BIN: tempo-keeper }
+    command: [tempo-keeper]
     environment:
       TEMPO_KEYPAIR: /keys/keeper.json
       TEMPO_HEALTH_ADDR: 0.0.0.0:8080
 
   liquidator:
     <<: *svc
-    image: tempo/liquidator:latest
-    build:
-      <<: *build
-      args: { BIN: tempo-liquidator }
+    command: [tempo-liquidator]
     environment:
       TEMPO_KEYPAIR: /keys/liquidator.json
       TEMPO_HEALTH_ADDR: 0.0.0.0:8081
 
   mm-0:
     <<: *svc
-    image: tempo/mm-bot:latest
-    build:
-      <<: *build
-      args: { BIN: tempo-mm-bot }
+    command: [tempo-mm-bot]
     environment:
       TEMPO_KEYPAIR: /keys/mm-0.json
       TEMPO_HEALTH_ADDR: 0.0.0.0:8082
 
   mm-1:
     <<: *svc
-    image: tempo/mm-bot:latest
+    command: [tempo-mm-bot]
     environment:
       TEMPO_KEYPAIR: /keys/mm-1.json
       TEMPO_HEALTH_ADDR: 0.0.0.0:8082
@@ -83,10 +68,7 @@ services:
   # Trader fleet — one container per keypair/persona/seed. Scale by copying a block.
   trader-0:
     <<: *svc
-    image: tempo/sim:latest
-    build:
-      <<: *build
-      args: { BIN: tempo-sim }
+    command: [tempo-sim]
     environment:
       TEMPO_KEYPAIR: /keys/trader-0.json
       TEMPO_SIM_PERSONA: noise
@@ -95,7 +77,7 @@ services:
 
   trader-1:
     <<: *svc
-    image: tempo/sim:latest
+    command: [tempo-sim]
     environment:
       TEMPO_KEYPAIR: /keys/trader-1.json
       TEMPO_SIM_PERSONA: momentum
@@ -104,7 +86,7 @@ services:
 
   trader-2:
     <<: *svc
-    image: tempo/sim:latest
+    command: [tempo-sim]
     environment:
       TEMPO_KEYPAIR: /keys/trader-2.json
       TEMPO_SIM_PERSONA: passive
@@ -113,7 +95,7 @@ services:
 
   trader-3:
     <<: *svc
-    image: tempo/sim:latest
+    command: [tempo-sim]
     environment:
       TEMPO_KEYPAIR: /keys/trader-3.json
       TEMPO_SIM_PERSONA: reckless
@@ -122,10 +104,7 @@ services:
 
   api:
     <<: *svc
-    image: tempo/api:latest
-    build:
-      <<: *build
-      args: { BIN: tempo-api }
+    command: [tempo-api]
     environment:
       TEMPO_API_BIND_ADDR: 0.0.0.0:8088
     ports:

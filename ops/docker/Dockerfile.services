@@ -1,0 +1,31 @@
+# Single image containing every off-chain service binary; the running binary is
+# chosen per-container via the compose `command:` (e.g. command: [tempo-keeper]).
+# Built and pushed to GHCR by .github/workflows/sim.yml so Coolify only pulls.
+FROM rust:1-bookworm AS builder
+WORKDIR /build
+COPY . .
+RUN cargo build --release \
+    --bin tempo-keeper \
+    --bin tempo-liquidator \
+    --bin tempo-mm-bot \
+    --bin tempo-api \
+    --bin tempo-sim \
+    --bin tempo-sim-provision \
+    --bin tempo-sim-orchestrator
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --no-create-home tempo
+COPY --from=builder \
+    /build/target/release/tempo-keeper \
+    /build/target/release/tempo-liquidator \
+    /build/target/release/tempo-mm-bot \
+    /build/target/release/tempo-api \
+    /build/target/release/tempo-sim \
+    /build/target/release/tempo-sim-provision \
+    /build/target/release/tempo-sim-orchestrator \
+    /usr/local/bin/
+USER tempo
+# No ENTRYPOINT: the compose `command:` selects which binary (on PATH) to run.
