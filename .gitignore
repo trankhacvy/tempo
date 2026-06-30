@@ -8,6 +8,11 @@
 **/target/
 **/coverage/
 **/generated/
+# ...but commit the generated clients so Vercel/Docker build with no codegen step.
+!crates/sdk/src/generated/
+!crates/sdk/src/generated/**
+!clients/typescript/src/generated/
+!clients/typescript/src/generated/**
 *.so
 
 # Javascript / Typescript
