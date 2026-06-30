@@ -55,4 +55,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@just
       - uses: model-checking/kani-github-action@v1
-      - run: just kani
+        with:
+          args: --package tempo-program

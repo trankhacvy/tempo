@@ -33,6 +33,7 @@ fn build_orders_output_is_accepted_by_submit_order() {
         base_size: 5,
         aggression_ticks: 2,
         inner_spread_ticks: 1,
+        force_side: None,
     };
     let mut rng = SimRng::new(7);
     let intents = build_orders(&market, None, UNMETERED_COLLATERAL, &mut rng, &cfg);
@@ -78,6 +79,7 @@ fn passive_orders_are_also_accepted() {
         base_size: 5,
         aggression_ticks: 2,
         inner_spread_ticks: 1,
+        force_side: None,
     };
     let mut rng = SimRng::new(3);
     let intents = build_orders(&market, None, UNMETERED_COLLATERAL, &mut rng, &cfg);
