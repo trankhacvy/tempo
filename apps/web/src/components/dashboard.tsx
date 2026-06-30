@@ -5,27 +5,31 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ActivityPanel } from "@/components/activity-panel";
 import { AuctionHistogram } from "@/components/auction-histogram";
+import { AuctionPanel } from "@/components/auction-panel";
 import { Badge } from "@/components/ui/badge";
-import { CollateralPanel } from "@/components/collateral-panel";
-import { MarketPanel } from "@/components/market-panel";
 import { MyOrders } from "@/components/my-orders";
 import { PositionsPanel } from "@/components/positions-panel";
 import { PriceChart } from "@/components/price-chart";
+import {
+    ResizableHandle,
+    ResizablePanel,
+    ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TradePanel } from "@/components/trade-panel";
+import { fetchOrderBook } from "@/lib/auction";
 import { DEFAULT_MARKET } from "@/lib/config";
 import { fetchMarketView, type MarketView } from "@/lib/data";
 import { useSolUsdPrice } from "@/lib/pyth";
 import { getRpc } from "@/lib/rpc";
 import { Phase, phaseLabel } from "@/lib/tempo-client";
+import { price1e8ToUsd } from "@/lib/tempo-math";
 import { useInterval } from "@/lib/use-interval";
 import { cn, shortenAddress } from "@/lib/utils";
 
 const POLL_MS = 3000;
 const SLOT_MS = 400;
 
-/** Slots remaining to the phase deadline → an approximate "M:SS" string
- *  (devnet ≈ 400 ms/slot). Returns `null` once the window has closed. */
 export function slotsToCountdown(slotsLeft: bigint | null): string | null {
     if (slotsLeft === null || slotsLeft <= 0n) return null;
     const totalSec = Math.ceil((Number(slotsLeft) * SLOT_MS) / 1000);
@@ -47,22 +51,27 @@ function phaseVariant(phase: number): "default" | "success" | "muted" | "destruc
     }
 }
 
+function usd(price1e8: bigint): string {
+    const v = price1e8ToUsd(price1e8);
+    return v !== null ? `$${v.toFixed(2)}` : "—";
+}
+
 const TAB_TRIGGER = "h-9 px-4 text-xs font-medium";
 
 export function Dashboard() {
-    const [market, setMarket] = useState(DEFAULT_MARKET);
     const [view, setView] = useState<MarketView | null>(null);
     const [slot, setSlot] = useState<bigint | null>(null);
+    const [activeOrders, setActiveOrders] = useState<number | null>(null);
     const { price: oracleUsd } = useSolUsdPrice();
+    const market = view?.address ?? DEFAULT_MARKET;
 
-    // Lightweight polling: keep the loaded market fresh (phase, deadline, fills).
     const pollMarket = useCallback(async () => {
         if (!view) return;
         try {
             const next = await fetchMarketView(view.address);
             if (next !== null) setView(next);
         } catch {
-            // transient RPC error; keep the last good view and retry next tick.
+            // transient RPC error; keep the last good view.
         }
     }, [view]);
 
@@ -70,44 +79,58 @@ export function Dashboard() {
         try {
             setSlot(await getRpc().getSlot().send());
         } catch {
-            // transient; keep the last known slot.
+            // transient
         }
     }, []);
 
-    // Auto-load the default market on first render (MarketPanel lives in an
-    // inactive tab and won't mount until the user clicks it).
+    const pollOrders = useCallback(async () => {
+        if (!market) return;
+        try {
+            const book = await fetchOrderBook(market);
+            setActiveOrders(book.count);
+        } catch {
+            // transient
+        }
+    }, [market]);
+
     useEffect(() => {
         if (!DEFAULT_MARKET || view) return;
         fetchMarketView(DEFAULT_MARKET)
-            .then((v) => { if (v) { setMarket(v.address); setView(v); } })
+            .then((v) => { if (v) setView(v); })
             .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useInterval(() => void pollMarket(), view ? POLL_MS : null);
     useInterval(() => void pollSlot(), view ? POLL_MS : null);
+    useInterval(() => void pollOrders(), view ? POLL_MS : null);
 
     const slotsLeft = view && slot !== null ? view.phaseDeadlineSlot - slot : null;
     const countdown = slotsToCountdown(slotsLeft);
 
     return (
         <div className="flex flex-col" style={{ height: "calc(100vh - 2.75rem)" }}>
-            {/* Stats bar */}
-            <MarketStatsBar view={view} oracleUsd={oracleUsd} />
+            <MarketStatsBar view={view} oracleUsd={oracleUsd} activeOrders={activeOrders} />
 
-            {/* Main content: chart + bottom tabs on the left, sidebar on the right */}
             <div className="flex min-h-0 flex-1">
-                {/* Left column */}
+                {/* Left column: chart + tabs, vertically resizable */}
                 <div className="flex min-w-0 flex-1 flex-col">
-                    <PriceChart view={view} />
-                    <BottomTabs
-                        view={view}
-                        market={market}
-                        onMarketLoaded={(v) => {
-                            setMarket(v.address);
-                            setView(v);
-                        }}
-                    />
+                    <ResizablePanelGroup direction="vertical" className="min-h-0 flex-1">
+                        <ResizablePanel defaultSize={62} minSize={25}>
+                            <div className="h-full min-h-0">
+                                <PriceChart view={view} />
+                            </div>
+                        </ResizablePanel>
+                        <ResizableHandle withHandle />
+                        <ResizablePanel defaultSize={38} minSize={15}>
+                            <BottomTabs
+                                view={view}
+                                market={market}
+                                countdown={countdown}
+                                activeOrders={activeOrders}
+                            />
+                        </ResizablePanel>
+                    </ResizablePanelGroup>
                 </div>
 
                 {/* Right sidebar */}
@@ -121,11 +144,15 @@ export function Dashboard() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Stats bar
-// ---------------------------------------------------------------------------
-
-function MarketStatsBar({ view, oracleUsd }: { view: MarketView | null; oracleUsd: number | null }) {
+function MarketStatsBar({
+    view,
+    oracleUsd,
+    activeOrders,
+}: {
+    view: MarketView | null;
+    oracleUsd: number | null;
+    activeOrders: number | null;
+}) {
     return (
         <div className="flex h-auto shrink-0 items-center gap-6 overflow-x-auto border-b border-border px-4 py-2.5">
             <StatCell label="Mark · SOL/USD">
@@ -137,23 +164,18 @@ function MarketStatsBar({ view, oracleUsd }: { view: MarketView | null; oracleUs
             <div className="h-4 w-px shrink-0 bg-border" />
 
             <StatCell label="Last bid">
-                <span className={cn("font-mono text-xs tnum", view ? "text-up" : "text-muted-foreground")}>
-                    {view ? view.lastBidFillPrice.toString() : "—"}
+                <span className={cn("font-mono text-xs tnum", view && view.lastBidFillPrice > 0n ? "text-up" : "text-muted-foreground")}>
+                    {view ? usd(view.lastBidFillPrice) : "—"}
                 </span>
             </StatCell>
             <StatCell label="Last ask">
-                <span className={cn("font-mono text-xs tnum", view ? "text-down" : "text-muted-foreground")}>
-                    {view ? view.lastAskFillPrice.toString() : "—"}
-                </span>
-            </StatCell>
-            <StatCell label="Funding index">
-                <span className="font-mono text-xs tnum">
-                    {view ? view.fundingIndex.toString() : "—"}
+                <span className={cn("font-mono text-xs tnum", view && view.lastAskFillPrice > 0n ? "text-down" : "text-muted-foreground")}>
+                    {view ? usd(view.lastAskFillPrice) : "—"}
                 </span>
             </StatCell>
             <StatCell label="Active orders">
                 <span className="font-mono text-xs tnum">
-                    {view ? view.activeOrderCount.toString() : "—"}
+                    {activeOrders !== null ? activeOrders.toString() : "—"}
                 </span>
             </StatCell>
 
@@ -191,10 +213,6 @@ function StatCell({
     );
 }
 
-// ---------------------------------------------------------------------------
-// Auction strip (top of right sidebar)
-// ---------------------------------------------------------------------------
-
 function AuctionStrip({
     view,
     slotsLeft,
@@ -224,42 +242,40 @@ function AuctionStrip({
                     <span className="font-mono tnum text-foreground">{countdownLabel}</span>
                 </span>
                 <span className="font-mono tnum">
-                    <span className={view ? "text-up" : "text-muted-foreground/50"}>{view ? view.lastBidFillPrice.toString() : "—"}</span>
+                    <span className={view && view.lastBidFillPrice > 0n ? "text-up" : "text-muted-foreground/50"}>{view ? usd(view.lastBidFillPrice) : "—"}</span>
                     {" / "}
-                    <span className={view ? "text-down" : "text-muted-foreground/50"}>{view ? view.lastAskFillPrice.toString() : "—"}</span>
+                    <span className={view && view.lastAskFillPrice > 0n ? "text-down" : "text-muted-foreground/50"}>{view ? usd(view.lastAskFillPrice) : "—"}</span>
                 </span>
             </div>
         </div>
     );
 }
 
-// ---------------------------------------------------------------------------
-// Bottom tabs (left column, below chart)
-// ---------------------------------------------------------------------------
-
 function BottomTabs({
     view,
     market,
-    onMarketLoaded,
+    countdown,
+    activeOrders,
 }: {
     view: MarketView | null;
     market: string;
-    onMarketLoaded: (v: MarketView) => void;
+    countdown: string | null;
+    activeOrders: number | null;
 }) {
     return (
         <Tabs
-            defaultValue="position"
-            className="flex h-64 shrink-0 flex-col border-t border-border [&>[data-slot=tabs-list]]:gap-0"
+            defaultValue="auction"
+            className="flex h-full min-h-0 shrink-0 flex-col border-t border-border [&>[data-slot=tabs-list]]:gap-0"
         >
             <TabsList
                 variant="line"
                 className="!w-full justify-start rounded-none border-b border-border bg-transparent px-0 !h-9 shrink-0"
             >
+                <TabsTrigger value="auction" className={TAB_TRIGGER}>
+                    Auction
+                </TabsTrigger>
                 <TabsTrigger value="position" className={TAB_TRIGGER}>
                     Position
-                </TabsTrigger>
-                <TabsTrigger value="collateral" className={TAB_TRIGGER}>
-                    Collateral
                 </TabsTrigger>
                 <TabsTrigger value="orders" className={TAB_TRIGGER}>
                     Orders
@@ -267,25 +283,19 @@ function BottomTabs({
                 <TabsTrigger value="activity" className={TAB_TRIGGER}>
                     Activity
                 </TabsTrigger>
-                <TabsTrigger value="market" className={TAB_TRIGGER}>
-                    Market
-                </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="position" className="overflow-y-auto p-0">
+            <TabsContent value="auction" className="min-h-0 flex-1 overflow-y-auto p-0">
+                <AuctionPanel view={view} countdown={countdown} activeOrders={activeOrders} />
+            </TabsContent>
+            <TabsContent value="position" className="min-h-0 flex-1 overflow-y-auto p-0">
                 <PositionsPanel view={view} />
             </TabsContent>
-            <TabsContent value="collateral" className="overflow-y-auto p-0">
-                <CollateralPanel />
-            </TabsContent>
-            <TabsContent value="orders" className="overflow-y-auto p-0">
+            <TabsContent value="orders" className="min-h-0 flex-1 overflow-y-auto p-0">
                 <MyOrders market={market || null} view={view} />
             </TabsContent>
-            <TabsContent value="activity" className="overflow-y-auto p-0">
+            <TabsContent value="activity" className="min-h-0 flex-1 overflow-y-auto p-0">
                 <ActivityPanel market={market} />
-            </TabsContent>
-            <TabsContent value="market" className="overflow-y-auto p-0">
-                <MarketPanel onMarketLoaded={onMarketLoaded} />
             </TabsContent>
         </Tabs>
     );
