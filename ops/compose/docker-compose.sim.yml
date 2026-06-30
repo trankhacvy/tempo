@@ -24,12 +24,17 @@ x-svc: &svc
   networks: [tempo-sim]
 
 services:
-  # One-shot: create the market + money path, fund + init agents, write the artifact.
-  # Needs RW on ./keys (generates agent keypairs) and ./artifact.
+  # One-shot setup: create the market + money path, fund + init agents, write the
+  # artifact. Behind the `setup` profile so a normal `up` does NOT run it (the market
+  # already exists). Run it manually only when standing up a fresh market:
+  #   docker compose --profile setup run --rm provision
+  # Needs RW on ./keys (generates agent keypairs) + a funded /keys/master.json.
   provision:
     <<: *svc
+    profiles: ["setup"]
     command: [tempo-sim-provision]
     environment:
+      TEMPO_SIM_MASTER_KEYPAIR: /keys/master.json
       TEMPO_SIM_KEYS_DIR: /keys
       TEMPO_SIM_ARTIFACT: /artifact/sim-artifact.json
     volumes:
@@ -58,14 +63,8 @@ services:
       TEMPO_KEYPAIR: /keys/mm-0.json
       TEMPO_HEALTH_ADDR: 0.0.0.0:8082
 
-  mm-1:
-    <<: *svc
-    command: [tempo-mm-bot]
-    environment:
-      TEMPO_KEYPAIR: /keys/mm-1.json
-      TEMPO_HEALTH_ADDR: 0.0.0.0:8082
-
-  # Trader fleet — one container per keypair/persona/seed. Scale by copying a block.
+  # Trader fleet — one container per keypair/persona/seed. Scale by copying a block
+  # (and generating/funding a matching /keys/trader-N.json).
   trader-0:
     <<: *svc
     command: [tempo-sim]
@@ -91,15 +90,6 @@ services:
       TEMPO_KEYPAIR: /keys/trader-2.json
       TEMPO_SIM_PERSONA: passive
       TEMPO_SIM_SEED: "3"
-      TEMPO_SIM_HEALTH_ADDR: 0.0.0.0:8083
-
-  trader-3:
-    <<: *svc
-    command: [tempo-sim]
-    environment:
-      TEMPO_KEYPAIR: /keys/trader-3.json
-      TEMPO_SIM_PERSONA: reckless
-      TEMPO_SIM_SEED: "4"
       TEMPO_SIM_HEALTH_ADDR: 0.0.0.0:8083
 
   api:
