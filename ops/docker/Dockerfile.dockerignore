@@ -20,3 +20,8 @@ ops/compose/keys/
 **/*keypair*.json
 .sim-keys/
 **/.sim-keys/
+keys/
+**/keys/
+.env*
+**/.env*
+sim-artifact.json
