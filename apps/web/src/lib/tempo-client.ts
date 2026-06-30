@@ -91,8 +91,12 @@ export async function deriveOrderPdas(
     return { orderSlab, eventAuthority };
 }
 
-export async function deriveUserCollateralPda(owner: Address): Promise<Address> {
-    const [pda] = await findUserCollateralPda({ owner });
+// CR-3: the collateral ledger is mint-scoped (`[b"collateral", owner, mint]`).
+export async function deriveUserCollateralPda(
+    owner: Address,
+    mint: Address,
+): Promise<Address> {
+    const [pda] = await findUserCollateralPda({ owner, mint });
     return pda;
 }
 

@@ -1,5 +1,7 @@
 import {
   address,
+  getProgramDerivedAddress,
+  getUtf8Encoder,
   type Address,
   type Instruction,
   type TransactionSigner,
@@ -11,18 +13,17 @@ import {
   VAULT_TOKEN_ACCOUNT,
 } from "./config";
 import {
-  deriveOrderPdas,
-  deriveUserCollateralPda,
-  deriveVaultAuthorityPda,
-  deriveVaultPda,
+  findEventAuthorityPda,
+  findUserCollateralPda,
+  findVaultPda,
   getCancelOrderInstructionAsync,
-  getDepositInstructionAsync,
-  getInitCollateralInstructionAsync,
+  getDepositInstruction,
+  getInitCollateralInstruction,
   getInitPositionInstructionAsync,
   getSettleFillInstructionAsync,
   getSubmitOrderInstructionAsync,
-  getWithdrawInstructionAsync,
-  TEMPO_PROGRAM,
+  getWithdrawInstruction,
+  TEMPO_PROGRAM_PROGRAM_ADDRESS,
 } from "./tempo-client";
 
 // A minimal TransactionSigner that carries only the address. The generated
@@ -50,11 +51,49 @@ function requireConfigured(value: string, name: string): Address {
   return address(value);
 }
 
+// --- PDA helpers (current codama client: find*Pda({seeds}) -> [address, bump]) ---
+
+async function eventAuthorityAddr(): Promise<Address> {
+  const [pda] = await findEventAuthorityPda();
+  return pda;
+}
+
+async function userCollateralAddr(owner: Address, mint: Address): Promise<Address> {
+  const [pda] = await findUserCollateralPda({ owner, mint });
+  return pda;
+}
+
+async function vaultAddr(mint: Address): Promise<Address> {
+  const [pda] = await findVaultPda({ collateralMint: mint });
+  return pda;
+}
+
+// The vault authority is a seed-only PDA with no generated finder.
+async function vaultAuthorityAddr(): Promise<Address> {
+  const [pda] = await getProgramDerivedAddress({
+    programAddress: TEMPO_PROGRAM_PROGRAM_ADDRESS,
+    seeds: [getUtf8Encoder().encode("vault_authority")],
+  });
+  return pda;
+}
+
 export async function buildInitCollateralIx(
   owner: string,
 ): Promise<Instruction> {
   const signer = addressSigner(owner);
-  return getInitCollateralInstructionAsync({ payer: signer, owner: signer });
+  const mint = requireConfigured(COLLATERAL_MINT, "NEXT_PUBLIC_COLLATERAL_MINT");
+  // init needs the PDA + bump, so pass the full ProgramDerivedAddress tuple.
+  const userCollateral = await findUserCollateralPda({
+    owner: address(owner),
+    mint,
+  });
+  const vault = await vaultAddr(mint);
+  return getInitCollateralInstruction({
+    payer: signer,
+    owner: signer,
+    userCollateral,
+    vault,
+  });
 }
 
 export interface CollateralAccounts {
@@ -76,13 +115,12 @@ export async function buildDepositIx(
     opts.userTokenAccount ?? USER_TOKEN_ACCOUNT,
     "NEXT_PUBLIC_USER_TOKEN_ACCOUNT",
   );
-  const collateralMint = requireConfigured(
-    COLLATERAL_MINT,
-    "NEXT_PUBLIC_COLLATERAL_MINT",
-  );
-  const vault = await deriveVaultPda(collateralMint);
-  return getDepositInstructionAsync({
+  const mint = requireConfigured(COLLATERAL_MINT, "NEXT_PUBLIC_COLLATERAL_MINT");
+  const userCollateral = await userCollateralAddr(address(owner), mint);
+  const vault = await vaultAddr(mint);
+  return getDepositInstruction({
     owner: signer,
+    userCollateral,
     vault,
     vaultTokenAccount,
     userTokenAccount,
@@ -104,14 +142,13 @@ export async function buildWithdrawIx(
     opts.userTokenAccount ?? USER_TOKEN_ACCOUNT,
     "NEXT_PUBLIC_USER_TOKEN_ACCOUNT",
   );
-  const collateralMint = requireConfigured(
-    COLLATERAL_MINT,
-    "NEXT_PUBLIC_COLLATERAL_MINT",
-  );
-  const vault = await deriveVaultPda(collateralMint);
-  const vaultAuthority = await deriveVaultAuthorityPda();
-  return getWithdrawInstructionAsync({
+  const mint = requireConfigured(COLLATERAL_MINT, "NEXT_PUBLIC_COLLATERAL_MINT");
+  const userCollateral = await userCollateralAddr(address(owner), mint);
+  const vault = await vaultAddr(mint);
+  const vaultAuthority = await vaultAuthorityAddr();
+  return getWithdrawInstruction({
     owner: signer,
+    userCollateral,
     vault,
     vaultAuthority,
     vaultTokenAccount,
@@ -133,13 +170,13 @@ export async function buildSubmitOrderIx(
 ): Promise<Instruction> {
   const signer = addressSigner(trader);
   const market = address(params.market);
-  const { orderSlab, eventAuthority } = await deriveOrderPdas(market);
+  const eventAuthority = await eventAuthorityAddr();
+  // orderSlab is auto-derived by the async builder from `market`.
   return getSubmitOrderInstructionAsync({
     trader: signer,
     market,
-    orderSlab,
     eventAuthority,
-    tempoProgram: TEMPO_PROGRAM,
+    tempoProgram: TEMPO_PROGRAM_PROGRAM_ADDRESS,
     side: params.side,
     price: params.price,
     quantity: params.quantity,
@@ -153,6 +190,7 @@ export async function buildInitPositionIx(
   market: string,
 ): Promise<Instruction> {
   const signer = addressSigner(owner);
+  // position is auto-derived by the async builder from `market` + `owner`.
   return getInitPositionInstructionAsync({
     payer: signer,
     owner: signer,
@@ -174,18 +212,20 @@ export async function buildSettleFillIx(
   slotHint = 0xffffffff,
 ): Promise<Instruction> {
   const signer = addressSigner(owner);
-  const { eventAuthority } = await deriveOrderPdas(address(market));
+  const eventAuthority = await eventAuthorityAddr();
   let userCollateral: Address | undefined;
   let vault: Address | undefined;
   if (COLLATERAL_MINT) {
-    userCollateral = await deriveUserCollateralPda(address(owner));
-    vault = await deriveVaultPda(address(COLLATERAL_MINT));
+    const mint = address(COLLATERAL_MINT);
+    userCollateral = await userCollateralAddr(address(owner), mint);
+    vault = await vaultAddr(mint);
   }
+  // orderSlab + clearingResult are auto-derived by the async builder from `market`.
   return getSettleFillInstructionAsync({
     cranker: signer,
     market: address(market),
     eventAuthority,
-    tempoProgram: TEMPO_PROGRAM,
+    tempoProgram: TEMPO_PROGRAM_PROGRAM_ADDRESS,
     orderId,
     slotHint,
     position: address(position),
@@ -203,12 +243,12 @@ export async function buildCancelOrderIx(
   slotHint = 0xffffffff,
 ): Promise<Instruction> {
   const signer = addressSigner(trader);
-  const { eventAuthority } = await deriveOrderPdas(address(market));
+  const eventAuthority = await eventAuthorityAddr();
   return getCancelOrderInstructionAsync({
     trader: signer,
     market: address(market),
     eventAuthority,
-    tempoProgram: TEMPO_PROGRAM,
+    tempoProgram: TEMPO_PROGRAM_PROGRAM_ADDRESS,
     orderId,
     slotHint,
   });
