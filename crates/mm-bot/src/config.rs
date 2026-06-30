@@ -27,6 +27,7 @@ impl MmConfig {
             size_growth_den: env_parse::<u32>("TEMPO_MM_SIZE_GROWTH_DEN", 1).max(1),
             max_inventory: env_parse("TEMPO_MM_MAX_INVENTORY", 10_000),
             skew_ticks_max: env_parse("TEMPO_MM_SKEW_TICKS_MAX", 2),
+            size_jitter_bps: env_parse("TEMPO_MM_SIZE_JITTER_BPS", 0),
         };
         Ok(Self {
             common,
