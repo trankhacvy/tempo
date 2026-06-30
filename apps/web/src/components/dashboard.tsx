@@ -106,13 +106,13 @@ export function Dashboard() {
         {/* Left column: chart + tabs, vertically resizable */}
         <div className="flex min-w-0 flex-1 flex-col">
           <ResizablePanelGroup direction="vertical" className="min-h-0 flex-1">
-            <ResizablePanel defaultSize={62} minSize={25}>
-              <div className="h-full min-h-0">
+            <ResizablePanel defaultSize={62} minSize={25} className="min-h-0 overflow-hidden">
+              <div className="flex h-full min-h-0 flex-col">
                 <PriceChart view={view} />
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={38} minSize={15}>
+            <ResizablePanel defaultSize={38} minSize={15} className="min-h-0 overflow-hidden">
               <BottomTabs
                 view={view}
                 market={market}
