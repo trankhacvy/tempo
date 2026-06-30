@@ -99,16 +99,8 @@ services:
       TEMPO_API_BIND_ADDR: 0.0.0.0:8088
     ports:
       - "8088:8088"
-
-  # The Next.js dApp. Separate prebuilt image (market baked at build via CI repo
-  # Variables — see apps/web/Dockerfile). No keys; reads chain directly in-browser.
-  web:
-    image: ghcr.io/trankhacvy/tempo-web:latest
-    pull_policy: always
-    restart: unless-stopped
-    networks: [tempo-sim]
-    ports:
-      - "3000:3000"
+  # The Next.js dApp deploys on Vercel (not here) — set NEXT_PUBLIC_* in the Vercel
+  # project settings (market, mint, vault token account, a PUBLIC devnet RPC).
 
 networks:
   tempo-sim:
