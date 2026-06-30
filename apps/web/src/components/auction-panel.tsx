@@ -195,17 +195,19 @@ function DepthLadder({ market, view }: { market: string; view: MarketView }) {
                 </div>
             ) : (
                 <div className="divide-y divide-border/30">
-                    {ticks.map((t) => {
+                    {ticks.map((t, idx) => {
                         const demandPct = maxVal > 0 ? (Number(t.demand) / maxVal) * 100 : 0;
                         const supplyPct = maxVal > 0 ? (Number(t.supply) / maxVal) * 100 : 0;
                         const isClearing = t.tick === hist?.estimatedClearingTick;
+                        const delay = `${idx * 35}ms`;
                         return (
                             <div
                                 key={t.tick}
                                 className={cn(
-                                    "grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-1",
+                                    "depth-row-in grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-1",
                                     isClearing && "bg-primary/10",
                                 )}
+                                style={{ animationDelay: delay }}
                             >
                                 {/* Bid (demand) — grows leftward from center */}
                                 <div className="flex items-center gap-2">
@@ -214,8 +216,14 @@ function DepthLadder({ market, view }: { market: string; view: MarketView }) {
                                     </span>
                                     <div className="relative flex-1">
                                         <div
-                                            className="ml-auto h-4 rounded-sm bg-up/45"
-                                            style={{ width: `${demandPct}%` }}
+                                            className="depth-bar ml-auto h-4 rounded-sm bg-up/45"
+                                            style={
+                                                {
+                                                    width: `${demandPct}%`,
+                                                    animationDelay: delay,
+                                                    "--bar-origin": "right",
+                                                } as React.CSSProperties
+                                            }
                                         />
                                     </div>
                                 </div>
@@ -235,8 +243,14 @@ function DepthLadder({ market, view }: { market: string; view: MarketView }) {
                                 <div className="flex items-center gap-2">
                                     <div className="relative flex-1">
                                         <div
-                                            className="h-4 rounded-sm bg-down/45"
-                                            style={{ width: `${supplyPct}%` }}
+                                            className="depth-bar h-4 rounded-sm bg-down/45"
+                                            style={
+                                                {
+                                                    width: `${supplyPct}%`,
+                                                    animationDelay: delay,
+                                                    "--bar-origin": "left",
+                                                } as React.CSSProperties
+                                            }
                                         />
                                     </div>
                                     <span className="w-10 shrink-0 font-mono text-[11px] tnum text-muted-foreground">

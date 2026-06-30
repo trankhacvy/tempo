@@ -5,6 +5,7 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useCallback, useEffect, useState } from "react";
 
 import { Wordmark } from "@/components/brand/logo";
+import { HeaderMargin } from "@/components/header-margin";
 import { Separator } from "@/components/ui/separator";
 
 export function Nav() {
@@ -48,6 +49,7 @@ export function Nav() {
                     <span className="h-1.5 w-1.5 animate-ticker bg-up" />
                     devnet
                 </span>
+                {mounted && <HeaderMargin />}
                 {publicKey && (
                     <span className="hidden font-mono text-xs tabular-nums text-muted-foreground lg:inline">
                         {balance === null ? "…" : `${balance.toFixed(3)} SOL`}
