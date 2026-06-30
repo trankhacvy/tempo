@@ -68,13 +68,17 @@ async fn main() -> Result<(), SimError> {
 
     let mut tasks: Vec<LocalBoxFuture<'static, ()>> = Vec::new();
 
-    // --- master funder cron: top the master wallet up via devnet airdrop every
-    // TEMPO_SIM_MASTER_AIRDROP_SECS (default 1h) so it can keep backstopping the
-    // agents + keeper SOL. Best-effort; skipped if no master keypair is configured.
+    // --- master funder cron + agent auto-top-up. The cron tops the master wallet
+    // up via devnet airdrop every TEMPO_SIM_MASTER_AIRDROP_SECS (default 1h); the
+    // top-up loop refills each agent (keeper/MMs/traders/liquidator) from the master
+    // when its SOL drops below a threshold, so the keeper never runs dry and wedges
+    // the round. Both are best-effort; skipped if no master keypair is configured.
     if let Ok(master_path) = std::env::var("TEMPO_SIM_MASTER_KEYPAIR") {
         match load_keypair_file(&master_path) {
-            Ok(master_kp) => {
+            Ok(kp) => {
+                let master_kp = Arc::new(kp);
                 let master = master_kp.pubkey();
+
                 let airdrop_pool =
                     RpcPool::from_urls(&cfg.common.rpc_url, cfg.common.commitment_config())
                         .map_err(SimError::Common)?;
@@ -87,7 +91,45 @@ async fn main() -> Result<(), SimError> {
                     Duration::from_secs(secs),
                     rx.clone(),
                 )));
-                tracing::info!(%master, every_secs = secs, sol, "master funder cron enabled");
+
+                let mut agents: Vec<Pubkey> = Vec::new();
+                for s in [&art.keeper.pubkey, &art.liquidator.pubkey] {
+                    if let Ok(p) = s.parse::<Pubkey>() {
+                        agents.push(p);
+                    }
+                }
+                for a in &art.market_makers {
+                    if let Ok(p) = a.pubkey.parse::<Pubkey>() {
+                        agents.push(p);
+                    }
+                }
+                for t in &art.traders {
+                    if let Ok(p) = t.pubkey.parse::<Pubkey>() {
+                        agents.push(p);
+                    }
+                }
+                let topup_secs: u64 = env_parse("TEMPO_SIM_TOPUP_SECS", 120);
+                let threshold: u64 = env_parse("TEMPO_SIM_TOPUP_THRESHOLD_LAMPORTS", 20_000_000);
+                let target: u64 = env_parse("TEMPO_SIM_TOPUP_TARGET_LAMPORTS", 100_000_000);
+                let n_agents = agents.len();
+                tasks.push(Box::pin(tempo_sim::master_funder::topup_run(
+                    client.clone(),
+                    master_kp,
+                    agents,
+                    threshold,
+                    target,
+                    Duration::from_secs(topup_secs),
+                    rx.clone(),
+                )));
+
+                tracing::info!(
+                    %master,
+                    airdrop_every_secs = secs,
+                    airdrop_sol = sol,
+                    topup_agents = n_agents,
+                    topup_every_secs = topup_secs,
+                    "master funder + agent auto-top-up enabled"
+                );
             }
             Err(e) => tracing::warn!(error = %e, "master funder cron disabled (bad keypair)"),
         }
