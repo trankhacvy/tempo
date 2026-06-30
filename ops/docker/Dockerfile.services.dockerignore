@@ -1,0 +1,26 @@
+# Scoped to ops/docker/Dockerfile.services (BuildKit). Build context is the repo root.
+# Excludes paths the cargo workspace build never needs + anything secret.
+target/
+**/target/
+node_modules/
+**/node_modules/
+.git/
+.github/
+docs/
+apps/
+tools/
+trident-tests/
+percolator/
+percolator-prog/
+*.so
+.env
+**/.env
+.env*
+**/.env*
+ops/compose/keys/
+**/*keypair*.json
+.sim-keys/
+**/.sim-keys/
+keys/
+**/keys/
+sim-artifact.json
