@@ -190,6 +190,36 @@ body {
     animation: ticker-pulse 1.6s ease-in-out infinite;
 }
 
+/* Depth-ladder rows "land" one after another so it reads as orders being placed,
+   not the whole book snapping in at once. Plays once on mount (per tick key). */
+@keyframes depth-row-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.depth-row-in {
+    animation: depth-row-in 0.35s ease-out both;
+}
+/* The qty bars grow from the centre price outward as the row lands. */
+.depth-bar {
+    transform-origin: var(--bar-origin, center);
+    animation: depth-bar-grow 0.45s ease-out both;
+    transition: width 0.4s ease-out;
+}
+@keyframes depth-bar-grow {
+    from {
+        transform: scaleX(0.05);
+    }
+    to {
+        transform: scaleX(1);
+    }
+}
+
 /* Theme the Solana wallet-adapter modal + trigger to match Tempo's dark UI. */
 .wallet-adapter-button-trigger {
     background: var(--primary) !important;

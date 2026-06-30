@@ -32,8 +32,8 @@ const RPC_URL =
     process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() ||
     "https://api.devnet.solana.com";
 const MINT = process.env.NEXT_PUBLIC_COLLATERAL_MINT?.trim() ?? "";
-// Default grant: 100k tokens at 6 decimals.
-const AMOUNT = BigInt(process.env.TEMPO_FAUCET_AMOUNT?.trim() || "100000000000");
+// Default grant: 1000 devUSDC at 6 decimals.
+const AMOUNT = BigInt(process.env.TEMPO_FAUCET_AMOUNT?.trim() || "1000000000");
 // Best-effort SOL dust so the wallet can pay fees (devnet airdrop, may be throttled).
 const SOL_DUST = BigInt(process.env.TEMPO_FAUCET_SOL_LAMPORTS?.trim() || "50000000");
 
