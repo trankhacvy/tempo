@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ActivityPanel } from "@/components/activity-panel";
 import { AuctionHistogram } from "@/components/auction-histogram";
-import { AuctionPanel } from "@/components/auction-panel";
+import { AuctionFacts } from "@/components/auction-panel";
 import { Badge } from "@/components/ui/badge";
 import { MyOrders } from "@/components/my-orders";
 import { PositionsPanel } from "@/components/positions-panel";
@@ -127,16 +127,15 @@ export function Dashboard() {
                                 view={view}
                                 market={market}
                                 countdown={countdown}
+                                slotsLeft={slotsLeft}
                                 activeOrders={activeOrders}
                             />
                         </ResizablePanel>
                     </ResizablePanelGroup>
                 </div>
 
-                {/* Right sidebar */}
+                {/* Right sidebar: trading */}
                 <aside className="flex w-[340px] shrink-0 flex-col overflow-y-auto border-l border-border">
-                    <AuctionStrip view={view} slotsLeft={slotsLeft} countdown={countdown} />
-                    <AuctionHistogram market={market || null} view={view} />
                     <TradePanel market={market} view={view} oracleUsd={oracleUsd} countdown={countdown} />
                 </aside>
             </div>
@@ -255,11 +254,13 @@ function BottomTabs({
     view,
     market,
     countdown,
+    slotsLeft,
     activeOrders,
 }: {
     view: MarketView | null;
     market: string;
     countdown: string | null;
+    slotsLeft: bigint | null;
     activeOrders: number | null;
 }) {
     return (
@@ -286,7 +287,11 @@ function BottomTabs({
             </TabsList>
 
             <TabsContent value="auction" className="min-h-0 flex-1 overflow-y-auto p-0">
-                <AuctionPanel view={view} countdown={countdown} activeOrders={activeOrders} />
+                <div className="w-full max-w-md">
+                    <AuctionStrip view={view} slotsLeft={slotsLeft} countdown={countdown} />
+                    <AuctionHistogram market={market || null} view={view} />
+                    <AuctionFacts view={view} activeOrders={activeOrders} />
+                </div>
             </TabsContent>
             <TabsContent value="position" className="min-h-0 flex-1 overflow-y-auto p-0">
                 <PositionsPanel view={view} />
