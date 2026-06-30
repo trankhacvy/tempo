@@ -1,6 +1,6 @@
 import { address, type Address } from "@solana/kit";
 
-import { PROGRAM_ID } from "./config";
+import { COLLATERAL_MINT, PROGRAM_ID } from "./config";
 import { getRpc } from "./rpc";
 import {
     deriveUserCollateralPda,
@@ -153,9 +153,11 @@ export async function fetchMarketView(marketAddress: string): Promise<MarketView
     return decodeMarket(marketAddress, raw.data);
 }
 
-/** Returns null when the ledger has not been initialized yet. */
+/** Returns null when no collateral mint is configured or the ledger has not been
+ *  initialized yet. The ledger is mint-scoped (CR-3). */
 export async function fetchCollateralView(owner: string): Promise<CollateralView | null> {
-    const pda = await deriveUserCollateralPda(address(owner));
+    if (!COLLATERAL_MINT) return null;
+    const pda = await deriveUserCollateralPda(address(owner), address(COLLATERAL_MINT));
     const raw = await fetchRaw(pda);
     if (raw === null) return null;
     assertProgramAccount(raw, USER_COLLATERAL_MIN_LEN, "UserCollateral account");
@@ -163,7 +165,10 @@ export async function fetchCollateralView(owner: string): Promise<CollateralView
 }
 
 export async function userCollateralAddress(owner: string): Promise<string> {
-    return deriveUserCollateralPda(address(owner));
+    if (!COLLATERAL_MINT) {
+        throw new Error("NEXT_PUBLIC_COLLATERAL_MINT is not set.");
+    }
+    return deriveUserCollateralPda(address(owner), address(COLLATERAL_MINT));
 }
 
 export interface PositionView {
