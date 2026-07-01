@@ -21,7 +21,7 @@ use crate::{
 /// 7. `[writable]` cranker_collateral - (OPTIONAL, sentinel = program id) cranker's
 ///    collateral ledger; when present with `vault`, the flat crank fee is paid into it.
 /// 8. `[writable]` vault - (OPTIONAL, sentinel = program id) fee/insurance pool.
-/// 9.. `[]` order_slab shards — ALL of the market's shards, read-only. Design Z (DDR-1):
+/// 9. `[]` order_slab shards (×`num_slab_shards`) — ALL of the market's shards, read-only. Design Z (DDR-1):
 ///    completeness is proven by scanning every shard here (`all_active_orders_accumulated`
 ///    per shard), so the caller MUST pass every shard (`shards.len() == num_slab_shards`,
 ///    enforced in the processor); a short/wrong/duplicate set is rejected. The crank-fee

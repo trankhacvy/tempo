@@ -11,7 +11,7 @@ use crate::{
 /// 0. `[signer]` authority - must match `Market.authority`
 /// 1. `[writable]` market
 /// 2. `[writable]` histogram
-/// 3.. `[writable]` order_slab shards — ALL of the market's shards, in one call, so the
+/// 3. `[writable]` order_slab shards (×`num_slab_shards`) — ALL of the market's shards, in one call, so the
 ///    round is reset atomically (auction id bumped exactly once). At least one is required;
 ///    the processor rejects the call unless it receives every shard (`shards.len() ==
 ///    num_slab_shards`), so a partial reset can never leave a stale shard behind.
