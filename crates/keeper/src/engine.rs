@@ -130,6 +130,8 @@ mod tests {
             status,
             price: 100,
             quantity: 5,
+            remaining: 5,
+            expires_at_auction: 0,
         }
     }
 

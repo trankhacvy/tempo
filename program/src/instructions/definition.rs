@@ -136,6 +136,10 @@ pub enum TempoProgramInstruction {
         /// Which OrderSlab shard to insert into (`[0, num_slab_shards)`). Must match the
         /// `order_slab` account's stored shard id (Stage A sharding).
         shard_id: u16,
+        /// Resting-order expiry (Stage B): 0 = good-till-cancelled; otherwise an absolute
+        /// auction id at/after which the order stops resting (its leftover is consumed at
+        /// settle instead of re-armed). A client typically sets `current_auction_id + N`.
+        expires_at_auction: u64,
     } = 1,
 
     /// Cancel a resting order before clearing begins.

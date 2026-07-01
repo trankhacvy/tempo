@@ -2373,6 +2373,24 @@
                 "format": "u64",
                 "kind": "numberTypeNode"
               }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "worstPrice",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "expiresAtAuction",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
             }
           ],
           "kind": "structTypeNode"
@@ -3128,6 +3146,15 @@
             "type": {
               "endian": "le",
               "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "expiresAtAuction",
+            "type": {
+              "endian": "le",
+              "format": "u64",
               "kind": "numberTypeNode"
             }
           }

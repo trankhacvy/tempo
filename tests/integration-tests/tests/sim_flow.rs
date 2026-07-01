@@ -50,6 +50,7 @@ fn build_orders_output_is_accepted_by_submit_order() {
             intent.quantity,
             intent.reduce_only,
             0,
+            0,
             &SubmitMoney::default(),
         );
         ctx.send_ix(ixn, &[&trader])
@@ -93,6 +94,7 @@ fn passive_orders_are_also_accepted() {
             intent.price,
             intent.quantity,
             intent.reduce_only,
+            0,
             0,
             &SubmitMoney::default(),
         );

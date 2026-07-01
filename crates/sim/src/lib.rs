@@ -170,6 +170,9 @@ async fn tick(
                     // Stage A: route to shard 0 only, to match the shard-0-only keeper
                     // (multi-shard end-to-end awaits the keeper fan-out, docs/plan.md A12.3).
                     0,
+                    // Stage B: GTC — the sim fleet re-derives its ladder each round, so it
+                    // leans on cancel/replace rather than a resting expiry for now.
+                    0,
                     &money,
                 )
             })

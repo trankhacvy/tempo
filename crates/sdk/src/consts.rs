@@ -25,4 +25,5 @@ pub const DEFAULT_MAX_CONF_BPS: u16 = 500;
 pub const MAX_AGE_SECS: i64 = 120;
 
 /// On-disk byte length of one order slab slot (`state/order.rs::ORDER_LEN`).
-pub const ORDER_LEN: usize = 88;
+/// Stage B (resting orders) grew it 88 → 104 (added `worst_price` + `expires_at_auction`).
+pub const ORDER_LEN: usize = 104;

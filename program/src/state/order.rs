@@ -60,7 +60,8 @@ impl OrderStatus {
 ///
 /// # Layout (`#[repr(C)]`, no padding)
 /// 4 × u64 (32) + Address (32) + 3 × u8 (3) + 5 pad + u64 `cum_before` (8) +
-/// u64 `reserved_margin` (8) = 88.
+/// u64 `reserved_margin` (8) + u64 `worst_price` (8) + u64 `expires_at_auction`
+/// (8) = 104 (Stage B resting orders).
 #[derive(Clone, Copy, Debug, PartialEq, CodamaType)]
 #[repr(C)]
 pub struct Order {
@@ -101,12 +102,26 @@ pub struct Order {
     /// `0` for a no-money-path (clearing-benchmark) market. Appended last so the
     /// earlier field offsets stay stable.
     pub reserved_margin: u64,
+    // --- resting (v5, Stage B) ---
+    /// Worst-case execution price snapshotted **at submit** (a buy clears at ≤ its
+    /// limit; a sell at ≤ the histogram window top). A resting order re-margins
+    /// against this fixed snapshot every round, so its collateral requirement is
+    /// stable even as the oracle-anchored tick window moves under it — a resting
+    /// sell can never silently become under-margined after a window recenter
+    /// (missing-features §1.1, plan §3.3). `0` on a no-money-path market.
+    pub worst_price: u64,
+    /// Auto-expiry bound (plan §3.2): `0` = good-till-cancelled; otherwise the
+    /// order stops resting once `expires_at_auction <= market.current_auction_id`
+    /// — at that round's `settle_fill` its leftover is `Consumed` instead of
+    /// re-armed. Bounds how long an order may occupy a slab slot (anti-spam) so a
+    /// standing book can't be squatted for free.
+    pub expires_at_auction: u64,
 }
 
-assert_no_padding!(Order, 8 * 4 + 32 + 1 + 1 + 1 + 5 + 8 + 8);
+assert_no_padding!(Order, 8 * 4 + 32 + 1 + 1 + 1 + 5 + 8 + 8 + 8 + 8);
 
 /// Byte length of one `Order` slot.
-pub const ORDER_LEN: usize = 8 * 4 + 32 + 3 + 5 + 8 + 8;
+pub const ORDER_LEN: usize = 8 * 4 + 32 + 3 + 5 + 8 + 8 + 8 + 8;
 
 impl Order {
     #[inline(always)]
@@ -123,6 +138,8 @@ impl Order {
             _padding: [0u8; 5],
             cum_before: 0,
             reserved_margin: 0,
+            worst_price: 0,
+            expires_at_auction: 0,
         }
     }
 
@@ -150,6 +167,9 @@ impl Order {
             cum_before: 0,
             // Set by `submit_order` after it computes the worst-case reservation.
             reserved_margin: 0,
+            // Set by `submit_order` (worst-case price snapshot + client-chosen expiry).
+            worst_price: 0,
+            expires_at_auction: 0,
         }
     }
 
@@ -177,6 +197,8 @@ impl Order {
         // bytes 67..72 are padding, already zero
         buf[72..80].copy_from_slice(&self.cum_before.to_le_bytes());
         buf[80..88].copy_from_slice(&self.reserved_margin.to_le_bytes());
+        buf[88..96].copy_from_slice(&self.worst_price.to_le_bytes());
+        buf[96..104].copy_from_slice(&self.expires_at_auction.to_le_bytes());
         buf
     }
 
@@ -199,6 +221,8 @@ impl Order {
             _padding: [0u8; 5],
             cum_before: u64::from_le_bytes(buf[72..80].try_into().unwrap()),
             reserved_margin: u64::from_le_bytes(buf[80..88].try_into().unwrap()),
+            worst_price: u64::from_le_bytes(buf[88..96].try_into().unwrap()),
+            expires_at_auction: u64::from_le_bytes(buf[96..104].try_into().unwrap()),
         })
     }
 }
@@ -278,6 +302,12 @@ impl Discriminator for OrderSlabHeader {
 }
 
 impl Versioned for OrderSlabHeader {
+    // v5 (Stage B resting orders): `Order` grew `worst_price` + `expires_at_auction`
+    // (ORDER_LEN 88 → 104) so unfilled/partial orders can carry across rounds with a
+    // stable margin snapshot and an expiry bound. The slot region size changed, so a
+    // pre-v5 slab is incompatible and must be re-provisioned (dev-phase: free); the
+    // version bump fails a stale slab loudly.
+    //
     // v4 (sharding): a market now has `num_slab_shards` slabs at seeds `[b"order_slab",
     // market, shard_id]`. Appended `shard_id` (the new 3rd seed) and the per-shard
     // `resting_count` completeness counter. The seed set changed, so the old single-slab
@@ -291,7 +321,7 @@ impl Versioned for OrderSlabHeader {
     //
     // v2: appended `next_free_hint` (O(1) alloc cursor) AND widened `Order` to carry
     // the fold-time `cum_before` snapshot (ORDER_LEN 72 → 80) — both known-issues §2.7.
-    const VERSION: u8 = 4;
+    const VERSION: u8 = 5;
 }
 
 impl AccountSize for OrderSlabHeader {
@@ -507,6 +537,45 @@ pub fn all_active_orders_accumulated(data: &[u8], capacity: u32) -> Result<bool,
     Ok(true)
 }
 
+/// The roll gate for Stage B resting orders (plan §3.4): every order that was
+/// folded this round (`Accumulated`) has been settled — none is still awaiting a
+/// `settle_fill`. Settle turns each `Accumulated` order into either `Consumed`
+/// (fully filled / expired → leaves the book) or `Resting` (partial/zero-fill,
+/// re-armed to carry to the next round), so "no `Accumulated` remains" is the
+/// authoritative "this shard is fully settled" test.
+///
+/// This REPLACES the pre-resting `count == 0` drain gate in `reset_shard`: with
+/// resting orders `count` never reaches 0 (survivors stay in the book), so
+/// draining-to-empty would wedge the roll forever. Like `all_active_orders_
+/// accumulated` (the finalize gate), it is an authoritative per-shard scan — no
+/// `Market` aggregate counter (Design Z / DDR-1).
+#[inline(always)]
+pub fn all_accumulated_orders_settled(data: &[u8], capacity: u32) -> Result<bool, ProgramError> {
+    for i in 0..capacity {
+        let order = read_order(data, capacity, i)?;
+        if order.status == OrderStatus::Accumulated as u8 {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Count the orders left `Resting` in a shard (Stage B roll): the survivors that
+/// carry to the next round. Used by `reset_shard` to recompute `count` /
+/// `resting_count` authoritatively from the compacted shard instead of trusting a
+/// running counter across the settle→roll boundary.
+#[inline(always)]
+pub fn count_resting_orders(data: &[u8], capacity: u32) -> Result<u32, ProgramError> {
+    let mut n = 0u32;
+    for i in 0..capacity {
+        let order = read_order(data, capacity, i)?;
+        if order.status == OrderStatus::Resting as u8 {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
 /// One pass over the slab for `submit_order`: returns `(resting_count,
 /// same_side_remaining)` for `trader` — the number of their still-`Resting` orders
 /// (any side; the anti-spam cap) and the summed `remaining` of those on `side`
@@ -579,13 +648,18 @@ mod tests {
 
     #[test]
     fn test_order_roundtrip_bytes() {
-        let o = Order::new_resting(
+        assert_eq!(ORDER_LEN, 104); // Stage B: grew 88 → 104 (worst_price + expires).
+        let mut o = Order::new_resting(
             7,
             Address::new_from_array([5u8; 32]),
             OrderSide::Sell,
             100,
             40,
         );
+        // Stage B resting fields must roundtrip too.
+        o.reserved_margin = 12_345;
+        o.worst_price = 200;
+        o.expires_at_auction = 42;
         let bytes = o.to_bytes();
         assert_eq!(bytes.len(), ORDER_LEN);
         let de = Order::from_bytes(&bytes).unwrap();
@@ -593,8 +667,41 @@ mod tests {
         assert_eq!(de.side().unwrap(), OrderSide::Sell);
         assert_eq!(de.status().unwrap(), OrderStatus::Resting);
         assert_eq!(de.remaining, 40);
+        assert_eq!(de.reserved_margin, 12_345);
+        assert_eq!(de.worst_price, 200);
+        assert_eq!(de.expires_at_auction, 42);
         // Slab orders are taker-only (§1.3): is_maker is always 0.
         assert_eq!(de.is_maker, 0);
+    }
+
+    #[test]
+    fn test_roll_gate_helpers() {
+        let cap = 4;
+        let mut data = fresh_slab(cap);
+        // Empty slab → settled, no resting survivors.
+        assert!(all_accumulated_orders_settled(&data, cap).unwrap());
+        assert_eq!(count_resting_orders(&data, cap).unwrap(), 0);
+        // An Accumulated (folded, un-settled) order blocks the roll.
+        let mut o = Order::new_resting(
+            1,
+            Address::new_from_array([2u8; 32]),
+            OrderSide::Buy,
+            30,
+            12,
+        );
+        o.status = OrderStatus::Accumulated as u8;
+        write_order(&mut data, cap, 0, &o).unwrap();
+        assert!(!all_accumulated_orders_settled(&data, cap).unwrap());
+        // Settle it to Resting (a re-armed partial) → roll is unblocked, 1 survivor.
+        o.status = OrderStatus::Resting as u8;
+        write_order(&mut data, cap, 0, &o).unwrap();
+        assert!(all_accumulated_orders_settled(&data, cap).unwrap());
+        assert_eq!(count_resting_orders(&data, cap).unwrap(), 1);
+        // A Consumed order leaves the book (not a survivor) and doesn't block.
+        o.status = OrderStatus::Consumed as u8;
+        write_order(&mut data, cap, 0, &o).unwrap();
+        assert!(all_accumulated_orders_settled(&data, cap).unwrap());
+        assert_eq!(count_resting_orders(&data, cap).unwrap(), 0);
     }
 
     #[test]
@@ -621,7 +728,7 @@ mod tests {
         let bytes = h.to_bytes();
         assert_eq!(bytes[0], OrderSlabHeader::DISCRIMINATOR);
         assert_eq!(bytes[1], OrderSlabHeader::VERSION);
-        assert_eq!(bytes[1], 4); // v4 (sharding)
+        assert_eq!(bytes[1], 5); // v5 (Stage B resting orders)
         let de = OrderSlabHeader::from_bytes(&bytes).unwrap();
         assert_eq!(de.auction_id(), 3);
         assert_eq!(de.capacity(), 8);

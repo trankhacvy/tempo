@@ -104,6 +104,7 @@ export type SubmitOrderInstructionData = {
   quantity: bigint;
   reduceOnly: boolean;
   shardId: number;
+  expiresAtAuction: bigint;
 };
 
 export type SubmitOrderInstructionDataArgs = {
@@ -112,6 +113,7 @@ export type SubmitOrderInstructionDataArgs = {
   quantity: number | bigint;
   reduceOnly: boolean;
   shardId: number;
+  expiresAtAuction: number | bigint;
 };
 
 export function getSubmitOrderInstructionDataEncoder(): FixedSizeEncoder<SubmitOrderInstructionDataArgs> {
@@ -123,6 +125,7 @@ export function getSubmitOrderInstructionDataEncoder(): FixedSizeEncoder<SubmitO
       ["quantity", getU64Encoder()],
       ["reduceOnly", getBooleanEncoder()],
       ["shardId", getU16Encoder()],
+      ["expiresAtAuction", getU64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: SUBMIT_ORDER_DISCRIMINATOR }),
   );
@@ -136,6 +139,7 @@ export function getSubmitOrderInstructionDataDecoder(): FixedSizeDecoder<SubmitO
     ["quantity", getU64Decoder()],
     ["reduceOnly", getBooleanDecoder()],
     ["shardId", getU16Decoder()],
+    ["expiresAtAuction", getU64Decoder()],
   ]);
 }
 
@@ -177,6 +181,7 @@ export type SubmitOrderInput<
   quantity: SubmitOrderInstructionDataArgs["quantity"];
   reduceOnly: SubmitOrderInstructionDataArgs["reduceOnly"];
   shardId: SubmitOrderInstructionDataArgs["shardId"];
+  expiresAtAuction: SubmitOrderInstructionDataArgs["expiresAtAuction"];
 };
 
 export function getSubmitOrderInstruction<

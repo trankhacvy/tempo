@@ -139,8 +139,9 @@ pub const SOL_USD_FEED_ID: [u8; 32] = [
 
 /// `OrderSlabHeader` slot byte length (order.rs `ORDER_LEN`): 4×u64 + Address +
 /// 3×u8 + 5 pad + u64 `cum_before` (known-issues §2.7) + u64 `reserved_margin`
-/// (missing-features §1.1).
-const ORDER_LEN: usize = 88;
+/// (missing-features §1.1) + u64 `worst_price` + u64 `expires_at_auction`
+/// (Stage B resting orders).
+const ORDER_LEN: usize = 104;
 
 /// Account data prefix: 1 byte discriminator + 1 byte version.
 const PREFIX: usize = 2;
@@ -661,8 +662,18 @@ impl TestContext {
 
     // -- instruction: ResetShard (Stage A sharding) -------------------------
 
-    /// Zero + re-arm one drained shard for the next round (permissionless).
+    /// Compact + re-arm one settled shard for the next round (permissionless).
     fn reset_shard(&mut self, pdas: &MarketPdas, shard_id: u16) {
+        self.try_reset_shard(pdas, shard_id).expect("reset_shard");
+    }
+
+    /// Try to reset one shard (for negative tests, e.g. a shard with an unsettled
+    /// `Accumulated` order — the Stage B roll gate must refuse it).
+    pub fn try_reset_shard(
+        &mut self,
+        pdas: &MarketPdas,
+        shard_id: u16,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let (slab, _) = pdas.slab_shard(shard_id);
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
@@ -673,7 +684,7 @@ impl TestContext {
             ],
             data: vec![IX_RESET_SHARD],
         };
-        self.send(ix, &[]).expect("reset_shard");
+        self.send(ix, &[])
     }
 
     // -- instruction: SubmitOrder -------------------------------------------
@@ -685,6 +696,7 @@ impl TestContext {
             .is_some_and(|a| !a.data.is_empty())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn submit_order_ix(
         &self,
         pdas: &MarketPdas,
@@ -694,15 +706,18 @@ impl TestContext {
         qty: u64,
         reduce_only: bool,
         shard_id: u16,
+        expires_at_auction: u64,
     ) -> Instruction {
-        // Taker-only (§1.3). Wire = [disc, side, price(8), qty(8), reduce_only(1), shard_id(2)].
-        let mut data = Vec::with_capacity(1 + 20);
+        // Taker-only (§1.3). Wire = [disc, side, price(8), qty(8), reduce_only(1),
+        // shard_id(2), expires_at_auction(8)] (Stage B resting orders).
+        let mut data = Vec::with_capacity(1 + 28);
         data.push(IX_SUBMIT_ORDER);
         data.push(side);
         data.extend_from_slice(&price.to_le_bytes());
         data.extend_from_slice(&qty.to_le_bytes());
         data.push(reduce_only as u8);
         data.extend_from_slice(&shard_id.to_le_bytes());
+        data.extend_from_slice(&expires_at_auction.to_le_bytes());
 
         let mut accounts = vec![
             AccountMeta::new(*trader, true),
@@ -741,7 +756,7 @@ impl TestContext {
         qty: u64,
     ) -> u64 {
         let order_id = self.order_slab(pdas).next_order_id;
-        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, 0);
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, 0, 0);
         self.send(ix, &[trader]).expect("submit_order");
         self.signers
             .entry(trader.pubkey())
@@ -760,7 +775,7 @@ impl TestContext {
         qty: u64,
     ) -> u64 {
         let order_id = self.order_slab(pdas).next_order_id;
-        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, true, 0);
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, true, 0, 0);
         self.send(ix, &[trader]).expect("submit_order_reduce_only");
         self.signers
             .entry(trader.pubkey())
@@ -777,8 +792,37 @@ impl TestContext {
         price: u64,
         qty: u64,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, 0);
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, 0, 0);
         self.send(ix, &[trader])
+    }
+
+    /// Submit a taker order with a resting-order expiry (Stage B). `expires_at_auction`
+    /// is an absolute auction id (0 = GTC). Returns the assigned order id.
+    pub fn submit_order_expiring(
+        &mut self,
+        pdas: &MarketPdas,
+        trader: &Keypair,
+        side: u8,
+        price: u64,
+        qty: u64,
+        expires_at_auction: u64,
+    ) -> u64 {
+        let order_id = self.order_slab(pdas).next_order_id;
+        let ix = self.submit_order_ix(
+            pdas,
+            &trader.pubkey(),
+            side,
+            price,
+            qty,
+            false,
+            0,
+            expires_at_auction,
+        );
+        self.send(ix, &[trader]).expect("submit_order_expiring");
+        self.signers
+            .entry(trader.pubkey())
+            .or_insert_with(|| trader.insecure_clone());
+        order_id
     }
 
     /// Submit a taker order into a specific shard (Stage A multi-shard tests). Returns
@@ -796,7 +840,7 @@ impl TestContext {
             .order_slab_shard(pdas, shard_id)
             .expect("shard slab exists")
             .next_order_id;
-        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, shard_id);
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, shard_id, 0);
         self.send(ix, &[trader]).expect("submit_order_to_shard");
         self.signers
             .entry(trader.pubkey())

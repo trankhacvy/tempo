@@ -203,6 +203,7 @@ pub fn submit_order(
     quantity: u64,
     reduce_only: bool,
     shard_id: u16,
+    expires_at_auction: u64,
     money: &SubmitMoney,
 ) -> Instruction {
     SubmitOrder {
@@ -220,6 +221,7 @@ pub fn submit_order(
         quantity,
         reduce_only,
         shard_id,
+        expires_at_auction,
     })
 }
 
@@ -616,7 +618,17 @@ mod tests {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let trader = Pubkey::new_unique();
         // Clearing-only (no money path) → 5 accounts.
-        let bare = submit_order(&pdas, trader, 0, 100, 5, false, 0, &SubmitMoney::default());
+        let bare = submit_order(
+            &pdas,
+            trader,
+            0,
+            100,
+            5,
+            false,
+            0,
+            0,
+            &SubmitMoney::default(),
+        );
         assert_eq!(bare.program_id, TEMPO_PROGRAM_ID);
         assert_eq!(bare.data[0], SUBMIT_ORDER_DISCRIMINATOR);
         assert_eq!(bare.accounts.len(), 5);
@@ -629,6 +641,7 @@ mod tests {
             200,
             7,
             true,
+            0,
             0,
             &SubmitMoney::for_trader(&pdas, trader, mint),
         );

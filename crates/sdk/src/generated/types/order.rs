@@ -22,4 +22,6 @@ pub struct Order {
     pub padding: [u8; 5],
     pub cum_before: u64,
     pub reserved_margin: u64,
+    pub worst_price: u64,
+    pub expires_at_auction: u64,
 }

@@ -102,6 +102,7 @@ pub struct SubmitOrderInstructionArgs {
     pub quantity: u64,
     pub reduce_only: bool,
     pub shard_id: u16,
+    pub expires_at_auction: u64,
 }
 
 impl SubmitOrderInstructionArgs {
@@ -135,6 +136,7 @@ pub struct SubmitOrderBuilder {
     quantity: Option<u64>,
     reduce_only: Option<bool>,
     shard_id: Option<u16>,
+    expires_at_auction: Option<u64>,
     __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
@@ -214,6 +216,11 @@ impl SubmitOrderBuilder {
         self.shard_id = Some(shard_id);
         self
     }
+    #[inline(always)]
+    pub fn expires_at_auction(&mut self, expires_at_auction: u64) -> &mut Self {
+        self.expires_at_auction = Some(expires_at_auction);
+        self
+    }
     /// Add an additional account to the instruction.
     #[inline(always)]
     pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
@@ -246,6 +253,10 @@ impl SubmitOrderBuilder {
             quantity: self.quantity.clone().expect("quantity is not set"),
             reduce_only: self.reduce_only.clone().expect("reduce_only is not set"),
             shard_id: self.shard_id.clone().expect("shard_id is not set"),
+            expires_at_auction: self
+                .expires_at_auction
+                .clone()
+                .expect("expires_at_auction is not set"),
         };
 
         accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
@@ -433,6 +444,7 @@ impl<'a, 'b> SubmitOrderCpiBuilder<'a, 'b> {
             quantity: None,
             reduce_only: None,
             shard_id: None,
+            expires_at_auction: None,
             __remaining_accounts: Vec::new(),
         });
         Self { instruction }
@@ -521,6 +533,11 @@ impl<'a, 'b> SubmitOrderCpiBuilder<'a, 'b> {
         self.instruction.shard_id = Some(shard_id);
         self
     }
+    #[inline(always)]
+    pub fn expires_at_auction(&mut self, expires_at_auction: u64) -> &mut Self {
+        self.instruction.expires_at_auction = Some(expires_at_auction);
+        self
+    }
     /// Add an additional account to the instruction.
     #[inline(always)]
     pub fn add_remaining_account(
@@ -573,6 +590,11 @@ impl<'a, 'b> SubmitOrderCpiBuilder<'a, 'b> {
                 .shard_id
                 .clone()
                 .expect("shard_id is not set"),
+            expires_at_auction: self
+                .instruction
+                .expires_at_auction
+                .clone()
+                .expect("expires_at_auction is not set"),
         };
         let instruction = SubmitOrderCpi {
             __program: self.instruction.__program,
@@ -620,6 +642,7 @@ struct SubmitOrderCpiBuilderInstruction<'a, 'b> {
     quantity: Option<u64>,
     reduce_only: Option<bool>,
     shard_id: Option<u16>,
+    expires_at_auction: Option<u64>,
     /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
     __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }

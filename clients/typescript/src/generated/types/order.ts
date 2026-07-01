@@ -36,6 +36,8 @@ export type Order = {
   padding: Array<number>;
   cumBefore: bigint;
   reservedMargin: bigint;
+  worstPrice: bigint;
+  expiresAtAuction: bigint;
 };
 
 export type OrderArgs = {
@@ -50,6 +52,8 @@ export type OrderArgs = {
   padding: Array<number>;
   cumBefore: number | bigint;
   reservedMargin: number | bigint;
+  worstPrice: number | bigint;
+  expiresAtAuction: number | bigint;
 };
 
 export function getOrderEncoder(): FixedSizeEncoder<OrderArgs> {
@@ -65,6 +69,8 @@ export function getOrderEncoder(): FixedSizeEncoder<OrderArgs> {
     ["padding", getArrayEncoder(getU8Encoder(), { size: 5 })],
     ["cumBefore", getU64Encoder()],
     ["reservedMargin", getU64Encoder()],
+    ["worstPrice", getU64Encoder()],
+    ["expiresAtAuction", getU64Encoder()],
   ]);
 }
 
@@ -81,6 +87,8 @@ export function getOrderDecoder(): FixedSizeDecoder<Order> {
     ["padding", getArrayDecoder(getU8Decoder(), { size: 5 })],
     ["cumBefore", getU64Decoder()],
     ["reservedMargin", getU64Decoder()],
+    ["worstPrice", getU64Decoder()],
+    ["expiresAtAuction", getU64Decoder()],
   ]);
 }
 

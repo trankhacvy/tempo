@@ -595,37 +595,37 @@ start coding until this list is agreed.
 ### Stage B — Resting orders
 
 **B1. State: `Order` (`program/src/state/order.rs`)**
-- [ ] B1.1 Add fields `worst_price: u64` and `expires_at_auction: u64`.
-- [ ] B1.2 Bump `ORDER_LEN` 88 → 104; update `to_bytes`/`from_bytes`/`assert_no_padding!`/`empty()`/`new_resting()`.
-- [ ] B1.3 Bump `OrderSlabHeader::VERSION` again (4 → 5) — slot region size changed.
-- [ ] B1.4 Update Order roundtrip tests for the new fields + length.
+- [x] B1.1 Add fields `worst_price: u64` and `expires_at_auction: u64`.
+- [x] B1.2 Bump `ORDER_LEN` 88 → 104; update `to_bytes`/`from_bytes`/`assert_no_padding!`/`empty()`/`new_resting()`.
+- [x] B1.3 Bump `OrderSlabHeader::VERSION` (4 → 5) — slot region size changed.
+- [x] B1.4 Update Order roundtrip tests for the new fields + length.
 
 **B2. Instruction: `submit_order`**
-- [ ] B2.1 Persist the already-computed `worst_price` onto the order.
-- [ ] B2.2 Accept `expires_at_auction` (0 = GTC) in `data.rs` + `definition.rs` (or derive `current + N` on-chain from a `tif_rounds` arg).
-- [ ] B2.3 Add/raise a per-trader **standing** order cap (extend `MAX_ORDERS_PER_TRADER` or make it a Market config).
+- [x] B2.1 Persist the (now unconditionally computed) `worst_price` onto the order.
+- [x] B2.2 Accept `expires_at_auction` (0 = GTC, absolute auction id) in `data.rs` + `definition.rs` (LEN 20 → 28).
+- [x] B2.3 Per-trader standing cap: `MAX_ORDERS_PER_TRADER` is now enforced per shard (documented as a per-shard standing cap; a global cap is a deferred follow-up — DDR-2).
 
 **B3. Instruction: `settle_fill` (the core change, §3.2)**
-- [ ] B3.1 Compute `fully_filled = (fill == order.remaining)` and `expired = expires_at_auction != 0 && expires_at_auction <= auction_id`.
-- [ ] B3.2 Full/expired branch → status `Consumed`, `count -= 1`, release all leftover margin (existing path).
-- [ ] B3.3 Partial/zero-and-live branch → `remaining -= fill`, status `Resting`, `cum_before = 0`, `resting_count += 1`, **do not** decrement `count`.
-- [ ] B3.4 Margin on partial: release `reserved_margin − initial_margin(new_remaining, worst_price, initial_bps)`; store the reduced `reserved_margin` (reuse `margin::initial_margin` + `settle_money::release_order_reservation`).
+- [x] B3.1 Compute `fully_filled = (fill == order.remaining)` and `expired = expires_at_auction != 0 && expires_at_auction <= auction_id`.
+- [x] B3.2 Full/expired branch → status `Consumed`, `count -= 1`, release all leftover margin.
+- [x] B3.3 Partial/zero-and-live branch → `remaining -= fill`, status `Resting`, `cum_before = 0`, `resting_count += 1`, **do not** decrement `count`.
+- [x] B3.4 Margin on partial: release `min(reserved, initial_margin(fill, worst_price, initial_bps))`, keep the remainder locked (wedge-safe split — DDR-2; reuses `margin::initial_margin` + `settle_money::release_order_reservation`).
 
-**B4. Instruction: `start_auction` / `round.rs` (§3.4)**
-- [ ] B4.1 Replace the blanket slot-zero with a per-slot pass: keep `Resting`, free `Consumed`/`Empty`.
-- [ ] B4.2 Recompute each shard's `resting_count` = surviving Resting orders; set `Market.shards_pending` = shards with `resting_count > 0`.
-- [ ] B4.3 Rebuild/`reset` `next_free_hint` for the compacted shard.
-- [ ] B4.4 Keep histogram fully zeroed (still the per-round snapshot).
+**B4. Roll: `reset_shard` (§3.4 — under Design Z the roll lives in `reset_shard`, not `round.rs`)**
+- [x] B4.1 Replace the blanket slot-zero with a per-slot pass: keep `Resting`, free `Consumed`/`Empty`.
+- [x] B4.2 Roll gate changed from `count == 0` to `all_accumulated_orders_settled` (no `Accumulated` remains); recompute `count`/`resting_count` = surviving Resting orders. (Design Z: NO `Market.shards_pending` aggregate — DDR-2.)
+- [x] B4.3 Reset `next_free_hint = 0`; keep `next_order_id` monotonic (never reset — avoids id reuse vs survivors).
+- [x] B4.4 Histogram still fully zeroed by `reset_round_to_collect` (the per-round snapshot; unchanged).
 
 **B5. Instruction: `cancel_order`**
-- [ ] B5.1 Verify cancel-after-partial releases the (reduced) `reserved_margin`; add a test. (Logic likely unchanged.)
+- [x] B5.1 Cancel-after-partial releases the (reduced) `reserved_margin` — logic unchanged (a re-armed Resting order is `Resting` in `Collect`, so it cancels normally).
 
-**B6. Tests (Stage B)**
-- [ ] B6.1 Partial fill → order stays Resting with correct `remaining` + margin.
-- [ ] B6.2 Two-round: partial rests then completes; Σ fills across rounds == original qty (conservation).
-- [ ] B6.3 Expiry: an order past `expires_at_auction` is Consumed (not re-armed) and margin fully released.
-- [ ] B6.4 Resting sell after a window recenter stays adequately margined (`worst_price` snapshot).
-- [ ] B6.5 LiteSVM two-round resting scenario; `fmt`/`clippy`/`test`/`build-sbf`.
+**B6. Tests (Stage B — `tests/integration-tests/tests/resting_orders.rs`)**
+- [x] B6.1 Partial fill → order stays Resting with correct `remaining` (`partial_fill_rests_then_completes_conserving`).
+- [x] B6.2 Two-round: partial rests then completes; Σ fills across rounds == original qty (conservation).
+- [x] B6.3 Expiry: an order past `expires_at_auction` is Consumed, not re-armed (`expired_resting_order_is_consumed_not_rearmed`).
+- [x] B6.4 DDR-1 trigger: a carried Resting order blocks finalize until re-folded (`carried_resting_order_blocks_finalize_next_round`); roll gate rejects unsettled Accumulated (`roll_gate_rejects_unsettled_then_carries_resting`).
+- [x] B6.5 Full gate green: `fmt` / workspace `clippy -D warnings` / host `test` / `build-sbf` / `integration-test` (42 suites). Note: the `worst_price` snapshot keeps a resting sell margin-stable across a window recenter by construction (§3.3) — a dedicated money-path recenter test (B6.4-margin) is deferred to the money-path suite.
 
 ### Stage C1 — Always-open submission (no dead time)
 

@@ -5,6 +5,67 @@ later. Newest first.
 
 ---
 
+## DDR-2 — Stage B resting orders: the roll gate + the partial-fill margin split
+
+**Status:** decided 2026-07-01 · implemented on `feat/sharded-book` (Stage B) · `OrderSlabHeader`
+VERSION 4→5, `Order` `ORDER_LEN` 88→104 · resolves the DDR-1 Stage-B re-review trigger.
+
+### Context / the problem
+
+Stage B lets an unfilled/partial order **carry across rounds** (place-once UX). `settle_fill`
+now re-arms a not-fully-filled, non-expired order back to `Resting` (reduced `remaining`,
+`cum_before = 0`) instead of `Consumed`. Two things this breaks if handled naïvely:
+
+1. **The roll gate.** `reset_shard` gated the roll on `count == 0` (shard drained). With resting
+   orders `count` never reaches 0 — survivors stay in the book — so draining-to-empty would
+   **wedge the roll forever**.
+2. **Margin on a partial fill.** The pre-Stage-B path released the order's *entire* worst-case
+   reservation at settle (the leftover was discarded). Now the leftover keeps resting and still
+   needs margin, so the release must be *split* between the filled slice and the carried leftover.
+
+### Decisions
+
+- **Roll gate = "no order still `Accumulated`", scanned authoritatively.** `reset_shard` now
+  refuses unless `all_accumulated_orders_settled(shard)` (no slot is still `Accumulated`). Settle
+  turns each folded order into `Consumed` (leaves) or `Resting` (re-armed), so "no `Accumulated`"
+  is the exact "fully settled" test. It keeps `Resting` survivors in place (frees only
+  `Consumed`/`Empty` slots) and recomputes `count`/`resting_count` from the compacted shard.
+  `reset_shard` + `shards_ready` + the all-shards `force_reset` are **kept** (not dropped); only
+  the gate + the keep-resting compaction changed. This mirrors DDR-1's finalize gate
+  (`all_active_orders_accumulated`): an authoritative per-shard scan, **no new `Market` counter**.
+  The keeper already keys its roll decision on `accumulated_orders().is_empty()`, so it matches
+  the on-chain gate with no keeper change. `next_order_id` is **not** reset at roll (kept
+  monotonic) so a new order can never reuse a surviving order's id.
+
+- **Partial-fill margin split = release the filled slice's own worst-case margin.** On a re-arm,
+  release `min(reserved, initial_margin(fill, worst_price))` and keep the remainder locked on the
+  order. Because that release ≥ the filled position's `initial_margin(fill, clearing_price)` lock
+  (worst_price ≥ clearing price), settle **can never revert on the position lock** — the "settle
+  only nets a release" invariant is preserved even though the leftover now keeps a reservation.
+  The leftover's carried reservation is thus at most ~1 base unit below its standalone worst case
+  (ceil rounding, conservative in the safe direction — never a shortfall on a live position). A
+  fixed `worst_price` **snapshot on the order** keeps a resting order margin-stable as the
+  oracle-anchored window moves (a resting sell can't silently become under-margined).
+
+### DDR-1 re-review trigger — resolved
+
+DDR-1 flagged: *"Stage B changes the fold/roll model — confirm the authoritative per-shard
+finalize scan still holds and carried-over Resting orders are re-counted correctly."* Confirmed:
+a carried `Resting` order is unfolded at the start of the next round, so `finalize_clear`'s
+per-shard `all_active_orders_accumulated` scan **blocks finalize until it is re-folded** — the
+censorship guarantee is unchanged. Pinned by
+`resting_orders::carried_resting_order_blocks_finalize_next_round`.
+
+### Re-review triggers
+
+- Stage C1 (always-open submit) adds `arm_auction_id`: the roll gate must additionally NOT count
+  orders armed for a *future* round as unsettled — revisit `all_accumulated_orders_settled`.
+- If a benchmark shows the per-shard settle/roll scan (`O(cap)` each) is a cost as `cap` grows.
+- The per-shard `MAX_ORDERS_PER_TRADER` cap is now a *standing* per-shard cap; a global standing
+  cap (across shards) is deferred — revisit if per-shard routing proves insufficient.
+
+---
+
 ## DDR-1 — Stage A shard completeness: drop the counter (Design Z)
 
 **Status:** decided 2026-07-01 · implemented on `feat/sharded-book` in commit `a499114`

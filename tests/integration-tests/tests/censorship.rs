@@ -67,12 +67,19 @@ fn skipped_order_blocks_finalize_until_a_different_signer_includes_it() {
     ctx.finalize_clear(&pdas);
     assert_eq!(ctx.market(&pdas).phase, PHASE_DISCOVERED);
 
-    // And the previously-censored order can settle its fill like any other.
-    let (_, _fill) = ctx.settle_fill(&pdas, victim_id);
+    // And the previously-censored order can settle its fill like any other. There are no
+    // maker buys here, so this taker sell crosses nothing (zero fill); under Stage B
+    // resting orders a zero-fill live order is re-armed `Resting` (it carries to the next
+    // round) rather than consumed — the censorship guarantee is unaffected.
+    let (_, fill) = ctx.settle_fill(&pdas, victim_id);
+    assert_eq!(fill, 0, "no maker buys → zero fill");
     let victim_order = ctx
         .orders(&pdas)
         .into_iter()
         .find(|o| o.order_id == victim_id)
         .unwrap();
-    assert_eq!(victim_order.status, STATUS_CONSUMED, "victim order settled");
+    assert_eq!(
+        victim_order.status, STATUS_RESTING,
+        "zero-fill order re-arms Resting (Stage B), not consumed"
+    );
 }

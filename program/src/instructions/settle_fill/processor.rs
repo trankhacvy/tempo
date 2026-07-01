@@ -107,7 +107,11 @@ pub fn process_settle_fill(
     let order_trader;
     let order_side;
     let settle_price;
-    let reserved_margin;
+    // The margin to release back to free balance in this settle (Stage B): the FULL
+    // reservation when the order leaves the book (fully filled / expired), or only the
+    // filled slice when it re-arms as a resting order (the leftover keeps its margin
+    // locked). `0` when there is nothing to release.
+    let release_amount;
     let order_shard_id;
     {
         let mut slab_account = *ix.accounts.order_slab;
@@ -184,30 +188,79 @@ pub fn process_settle_fill(
         order_trader = order.trader;
         order_side = order.side;
         settle_price = auction_price;
-        reserved_margin = order.reserved_margin;
 
-        let mut updated = order;
-        updated.remaining = order
+        let new_remaining = order
             .remaining
             .checked_sub(fill)
             .ok_or(TempoProgramError::MathOverflow)?;
-        updated.status = OrderStatus::Consumed as u8;
-        write_order(&mut slab_data, capacity, slot, &updated)?;
 
-        let header = OrderSlabHeader::from_bytes_mut(&mut slab_data)?;
-        header.set_count(header.count().saturating_sub(1));
+        // Stage B resting orders (plan §3.2): decide whether this order LEAVES the book or
+        // carries to the next round.
+        //   - fully filled (`fill == remaining`) or expired → `Consumed`; it leaves the
+        //     book (`count -= 1`) and its full leftover reservation is released.
+        //   - partial or zero fill AND still live → re-armed as `Resting`: `remaining`
+        //     shrinks by the fill, `cum_before` is cleared for next round's fold, `count`
+        //     is NOT decremented (it stays in the book), and only the filled slice's margin
+        //     is released — the leftover keeps its reservation locked.
+        let fully_filled = fill == order.remaining;
+        let expired = order.expires_at_auction != 0 && order.expires_at_auction <= auction_id;
+
+        let mut updated = order;
+        updated.remaining = new_remaining;
+
+        if fully_filled || expired {
+            updated.status = OrderStatus::Consumed as u8;
+            updated.reserved_margin = 0;
+            release_amount = order.reserved_margin;
+            write_order(&mut slab_data, capacity, slot, &updated)?;
+
+            let header = OrderSlabHeader::from_bytes_mut(&mut slab_data)?;
+            header.set_count(header.count().saturating_sub(1));
+        } else {
+            // Split the reservation between the filled slice (which becomes a position and
+            // is re-margined below) and the resting leftover (which keeps carrying).
+            //
+            // Release exactly the filled slice's own worst-case initial margin — priced at
+            // the FIXED `worst_price` snapshot (≥ the actual clearing price), so the release
+            // always fully covers the position's `initial_margin(fill, clearing_price)` lock
+            // below and the settle can NEVER revert on that lock (the "only nets a release"
+            // invariant, missing-features §1.1). The leftover keeps the remainder. Because
+            // `initial_margin` rounds each slice UP, the leftover's carried reservation is at
+            // most ~1 base unit below its standalone worst case — conservative in the safe
+            // direction, never a shortfall on a live position. `min` guards a reduce-only
+            // order that reserved less than the full quantity (never release more than locked).
+            let filled_margin = initial_margin(fill, order.worst_price, initial_bps);
+            release_amount = order.reserved_margin.min(filled_margin);
+            updated.reserved_margin = order.reserved_margin - release_amount;
+            updated.status = OrderStatus::Resting as u8;
+            // Per-round fold prefix; cleared so next round's process_chunk re-snapshots it.
+            updated.cum_before = 0;
+            write_order(&mut slab_data, capacity, slot, &updated)?;
+
+            // Design Z (DDR-1): the order is `Resting` again → it must be re-folded next
+            // round, so bump this shard's own `resting_count` (keeper hint) in the same
+            // borrow as the status write. `count` is left unchanged — the order stays live.
+            let header = OrderSlabHeader::from_bytes_mut(&mut slab_data)?;
+            let rc = header
+                .resting_count()
+                .checked_add(1)
+                .ok_or(TempoProgramError::MathOverflow)?;
+            header.set_resting_count(rc);
+        }
     }
 
-    // --- release the worst-case margin reserved at submit (missing-features §1.1) ---
+    // --- release the filled slice's reserved margin (missing-features §1.1) ---
     //
     // Done BEFORE the position re-lock below so the freed collateral backs the
     // actual margin. The actual lock is always ≤ this reservation (the order was
     // reserved at its worst-case fill price/qty), so settlement only ever NETS a
     // release — it can never revert for lack of collateral, which would wedge the
-    // round. A zero-fill order still releases its reservation here (it reserved at
-    // submit but matched nothing), which is why a reserved order's `user_collateral`
-    // is required even when `fill == 0`.
-    if reserved_margin > 0 {
+    // round. Stage B: a fully-filled/expired order releases its FULL leftover
+    // reservation (it leaves the book); a re-armed resting order releases only the
+    // filled slice and keeps the leftover locked, so `release_amount` may be 0 (a
+    // zero-fill order that re-rests touches no collateral and needs no
+    // `user_collateral`).
+    if release_amount > 0 {
         let uc_acct = ix
             .accounts
             .user_collateral
@@ -216,7 +269,7 @@ pub fn process_settle_fill(
             uc_acct,
             program_id,
             &order_trader,
-            reserved_margin,
+            release_amount,
         )?;
     }
 

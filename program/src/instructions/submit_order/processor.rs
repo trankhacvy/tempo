@@ -107,10 +107,29 @@ pub fn process_submit_order(
             ix.data.side,
             ix.data.reduce_only,
         )?;
+        // NOTE (Stage B): `MAX_ORDERS_PER_TRADER` is enforced PER SHARD — `trader_resting_stats`
+        // scans only the requested shard. With resting orders a trader's standing orders can
+        // span shards, so this is a per-shard standing cap, not a global one. That is acceptable
+        // when the client routes a trader to a consistent shard (e.g. `hash(trader) % shards`);
+        // a truly global cap would need an all-shard scan (a follow-up), which would re-serialize
+        // submit on every shard and is deliberately avoided (Design Z / DDR-1).
         if resting_count >= MAX_ORDERS_PER_TRADER {
             return Err(TempoProgramError::TraderOrderCapReached.into());
         }
         same_side_qty
+    };
+
+    // Worst-case execution price for this order, snapshotted now (Stage B, §3.3): a buy
+    // clears at ≤ its limit price; a sell at ≤ the window top. Persisted on the order so a
+    // resting order re-margins against this FIXED price every round — its collateral
+    // requirement can't drift as the oracle-anchored window moves. Computed for every market
+    // (not just money-path) so the stored snapshot is always meaningful; on a no-money-path
+    // market it is simply never used (reserved_margin stays 0).
+    let is_buy = OrderSide::from_u8(ix.data.side)? == OrderSide::Buy;
+    let worst_price = if is_buy {
+        ix.data.price
+    } else {
+        window_top_price
     };
 
     // --- reserve worst-case initial margin (money-path markets only) ---
@@ -137,15 +156,6 @@ pub fn process_submit_order(
             }
             position.validate_self(pos_acct, program_id)?;
             position.size() as i128
-        };
-
-        let is_buy = OrderSide::from_u8(ix.data.side)? == OrderSide::Buy;
-        // Worst-case execution price for this order: a buy clears at ≤ its limit; a
-        // sell clears at ≤ the window top.
-        let worst_price = if is_buy {
-            ix.data.price
-        } else {
-            window_top_price
         };
 
         // Reduce-aware opening quantity: the portion of this order that would OPEN
@@ -230,6 +240,10 @@ pub fn process_submit_order(
         // Carry the worst-case reservation on the order so cancel/settle release
         // exactly this amount (missing-features §1.1).
         order.reserved_margin = reserved_margin;
+        // Stage B resting fields: the fixed worst-case price snapshot (for stable
+        // re-margining across rounds, §3.3) and the client-chosen expiry (0 = GTC).
+        order.worst_price = worst_price;
+        order.expires_at_auction = ix.data.expires_at_auction;
         write_order(&mut slab_data, capacity, slot, &order)?;
 
         // bump header counters + advance the allocation cursor past this slot

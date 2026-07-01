@@ -90,6 +90,8 @@ fn live_state(with_clearing: bool) -> LiveState {
         status: 1,
         price: 1020,
         quantity: 5,
+        remaining: 5,
+        expires_at_auction: 0,
     };
     let quote_key = Pubkey::new_unique();
     let quote = MakerQuoteView {

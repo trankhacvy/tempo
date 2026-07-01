@@ -374,11 +374,11 @@ pub const STATUS_RESTING: u8 = 1;
 pub const STATUS_ACCUMULATED: u8 = 2;
 pub const STATUS_CONSUMED: u8 = 3;
 
-/// One decoded slab slot. Slab on-disk layout (`state/order.rs`, v4 sharding):
+/// One decoded slab slot. Slab on-disk layout (`state/order.rs`, v5 Stage B):
 /// `[disc(1)][version(1)][OrderSlabHeader(75)][Order; capacity]` ⇒ slots start at
-/// offset 77, each `Order` is `ORDER_LEN = 88` bytes. Within a slot:
+/// offset 77, each `Order` is `ORDER_LEN = 104` bytes. Within a slot:
 /// `price@0 qty@8 remaining@16 order_id@24 trader@32..64 side@64 is_maker@65
-/// status@66 cum_before@72 reserved_margin@80`.
+/// status@66 cum_before@72 reserved_margin@80 worst_price@88 expires_at_auction@96`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SlabOrder {
     /// Array index of this slot — this IS the `slot_hint` passed to `settle_fill`.
@@ -389,6 +389,11 @@ pub struct SlabOrder {
     pub status: u8,
     pub price: u64,
     pub quantity: u64,
+    /// Unfilled quantity still resting (Stage B: shrinks as an order partially fills
+    /// across rounds; `quantity` is the original size).
+    pub remaining: u64,
+    /// Auto-expiry auction id (Stage B; 0 = good-till-cancelled).
+    pub expires_at_auction: u64,
 }
 
 /// Offset of the first order slot in the slab account data (2-byte prefix +
@@ -423,10 +428,12 @@ pub fn decode_slab_orders(data: &[u8]) -> Result<Vec<SlabOrder>, SdkError> {
                 slot,
                 price: u64_at(data, off),
                 quantity: u64_at(data, off + 8),
+                remaining: u64_at(data, off + 16),
                 order_id: u64_at(data, off + 24),
                 trader: pubkey_at(data, off + 32),
                 side: data[off + 64],
                 status,
+                expires_at_auction: u64_at(data, off + 96),
             });
         }
         off += ORDER_LEN;

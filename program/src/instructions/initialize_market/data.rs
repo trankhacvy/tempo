@@ -15,13 +15,14 @@ use crate::{
 pub const MAX_NUM_TICKS: u32 = 256;
 /// Upper bound on `orders_per_auction_cap` (one OrderSlab shard's capacity). Each
 /// shard is created by `init_shard` via a single CPI `CreateAccount`, which Solana
-/// caps at 10_240 bytes (`MAX_PERMITTED_DATA_INCREASE`). At `ORDER_LEN = 88`:
-/// `OrderSlabHeader::LEN(77) + 115 · 88 = 10_197 ≤ 10_240`, so **115** is the true
-/// single-`CreateAccount` ceiling. (The old value of 128 was unreachable — a cap of
-/// 116..=128 passed this check but then failed at shard creation.) The `const _`
-/// assert below fails the build if a future `ORDER_LEN` growth (Stage B/C) breaches the
-/// limit, forcing this constant down in lockstep instead of drifting silently.
-pub const MAX_ORDERS_PER_AUCTION_CAP: u32 = 115;
+/// caps at 10_240 bytes (`MAX_PERMITTED_DATA_INCREASE`). At Stage B's `ORDER_LEN = 104`
+/// the single-`CreateAccount` ceiling is `(10_240 − OrderSlabHeader::LEN(77)) / 104 = 97`,
+/// but we fix the cap at **90**: that is sized for the FINAL `Order` size (`ORDER_LEN`
+/// grows 104 → ~112 in Stage C1), so shards never need re-provisioning between stages —
+/// `77 + 90 · 112 = 10_157 ≤ 10_240` still fits one `CreateAccount`. The `const _` assert
+/// below fails the build if a future `ORDER_LEN` growth breaches the limit at the CURRENT
+/// size, forcing this constant down in lockstep instead of drifting silently.
+pub const MAX_ORDERS_PER_AUCTION_CAP: u32 = 90;
 
 const _: () = assert!(
     OrderSlabHeader::LEN + (MAX_ORDERS_PER_AUCTION_CAP as usize) * ORDER_LEN <= 10_240,
@@ -229,14 +230,14 @@ mod tests {
 
     #[test]
     fn test_valid() {
-        let buf = encode(10, 64, 100);
+        let buf = encode(10, 64, 90);
         let d = InitializeMarketData::try_from(&buf[..]).unwrap();
         assert_eq!(d.market_bump, 250);
         assert_eq!(d.histogram_bump, 251);
         assert_eq!(d.order_slab_bump, 252);
         assert_eq!(d.tick_size, 10);
         assert_eq!(d.num_ticks, 64);
-        assert_eq!(d.orders_per_auction_cap, 100);
+        assert_eq!(d.orders_per_auction_cap, 90);
         assert_eq!(d.oracle_feed_id, [9u8; 32]);
         assert_eq!(d.maintenance_margin_bps, 500);
         assert_eq!(d.liquidation_penalty_bps, 100);
@@ -252,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_zero_shards_rejected() {
-        let mut buf = encode(10, 64, 100);
+        let mut buf = encode(10, 64, 90);
         buf[129..131].copy_from_slice(&0u16.to_le_bytes());
         assert_eq!(
             InitializeMarketData::try_from(&buf[..]).err().unwrap(),
@@ -262,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_shards_over_max_rejected() {
-        let mut buf = encode(10, 64, 100);
+        let mut buf = encode(10, 64, 90);
         buf[129..131].copy_from_slice(&(MAX_SLAB_SHARDS + 1).to_le_bytes());
         assert_eq!(
             InitializeMarketData::try_from(&buf[..]).err().unwrap(),
@@ -273,7 +274,7 @@ mod tests {
     #[test]
     fn test_initial_below_maintenance_rejected() {
         // maintenance 500 but initial 400 (< maintenance) → rejected.
-        let mut buf = encode(10, 64, 100);
+        let mut buf = encode(10, 64, 90);
         buf[111..113].copy_from_slice(&400u16.to_le_bytes());
         assert_eq!(
             InitializeMarketData::try_from(&buf[..]).err().unwrap(),
@@ -283,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_maintenance_over_max_rejected() {
-        let mut buf = encode(10, 64, 100);
+        let mut buf = encode(10, 64, 90);
         buf[51..53].copy_from_slice(&(MAX_MAINTENANCE_MARGIN_BPS + 1).to_le_bytes());
         // keep initial ≥ maintenance so we isolate the maintenance bound
         buf[111..113].copy_from_slice(&(MAX_MAINTENANCE_MARGIN_BPS + 1).to_le_bytes());
@@ -296,7 +297,7 @@ mod tests {
     #[test]
     fn test_no_money_path_requires_all_risk_zero() {
         // maintenance 0 (no money path) but a non-zero initial margin → rejected.
-        let mut buf = encode(10, 64, 100);
+        let mut buf = encode(10, 64, 90);
         buf[51..53].copy_from_slice(&0u16.to_le_bytes()); // maintenance 0
         buf[53..55].copy_from_slice(&0u16.to_le_bytes()); // penalty 0
         buf[111..113].copy_from_slice(&100u16.to_le_bytes()); // initial 100 ≠ 0

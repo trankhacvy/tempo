@@ -207,26 +207,33 @@ fn multi_shard_round_rolls_after_all_shards_reset() {
     let cr = ctx.clearing(&pdas).expect("cleared");
     assert_eq!(cr.ask_matched_volume, 0, "no maker sells → no cross");
 
-    // Settle both orders (zero fill → simply consumed).
+    // Settle both orders. They cross nothing (zero fill), so under Stage B resting orders
+    // each is re-armed `Resting` and stays in the book (count is NOT decremented) rather
+    // than consumed — they carry to the next round.
     let (_m1, f1) = ctx.settle_fill(&pdas, o1);
     let (_m2, f2) = ctx.settle_fill(&pdas, o2);
     assert_eq!(f1, 0);
     assert_eq!(f2, 0);
     assert_eq!(
         ctx.order_slab_shard(&pdas, 0).unwrap().count,
-        0,
-        "shard drained"
+        2,
+        "both zero-fill orders re-armed Resting (carry, not drained)"
     );
 
-    // Roll: start_auction resets all 3 shards (shards_ready == num_slab_shards) then
-    // bumps the round.
+    // Roll: start_auction resets all 3 shards (shards_ready == num_slab_shards; the roll
+    // gate is "no order still Accumulated", satisfied once both are settled to Resting)
+    // then bumps the round. The two Resting survivors carry into shard 0.
     ctx.start_auction(&pdas);
     let m = ctx.market(&pdas);
     assert_eq!(m.current_auction_id, id0 + 1, "auction id bumped");
     assert_eq!(m.phase, PHASE_COLLECT, "reopened Collect");
     for shard in 0..pdas.num_slab_shards {
         let s = ctx.order_slab_shard(&pdas, shard).unwrap();
-        assert_eq!(s.count, 0, "shard {shard} empty after roll");
+        let expected = if shard == 0 { 2 } else { 0 };
+        assert_eq!(
+            s.count, expected,
+            "shard {shard} carries its Resting survivors after roll"
+        );
         assert_eq!(
             s.auction_id,
             id0 + 1,
