@@ -503,10 +503,19 @@ start coding until this list is agreed.
 - [x] 0.2 Snapshot the current benchmark: archived `docs/bench/cu_report.md` as
       `docs/bench/cu_report_pre_shard.md` (the CU profile is the sharding-relevant baseline);
       verified `cargo run -p tempo-bench` still builds and reproduces the O(ticks) shape.
-- [ ] 0.3 Decide the initial `num_slab_shards` target (e.g. 10 for ~1k, 80 for ~8k) and the
-      per-shard `orders_per_auction_cap` (≤128, ~100 recommended). Write the choice into the plan.
-- [ ] 0.4 Confirm the dev-phase decision: **re-provision** markets vs. write migrations. If
-      re-provision, note it and skip the migrate tasks (marked ⟨migrate⟩ below).
+- [x] 0.3 **Decided:** `num_slab_shards = 16` (dev default; it is a per-market init param, so a
+      production market can be created with 80+ shards for ~7,200 orders). **per-shard cap = 90**,
+      sized for the FINAL `Order` size (`ORDER_LEN` grows 88 → 104 in B → ~112 in C1): at 112 B,
+      `2 + header(69) + cap·112 ≤ 10,240` ⟹ `cap ≤ 90`, keeping every shard within a **single
+      `CreateAccount`** (no multi-realloc) through all stages. 16 × 90 = **1,440 orders/round**
+      initially; raise the shard count to scale.
+- [x] 0.4 **Decided: re-provision, do NOT migrate.** The slab seed gains `shard_id`, so the old
+      single slab and "shard 0" live at different addresses — in-place slab migration is impossible
+      regardless. **Skip the ⟨migrate⟩ tasks (A10)**; the `Market` v9→v10 append-migrate is optional
+      and deferred. Devnet markets are re-provisioned fresh.
+- [x] 0.5 **Benchmark source note:** the CU numbers in `docs/bench/cu_report.md` are produced by the
+      LiteSVM harness `tests/integration-tests/tests/benchmark.rs`, NOT `crates/bench` (host timings).
+      Task A13.4 must regenerate via that integration test.
 
 ### Stage A — Shard the OrderSlab
 
@@ -579,7 +588,7 @@ start coding until this list is agreed.
 - [ ] A13.1 Host unit tests for A1–A6 additions.
 - [ ] A13.2 Cross-shard fold-commutativity + `shards_pending` completeness tests.
 - [ ] A13.3 Kani: underflow-freedom proof for `resting_count`/`shards_pending`.
-- [ ] A13.4 Re-run `crates/bench`; write `docs/bench/cu_report.md` showing parallel submit/settle + unchanged finalize; compare to baseline.
+- [ ] A13.4 Re-run the LiteSVM CU benchmark (`tests/integration-tests/tests/benchmark.rs`, NOT `crates/bench` — see 0.5); write `docs/bench/cu_report.md` showing parallel submit/settle + unchanged finalize; compare to `cu_report_pre_shard.md`.
 - [ ] A13.5 `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test --features idl`, `cargo-build-sbf`.
 
 ### Stage B — Resting orders
