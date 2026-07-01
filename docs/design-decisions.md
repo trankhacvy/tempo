@@ -7,8 +7,8 @@ later. Newest first.
 
 ## DDR-1 — Stage A shard completeness: drop the counter (Design Z)
 
-**Status:** decided 2026-07-01 · implemented on `feat/sharded-book` (see the Stage-A Design-Z
-commit) · **flagged for re-review** (triggers below).
+**Status:** decided 2026-07-01 · implemented on `feat/sharded-book` in commit `a499114`
+(Market VERSION 10→11) · **flagged for re-review** (triggers below).
 
 ### Context / the problem
 
