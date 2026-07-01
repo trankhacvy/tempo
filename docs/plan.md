@@ -198,7 +198,8 @@ if market.shards_pending() != 0 {
 With K shards it cannot zero all K in one tx (Solana account limit). Add a permissionless
 per-shard reset:
 
-- **New instruction `ResetShard = 30`**: `reset_shard(market, order_slab_shard)` — requires the
+- **New instructions `InitShard = 30` / `ResetShard = 31`** (as implemented): `init_shard` creates
+  one shard PDA per tx; `reset_shard(market, order_slab_shard)` — requires the
   shard drained (`count == 0`), zeroes its slots, sets `auction_id = next`, and increments a
   Market `shards_ready` counter.
 - `start_auction` precondition becomes `shards_ready == num_slab_shards` (plus histogram zeroed
@@ -437,7 +438,7 @@ Off-chain:
 - `crates/keeper` — crank all shards (submit/accumulate/settle fan-out), cadence for pipelining.
 - `crates/sim`, `tests/integration-tests` — multi-shard scenarios.
 
-New instruction discriminators to allocate: `ResetShard = 30` (next free after `CloseMakerQuote
+New instruction discriminators (as implemented): `InitShard = 30`, `ResetShard = 31` (next free after `CloseMakerQuote
 = 29`; `EmitEvent` stays `228`).
 
 ---
@@ -556,7 +557,7 @@ start coding until this list is agreed.
 - [x] A6.2 Remove the Discovered→Settling flip (now done in finalize); read phase only.
 - [ ] A6.3 (Optional, §2.6) OI-sharding: DEFERRED — OI stays on Market (settle still write-locks Market for the OI update). The benchmark shows submit is already parallel across shards; pursue OI-sharding only if settle serialization becomes the wall.
 
-**A7. New instruction: `ResetShard = 30`**
+**A7. New instructions: `InitShard = 30`, `ResetShard = 31`** (implemented — `init_shard` creates each shard PDA one-per-tx; `reset_shard` drains/rolls one shard)
 - [x] A7.1 Create `program/src/instructions/reset_shard/{mod,accounts,data,processor}.rs`.
 - [x] A7.2 Logic: require the shard drained (`count == 0`), zero its slots, set `auction_id = market.current_auction_id() + 1`, `resting_count = 0`, `shards_ready += 1` on Market.
 - [x] A7.3 Register: `entrypoint.rs`, `traits/instruction.rs` (disc 30 + `TryFrom`), `instructions/definition.rs`, `impl_instructions.rs`, `instructions/mod.rs`.
