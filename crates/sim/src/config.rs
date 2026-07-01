@@ -127,7 +127,11 @@ impl ProvisionConfig {
                 .unwrap_or_else(|_| DEVNET_SOL_USD_ORACLE.to_string()),
             tick_size: env_parse("TEMPO_SIM_TICK_SIZE", 10_000_000),
             num_ticks: env_parse::<u32>("TEMPO_SIM_NUM_TICKS", 256).clamp(2, 256),
-            cap: env_parse::<u32>("TEMPO_SIM_CAP", 128).clamp(1, 128),
+            // Per-shard order cap. Must stay within the on-chain single-`CreateAccount`
+            // ceiling `MAX_ORDERS_PER_AUCTION_CAP` (115 at ORDER_LEN=88); the old default of
+            // 128 is now rejected by `initialize_market`. Default 90 is forward-safe as later
+            // stages grow `Order` and lower that ceiling.
+            cap: env_parse::<u32>("TEMPO_SIM_CAP", 90).clamp(1, 115),
             maint_bps,
             initial_bps,
             penalty_bps,

@@ -542,19 +542,20 @@ mod tests {
     fn test_finalize_clear_wrapper() {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let cranker = Pubkey::new_unique();
-        // No crank-fee accounts → 8 accounts; the bump arg is the clearing bump.
+        // No crank-fee accounts → 7 accounts (Stage A removed the order_slab completeness
+        // scan; finalize now gates on Market.shards_pending). The bump arg is the clearing bump.
         let bare = finalize_clear(&pdas, cranker, None);
         assert_eq!(bare.program_id, TEMPO_PROGRAM_ID);
         assert_eq!(bare.data[0], FINALIZE_CLEAR_DISCRIMINATOR);
         assert_eq!(bare.data[1], pdas.clearing_bump);
-        assert_eq!(bare.accounts.len(), 8);
-        // With the crank-fee pair → 10 accounts.
+        assert_eq!(bare.accounts.len(), 7);
+        // With the crank-fee pair → 9 accounts.
         let fee = finalize_clear(
             &pdas,
             cranker,
             Some((Pubkey::new_unique(), Pubkey::new_unique())),
         );
-        assert_eq!(fee.accounts.len(), 10);
+        assert_eq!(fee.accounts.len(), 9);
     }
 
     #[test]
@@ -614,9 +615,11 @@ mod tests {
         let mq = Pubkey::new_unique();
         let pos = Pubkey::new_unique();
 
+        // Stage A: start_auction dropped the order_slab account (shards are drained by
+        // reset_shard first; the roll gates on shards_ready) → 4 accounts.
         let sa = start_auction(&pdas, cranker, oracle);
         assert_eq!(sa.data[0], START_AUCTION_DISCRIMINATOR);
-        assert_eq!(sa.accounts.len(), 5);
+        assert_eq!(sa.accounts.len(), 4);
 
         let uf = update_funding(&pdas, cranker, oracle);
         assert_eq!(uf.data[0], UPDATE_FUNDING_DISCRIMINATOR);

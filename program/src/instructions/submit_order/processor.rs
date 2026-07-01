@@ -77,7 +77,7 @@ pub fn process_submit_order(
 
     // The requested shard must be within the market's shard set (Stage A sharding).
     if ix.data.shard_id >= num_slab_shards {
-        return Err(TempoProgramError::InvalidTick.into());
+        return Err(TempoProgramError::ShardOutOfRange.into());
     }
 
     // --- validate order slab PDA matches this market + anti-spam + reduce headroom ---
@@ -200,6 +200,11 @@ pub fn process_submit_order(
     // --- insert into a free slot ---
     let order_id;
     let order_slot;
+    // Whether this insert took the shard from empty (0 unfolded orders) to non-empty.
+    // A shard enters the market's completeness set (`shards_pending`) exactly on that
+    // transition, so empty shards are never counted and never impose a per-shard crank
+    // obligation (finalize gates on `shards_pending == 0`, still O(1)).
+    let shard_became_pending;
     {
         let mut slab_account = *ix.accounts.order_slab;
         let mut slab_data = slab_account.try_borrow_mut()?;
@@ -248,13 +253,31 @@ pub fn process_submit_order(
         // Stage A: the fresh order is `Resting` (not yet folded), so it counts toward
         // this shard's completeness. Maintained in the same borrow as the order write,
         // so `resting_count` can never drift from the shard's contents.
-        header.set_resting_count(
-            header
-                .resting_count()
+        let new_rc = header
+            .resting_count()
+            .checked_add(1)
+            .ok_or(TempoProgramError::MathOverflow)?;
+        header.set_resting_count(new_rc);
+        // `new_rc == 1` ⟺ the shard had 0 unfolded orders before this insert, so it now
+        // joins the completeness set.
+        shard_became_pending = new_rc == 1;
+        header.set_next_free_hint(slot.saturating_add(1).min(capacity));
+    }
+
+    // If this shard just became non-empty, add it to the market's completeness aggregate.
+    // This is the ONLY `Market` write on the submit path, and it happens at most once per
+    // shard per round (the first order into it) — far cheaper than the pre-PERF-1 per-submit
+    // market write-lock, and it keeps empty shards out of the finalize gate entirely.
+    if shard_became_pending {
+        let mut market_account = *ix.accounts.market;
+        let mut market_data = market_account.try_borrow_mut()?;
+        let market = Market::from_bytes_mut(&mut market_data)?;
+        market.set_shards_pending(
+            market
+                .shards_pending()
                 .checked_add(1)
                 .ok_or(TempoProgramError::MathOverflow)?,
         );
-        header.set_next_free_hint(slot.saturating_add(1).min(capacity));
     }
 
     // Emit event via CPI (carries the order id + fields; no log!, §1).

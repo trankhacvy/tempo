@@ -15,7 +15,7 @@ pub const SUBMIT_ORDER_DISCRIMINATOR: u8 = 1;
 pub struct SubmitOrder {
     /// Order owner
     pub trader: solana_address::Address,
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`.
     pub market: solana_address::Address,
     /// OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.
     pub order_slab: solana_address::Address,
@@ -42,10 +42,7 @@ impl SubmitOrder {
     ) -> solana_instruction::Instruction {
         let mut accounts = Vec::with_capacity(7 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new(self.trader, true));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.market,
-            false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.market, false));
         accounts.push(solana_instruction::AccountMeta::new(self.order_slab, false));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.event_authority,
@@ -115,7 +112,7 @@ impl SubmitOrderInstructionArgs {
 /// ### Accounts:
 ///
 ///   0. `[writable, signer]` trader
-///   1. `[]` market
+///   1. `[writable]` market
 ///   2. `[writable]` order_slab
 ///   3. `[]` event_authority
 ///   4. `[]` tempo_program
@@ -148,7 +145,7 @@ impl SubmitOrderBuilder {
         self.trader = Some(trader);
         self
     }
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`.
     #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
         self.market = Some(market);
@@ -256,7 +253,7 @@ impl SubmitOrderBuilder {
 pub struct SubmitOrderCpiAccounts<'a, 'b> {
     /// Order owner
     pub trader: &'b solana_account_info::AccountInfo<'a>,
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`.
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
@@ -276,7 +273,7 @@ pub struct SubmitOrderCpi<'a, 'b> {
     pub __program: &'b solana_account_info::AccountInfo<'a>,
     /// Order owner
     pub trader: &'b solana_account_info::AccountInfo<'a>,
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`.
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
@@ -335,7 +332,7 @@ impl<'a, 'b> SubmitOrderCpi<'a, 'b> {
     ) -> solana_program_error::ProgramResult {
         let mut accounts = Vec::with_capacity(7 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new(*self.trader.key, true));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
+        accounts.push(solana_instruction::AccountMeta::new(
             *self.market.key,
             false,
         ));
@@ -406,7 +403,7 @@ impl<'a, 'b> SubmitOrderCpi<'a, 'b> {
 /// ### Accounts:
 ///
 ///   0. `[writable, signer]` trader
-///   1. `[]` market
+///   1. `[writable]` market
 ///   2. `[writable]` order_slab
 ///   3. `[]` event_authority
 ///   4. `[]` tempo_program
@@ -443,7 +440,7 @@ impl<'a, 'b> SubmitOrderCpiBuilder<'a, 'b> {
         self.instruction.trader = Some(trader);
         self
     }
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`.
     #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.market = Some(market);

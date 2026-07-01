@@ -108,7 +108,7 @@ export type ForceResetAsyncInput<
   market: Address<TAccountMarket>;
   /** AuctionHistogram to zero */
   histogram?: Address<TAccountHistogram>;
-  /** OrderSlab to clear */
+  /** First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b"order_slab", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards. */
   orderSlab?: Address<TAccountOrderSlab>;
 };
 
@@ -200,7 +200,7 @@ export type ForceResetInput<
   market: Address<TAccountMarket>;
   /** AuctionHistogram to zero */
   histogram: Address<TAccountHistogram>;
-  /** OrderSlab to clear */
+  /** First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b"order_slab", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards. */
   orderSlab: Address<TAccountOrderSlab>;
 };
 
@@ -272,7 +272,7 @@ export type ParsedForceResetInstruction<
     market: TAccountMetas[1];
     /** AuctionHistogram to zero */
     histogram: TAccountMetas[2];
-    /** OrderSlab to clear */
+    /** First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b"order_slab", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards. */
     orderSlab: TAccountMetas[3];
   };
   data: ForceResetInstructionData;

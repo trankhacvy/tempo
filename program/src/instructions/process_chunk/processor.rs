@@ -159,19 +159,27 @@ pub fn process_process_chunk(
         hist.set_accumulated_count(c);
 
         // Stage A completeness: decrement this shard's resting counter, then decide
-        // whether the shard just became fully folded. `resting_count` is the per-shard
-        // authoritative-by-locality counter (maintained in the same borrow as the order
-        // status above). The `folded_auction_id` guard makes the "shard done" event fire
-        // exactly ONCE per shard per round — idempotent under repeated cranks, and it
-        // fires even for an empty shard (folded == 0, resting_count already 0). Confirm
-        // with the authoritative slab scan so a corrupt counter can't skip an order
-        // (the censorship guarantee, amortized per-shard at fold time).
+        // whether the shard just left the market's completeness set. `resting_count` is the
+        // per-shard authoritative-by-locality counter (maintained in the same borrow as the
+        // order status above). A shard was ADDED to `shards_pending` by the first submit into
+        // it (resting_count 0→1); it must leave EXACTLY when its last unfolded order is folded.
+        //
+        // The gate is `folded > 0 && rc == 0`:
+        //  - `folded > 0` ⟹ this call actually folded ≥1 order, so an EMPTY shard (never
+        //    submitted to; never counted) is a no-op and never decrements — no per-shard crank
+        //    obligation, and `shards_pending` stays balanced against the submit increments.
+        //  - a re-crank after completion folds 0 ⟹ `folded > 0` is false ⟹ fires exactly once.
+        // The `folded_auction_id` guard is belt-and-suspenders (redundant given `folded > 0`),
+        // and the authoritative slab scan confirms the counter so a corrupt `resting_count`
+        // can never let finalize proceed with an unfolded order (the censorship guarantee,
+        // amortized per-shard at fold time).
         let slab = OrderSlabHeader::from_bytes_mut(&mut slab_data)?;
         // `folded` counts orders folded this call (≤ capacity ≤ u32::MAX), safe to narrow.
         let rc = slab.resting_count().saturating_sub(folded as u32);
         slab.set_resting_count(rc);
         let prev_folded_id = slab.folded_auction_id();
-        let newly_complete = rc == 0
+        let newly_complete = folded > 0
+            && rc == 0
             && prev_folded_id != auction_id
             && all_active_orders_accumulated(&slab_data, capacity)?;
         if newly_complete {

@@ -45,6 +45,9 @@ impl<'a> TryFrom<&'a [AccountView]> for SubmitOrderAccounts<'a> {
         };
 
         verify_signer(trader, true)?;
+        // Stage A: `market` is writable — the FIRST order into an empty shard bumps
+        // `Market.shards_pending` (the completeness aggregate that excludes empty shards).
+        verify_writable(market, true)?;
         verify_writable(order_slab, true)?;
 
         // Both state accounts must be owned by this program.

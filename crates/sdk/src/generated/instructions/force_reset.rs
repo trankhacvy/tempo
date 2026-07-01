@@ -19,7 +19,7 @@ pub struct ForceReset {
     pub market: solana_address::Address,
     /// AuctionHistogram to zero
     pub histogram: solana_address::Address,
-    /// OrderSlab to clear
+    /// First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b"order_slab", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards.
     pub order_slab: solana_address::Address,
 }
 
@@ -112,7 +112,7 @@ impl ForceResetBuilder {
         self.histogram = Some(histogram);
         self
     }
-    /// OrderSlab to clear
+    /// First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b"order_slab", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards.
     #[inline(always)]
     pub fn order_slab(&mut self, order_slab: solana_address::Address) -> &mut Self {
         self.order_slab = Some(order_slab);
@@ -154,7 +154,7 @@ pub struct ForceResetCpiAccounts<'a, 'b> {
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// AuctionHistogram to zero
     pub histogram: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab to clear
+    /// First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b"order_slab", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards.
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
 }
 
@@ -168,7 +168,7 @@ pub struct ForceResetCpi<'a, 'b> {
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// AuctionHistogram to zero
     pub histogram: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab to clear
+    /// First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b"order_slab", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards.
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
 }
 
@@ -300,7 +300,7 @@ impl<'a, 'b> ForceResetCpiBuilder<'a, 'b> {
         self.instruction.histogram = Some(histogram);
         self
     }
-    /// OrderSlab to clear
+    /// First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b"order_slab", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards.
     #[inline(always)]
     pub fn order_slab(
         &mut self,

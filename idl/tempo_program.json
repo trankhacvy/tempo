@@ -2665,6 +2665,12 @@
         "kind": "errorNode",
         "message": "Order would exceed the market's max position notional",
         "name": "positionLimitExceeded"
+      },
+      {
+        "code": 45,
+        "kind": "errorNode",
+        "message": "Shard id is out of range for this market",
+        "name": "shardOutOfRange"
       }
     ],
     "events": [],
@@ -3023,10 +3029,10 @@
           },
           {
             "docs": [
-              "Market the order belongs to"
+              "Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`."
             ],
             "isSigner": false,
-            "isWritable": false,
+            "isWritable": true,
             "kind": "instructionAccountNode",
             "name": "market"
           },
@@ -3165,10 +3171,10 @@
           },
           {
             "docs": [
-              "Market the order belongs to"
+              "Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`."
             ],
             "isSigner": false,
-            "isWritable": false,
+            "isWritable": true,
             "kind": "instructionAccountNode",
             "name": "market"
           },
@@ -4666,7 +4672,7 @@
               ]
             },
             "docs": [
-              "OrderSlab to clear"
+              "First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b\"order_slab\", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards."
             ],
             "isSigner": false,
             "isWritable": true,

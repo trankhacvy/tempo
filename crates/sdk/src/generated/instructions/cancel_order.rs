@@ -15,7 +15,7 @@ pub const CANCEL_ORDER_DISCRIMINATOR: u8 = 2;
 pub struct CancelOrder {
     /// Order owner
     pub trader: solana_address::Address,
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`.
     pub market: solana_address::Address,
     /// OrderSlab to remove from
     pub order_slab: solana_address::Address,
@@ -43,10 +43,7 @@ impl CancelOrder {
             self.trader,
             true,
         ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.market,
-            false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.market, false));
         accounts.push(solana_instruction::AccountMeta::new(self.order_slab, false));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.event_authority,
@@ -110,7 +107,7 @@ impl CancelOrderInstructionArgs {
 /// ### Accounts:
 ///
 ///   0. `[signer]` trader
-///   1. `[]` market
+///   1. `[writable]` market
 ///   2. `[writable]` order_slab
 ///   3. `[]` event_authority
 ///   4. `[]` tempo_program
@@ -138,7 +135,7 @@ impl CancelOrderBuilder {
         self.trader = Some(trader);
         self
     }
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`.
     #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
         self.market = Some(market);
@@ -220,7 +217,7 @@ impl CancelOrderBuilder {
 pub struct CancelOrderCpiAccounts<'a, 'b> {
     /// Order owner
     pub trader: &'b solana_account_info::AccountInfo<'a>,
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`.
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// OrderSlab to remove from
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
@@ -238,7 +235,7 @@ pub struct CancelOrderCpi<'a, 'b> {
     pub __program: &'b solana_account_info::AccountInfo<'a>,
     /// Order owner
     pub trader: &'b solana_account_info::AccountInfo<'a>,
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`.
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// OrderSlab to remove from
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
@@ -297,7 +294,7 @@ impl<'a, 'b> CancelOrderCpi<'a, 'b> {
             *self.trader.key,
             true,
         ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
+        accounts.push(solana_instruction::AccountMeta::new(
             *self.market.key,
             false,
         ));
@@ -362,7 +359,7 @@ impl<'a, 'b> CancelOrderCpi<'a, 'b> {
 /// ### Accounts:
 ///
 ///   0. `[signer]` trader
-///   1. `[]` market
+///   1. `[writable]` market
 ///   2. `[writable]` order_slab
 ///   3. `[]` event_authority
 ///   4. `[]` tempo_program
@@ -394,7 +391,7 @@ impl<'a, 'b> CancelOrderCpiBuilder<'a, 'b> {
         self.instruction.trader = Some(trader);
         self
     }
-    /// Market the order belongs to
+    /// Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`.
     #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.market = Some(market);

@@ -213,6 +213,12 @@ pub enum TempoProgramError {
     /// trade that must settle.
     #[error("Order would exceed the market's max position notional")]
     PositionLimitExceeded,
+
+    /// (45) A requested `shard_id` is outside `[0, num_slab_shards)` (Stage A
+    /// sharding). Names the actual shard-index violation instead of the previously
+    /// misleading `InvalidTick` (which points at price/tick logic).
+    #[error("Shard id is out of range for this market")]
+    ShardOutOfRange,
 }
 
 impl From<TempoProgramError> for ProgramError {

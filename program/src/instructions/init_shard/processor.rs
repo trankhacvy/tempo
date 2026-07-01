@@ -40,7 +40,7 @@ pub fn process_init_shard(
     };
 
     if ix.data.shard_id >= num_slab_shards {
-        return Err(TempoProgramError::InvalidTick.into());
+        return Err(TempoProgramError::ShardOutOfRange.into());
     }
 
     // --- build + create the shard PDA ---

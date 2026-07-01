@@ -41,6 +41,9 @@ impl<'a> TryFrom<&'a [AccountView]> for CancelOrderAccounts<'a> {
         };
 
         verify_signer(trader, false)?;
+        // Stage A: `market` is writable — cancelling the last unfolded order in a shard
+        // decrements `Market.shards_pending` (the completeness aggregate).
+        verify_writable(market, true)?;
         verify_writable(order_slab, true)?;
 
         verify_current_program_account(market)?;

@@ -691,11 +691,11 @@ impl Market {
             initial_margin_bps_le: initial_margin_bps.to_le_bytes(),
             max_position_notional_le: max_position_notional.to_le_bytes(),
             num_slab_shards_le: num_slab_shards.to_le_bytes(),
-            // Round 0 opens in Collect expecting every shard to be folded, so start the
-            // completeness aggregate at the full shard count. `finalize_clear` is blocked
-            // until each shard (created by `init_shard`) has been folded once, which drives
-            // this to 0. No shards are reset yet.
-            shards_pending_le: num_slab_shards.to_le_bytes(),
+            // The completeness aggregate counts only shards that CURRENTLY hold unfolded
+            // orders, so it starts at 0 (no orders yet) and is incremented by the first
+            // submit into each shard (resting_count 0→1). Empty shards are never counted,
+            // so `finalize_clear` (gated on `shards_pending == 0`) needs no per-shard crank.
+            shards_pending_le: 0u16.to_le_bytes(),
             shards_ready_le: 0u16.to_le_bytes(),
         }
     }
@@ -858,7 +858,8 @@ mod tests {
         assert_eq!(m.phase, AuctionPhase::Collect as u8);
         assert_eq!(m.tick_size(), 10);
         assert_eq!(m.num_slab_shards(), 16);
-        assert_eq!(m.shards_pending(), 16);
+        // Completeness aggregate starts at 0 — only shards with unfolded orders are counted.
+        assert_eq!(m.shards_pending(), 0);
         assert_eq!(m.shards_ready(), 0);
         assert_eq!(m.num_ticks(), 64);
         assert_eq!(m.orders_per_auction_cap(), 256);

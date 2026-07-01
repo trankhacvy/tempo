@@ -1722,14 +1722,19 @@ impl TestContext {
     }
 
     fn force_reset_ix(&self, pdas: &MarketPdas, authority: &Pubkey) -> Instruction {
+        // Stage A: force_reset resets the round atomically, so ALL shards are passed as
+        // trailing writable accounts (the processor requires shards.len() == num_slab_shards).
+        let mut accounts = vec![
+            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new(pdas.market, false),
+            AccountMeta::new(pdas.histogram, false),
+        ];
+        for shard_id in 0..pdas.num_slab_shards.max(1) {
+            accounts.push(AccountMeta::new(pdas.slab_shard(shard_id).0, false));
+        }
         Instruction {
             program_id: TEMPO_PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(*authority, true),
-                AccountMeta::new(pdas.market, false),
-                AccountMeta::new(pdas.histogram, false),
-                AccountMeta::new(pdas.order_slab, false),
-            ],
+            accounts,
             data: vec![IX_FORCE_RESET],
         }
     }

@@ -91,7 +91,11 @@ pub enum TempoProgramInstruction {
 
     /// Submit a resting order into the slab (phase must be Collect).
     #[codama(account(name = "trader", docs = "Order owner", signer, writable))]
-    #[codama(account(name = "market", docs = "Market the order belongs to"))]
+    #[codama(account(
+        name = "market",
+        docs = "Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`.",
+        writable
+    ))]
     #[codama(account(
         name = "order_slab",
         docs = "OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b\"order_slab\", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.",
@@ -137,7 +141,11 @@ pub enum TempoProgramInstruction {
 
     /// Cancel a resting order before clearing begins.
     #[codama(account(name = "trader", docs = "Order owner", signer))]
-    #[codama(account(name = "market", docs = "Market the order belongs to"))]
+    #[codama(account(
+        name = "market",
+        docs = "Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`.",
+        writable
+    ))]
     #[codama(account(
         name = "order_slab",
         docs = "OrderSlab to remove from",
@@ -523,7 +531,10 @@ pub enum TempoProgramInstruction {
 
     /// Authority-gated escape hatch: abandon a wedged round and reopen `Collect`
     /// regardless of phase or unsettled orders (an operational backstop, not a
-    /// normal path). Zeroes the histogram + slab and bumps the auction id.
+    /// normal path). Zeroes the histogram + ALL slab shards and bumps the auction id once.
+    /// Stage A: ALL `num_slab_shards` shards must be passed as trailing writable accounts
+    /// (after the histogram) so the reset is atomic — a partial reset would leave stale
+    /// shards and desync shard auction ids. Bounded by the tx account limit.
     #[codama(account(name = "authority", docs = "Market authority / admin", signer))]
     #[codama(account(name = "market", docs = "Market to reset", writable))]
     #[codama(account(
@@ -534,7 +545,7 @@ pub enum TempoProgramInstruction {
     ))]
     #[codama(account(
         name = "order_slab",
-        docs = "OrderSlab to clear",
+        docs = "First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b\"order_slab\", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards.",
         writable,
         default_value = pda("orderSlabHeader", [seed("market", account("market"))])
     ))]
