@@ -11,6 +11,7 @@ use super::init_collateral::{InitCollateralAccounts, InitCollateralData};
 use super::init_maker_quote::{InitMakerQuoteAccounts, InitMakerQuoteData};
 use super::init_margin_account::{InitMarginAccountAccounts, InitMarginAccountData};
 use super::init_position::{InitPositionAccounts, InitPositionData};
+use super::init_shard::{InitShardAccounts, InitShardData};
 use super::init_vault::{InitVaultAccounts, InitVaultData};
 use super::initialize_market::{InitializeMarketAccounts, InitializeMarketData};
 use super::liquidate::{LiquidateAccounts, LiquidateData};
@@ -23,6 +24,7 @@ use super::read_oracle::{ReadOracleAccounts, ReadOracleData};
 use super::remove_position_from_margin::{
     RemovePositionFromMarginAccounts, RemovePositionFromMarginData,
 };
+use super::reset_shard::{ResetShardAccounts, ResetShardData};
 use super::settle_fill::{SettleFillAccounts, SettleFillData};
 use super::settle_maker_quote::{SettleMakerQuoteAccounts, SettleMakerQuoteData};
 use super::start_auction::{StartAuctionAccounts, StartAuctionData};
@@ -109,3 +111,5 @@ define_instruction!(
     MigratePositionAccounts,
     MigratePositionData
 );
+define_instruction!(InitShard, InitShardAccounts, InitShardData);
+define_instruction!(ResetShard, ResetShardAccounts, ResetShardData);

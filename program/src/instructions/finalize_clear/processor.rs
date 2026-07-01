@@ -6,12 +6,9 @@ use crate::{
     events::ClearingFinalizedEvent,
     instructions::FinalizeClear,
     state::{
-        all_active_orders_accumulated, read_region_values, AuctionHistogramHeader, AuctionPhase,
-        ClearingResult, Market, OrderSlabHeader, Region,
+        read_region_values, AuctionHistogramHeader, AuctionPhase, ClearingResult, Market, Region,
     },
-    traits::{
-        AccountDeserialize, AccountSerialize, AccountSize, EventSerialize, PdaAccount, PdaSeeds,
-    },
+    traits::{AccountDeserialize, AccountSerialize, AccountSize, EventSerialize, PdaAccount},
     utils::{create_pda_account_idempotent, emit_event},
 };
 
@@ -49,11 +46,17 @@ pub fn process_finalize_clear(
         market.require_phase(AuctionPhase::Accumulating)?;
         // Maker-quote completeness check (clearing-protocol §4.2): refuse to finalize
         // until every active maker quote has been folded exactly once (keeps our
-        // censorship guarantee for maker liquidity). The ORDER-side completeness is
-        // enforced authoritatively by the `all_active_orders_accumulated` slab scan
-        // below — PERF-1 removed the redundant `accumulated_order_count`/
-        // `active_order_count` market counters that used to mirror it (known-issues §2.1).
+        // censorship guarantee for maker liquidity).
         if market.folded_maker_quote_count() != market.active_maker_quote_count() {
+            return Err(TempoProgramError::AuctionNotComplete.into());
+        }
+        // Stage A order-side completeness: every slab shard must be fully folded.
+        // `shards_pending` is decremented exactly once per shard by `process_chunk`
+        // (guarded by `OrderSlabHeader.folded_auction_id`) only after that shard's own
+        // authoritative `all_active_orders_accumulated` scan passes — so this O(1) gate
+        // is backed by a real per-shard scan (the censorship guarantee, amortized at
+        // fold time), replacing the single-slab scan removed here (known-issues §2.1).
+        if market.shards_pending() != 0 {
             return Err(TempoProgramError::AuctionNotComplete.into());
         }
         (
@@ -65,21 +68,6 @@ pub fn process_finalize_clear(
             market.collateral_mint,
         )
     };
-
-    // Slab-derived completeness (known-issues §2.1): the counter check above is an
-    // O(1) hint, but the censorship guarantee must rest on the slab itself — refuse
-    // to finalize while any slot is still `Resting` (not yet folded).
-    {
-        let slab_data = ix.accounts.order_slab.try_borrow()?;
-        let slab = OrderSlabHeader::from_bytes(&slab_data)?;
-        if slab.market != market_key {
-            return Err(TempoProgramError::AccountMarketMismatch.into());
-        }
-        slab.validate_pda(ix.accounts.order_slab, program_id, slab.bump)?;
-        if !all_active_orders_accumulated(&slab_data, slab.capacity())? {
-            return Err(TempoProgramError::AuctionNotComplete.into());
-        }
-    }
 
     // --- read the histogram buckets into the four region arrays ---
     let (bid_demand, bid_supply, ask_demand, ask_supply) = {

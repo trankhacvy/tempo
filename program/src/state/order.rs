@@ -216,20 +216,30 @@ impl Order {
 /// via the helpers below on the full account data slice (capacity is dynamic
 /// per market, so slots are not fields of the header).
 ///
+/// # Sharding (v4)
+/// One market has `num_slab_shards` slab accounts, seeds `[b"order_slab", market,
+/// shard_id_le]`. Orders are routed to a shard by the client; each shard folds and
+/// settles independently, so submit/settle across shards run in parallel (they
+/// write-lock different accounts). `resting_count` is the per-shard, updated-in-the
+/// -same-borrow fold counter that drives the O(1) completeness gate in
+/// `finalize_clear` (see `Market.shards_pending`).
+///
 /// # Header layout (`#[repr(C)]`, **alignment 1** — see `le_field!`)
-/// 2 × [u8;8] (16) + 3 × [u8;4] (12) + Address (32) + u8 (1) = 61.
+/// 2 × [u8;8] (16) + 3 × [u8;4] (12) + Address (32) + u8 (1) + [u8;2] (2) + [u8;4] (4)
+/// + [u8;8] (8) = 75.
 #[derive(Clone, Debug, PartialEq, CodamaAccount)]
 #[codama(field("discriminator", number(u8), default_value = 4))]
 #[codama(discriminator(field = "discriminator"))]
 #[codama(seed(type = string(utf8), value = "order_slab"))]
 #[codama(seed(name = "market", type = public_key))]
+#[codama(seed(name = "shardId", type = number(u16)))]
 #[repr(C)]
 pub struct OrderSlabHeader {
     /// Auction round the resting orders belong to.
     pub auction_id_le: [u8; 8],
     /// Monotonic id assigned to the next submitted order.
     pub next_order_id_le: [u8; 8],
-    /// Maximum number of slots (orders-per-auction cap).
+    /// Maximum number of slots (orders-per-auction cap, per shard).
     pub capacity_le: [u8; 4],
     /// Number of currently-resting/active orders (not yet consumed).
     pub count_le: [u8; 4],
@@ -245,15 +255,35 @@ pub struct OrderSlabHeader {
     /// starting point, and a stale hint costs at most one extra scan. Appended last
     /// so the `market`/`bump` offsets stay stable.
     pub next_free_hint_le: [u8; 4],
+    // --- v4 (sharding) ---
+    /// This shard's index (also the 3rd PDA seed). `[0, num_slab_shards)`.
+    pub shard_id_le: [u8; 2],
+    /// Orders in this shard still `Resting` (not yet folded into the histogram).
+    /// Maintained in the same borrow as each order's `status`, so it cannot drift
+    /// from the shard's contents — this is the per-shard completeness source of
+    /// truth (clearing-protocol §4.2). When it hits 0, `process_chunk` confirms with
+    /// a scan and decrements `Market.shards_pending` once.
+    pub resting_count_le: [u8; 4],
+    /// Auction round in which this shard was last marked "fully folded" — the
+    /// exactly-once guard so `process_chunk` decrements `Market.shards_pending` at most
+    /// once per shard per round (idempotent under repeated cranks; fires for an empty
+    /// shard too). Init `u64::MAX` (never equals a real auction id until folded).
+    pub folded_auction_id_le: [u8; 8],
 }
 
-assert_no_padding!(OrderSlabHeader, 8 * 2 + 4 * 3 + 32 + 1);
+assert_no_padding!(OrderSlabHeader, 8 * 2 + 4 * 3 + 32 + 1 + 2 + 4 + 8);
 
 impl Discriminator for OrderSlabHeader {
     const DISCRIMINATOR: u8 = TempoAccountDiscriminators::OrderSlabDiscriminator as u8;
 }
 
 impl Versioned for OrderSlabHeader {
+    // v4 (sharding): a market now has `num_slab_shards` slabs at seeds `[b"order_slab",
+    // market, shard_id]`. Appended `shard_id` (the new 3rd seed) and the per-shard
+    // `resting_count` completeness counter. The seed set changed, so the old single-slab
+    // address differs from shard 0 — a market must be re-provisioned (dev-phase: free);
+    // the version bump fails a stale slab loudly.
+    //
     // v3: widened `Order` again to carry `reserved_margin` (ORDER_LEN 80 → 88), the
     // worst-case margin locked at submit (missing-features §1.1). The slot region size
     // changed, so a pre-v3 slab is incompatible and must be re-provisioned (dev-phase:
@@ -261,11 +291,11 @@ impl Versioned for OrderSlabHeader {
     //
     // v2: appended `next_free_hint` (O(1) alloc cursor) AND widened `Order` to carry
     // the fold-time `cum_before` snapshot (ORDER_LEN 72 → 80) — both known-issues §2.7.
-    const VERSION: u8 = 3;
+    const VERSION: u8 = 4;
 }
 
 impl AccountSize for OrderSlabHeader {
-    const DATA_LEN: usize = 8 * 2 + 4 * 3 + 32 + 1;
+    const DATA_LEN: usize = 8 * 2 + 4 * 3 + 32 + 1 + 2 + 4 + 8;
 }
 
 impl AccountDeserialize for OrderSlabHeader {}
@@ -281,6 +311,9 @@ impl AccountSerialize for OrderSlabHeader {
         data.extend_from_slice(self.market.as_ref());
         data.push(self.bump);
         data.extend_from_slice(&self.next_free_hint_le);
+        data.extend_from_slice(&self.shard_id_le);
+        data.extend_from_slice(&self.resting_count_le);
+        data.extend_from_slice(&self.folded_auction_id_le);
         data
     }
 }
@@ -290,7 +323,7 @@ impl PdaSeeds for OrderSlabHeader {
 
     #[inline(always)]
     fn seeds(&self) -> Vec<&[u8]> {
-        vec![Self::PREFIX, self.market.as_ref()]
+        vec![Self::PREFIX, self.market.as_ref(), self.shard_id_le.as_ref()]
     }
 
     #[inline(always)]
@@ -298,6 +331,7 @@ impl PdaSeeds for OrderSlabHeader {
         vec![
             Seed::from(Self::PREFIX),
             Seed::from(self.market.as_ref()),
+            Seed::from(self.shard_id_le.as_ref()),
             Seed::from(bump.as_slice()),
         ]
     }
@@ -316,9 +350,17 @@ impl OrderSlabHeader {
     le_field!(capacity, set_capacity, capacity_le, u32);
     le_field!(count, set_count, count_le, u32);
     le_field!(next_free_hint, set_next_free_hint, next_free_hint_le, u32);
+    le_field!(shard_id, set_shard_id, shard_id_le, u16);
+    le_field!(resting_count, set_resting_count, resting_count_le, u32);
+    le_field!(
+        folded_auction_id,
+        set_folded_auction_id,
+        folded_auction_id_le,
+        u64
+    );
 
     #[inline(always)]
-    pub fn new(bump: u8, market: Address, auction_id: u64, capacity: u32) -> Self {
+    pub fn new(bump: u8, market: Address, auction_id: u64, capacity: u32, shard_id: u16) -> Self {
         Self {
             auction_id_le: auction_id.to_le_bytes(),
             next_order_id_le: 0u64.to_le_bytes(),
@@ -327,6 +369,10 @@ impl OrderSlabHeader {
             market,
             bump,
             next_free_hint_le: 0u32.to_le_bytes(),
+            shard_id_le: shard_id.to_le_bytes(),
+            resting_count_le: 0u32.to_le_bytes(),
+            // u64::MAX = "not yet folded this round" (never equals a real auction id).
+            folded_auction_id_le: u64::MAX.to_le_bytes(),
         }
     }
 
@@ -557,7 +603,7 @@ mod tests {
     }
 
     fn fresh_slab(capacity: u32) -> Vec<u8> {
-        let h = OrderSlabHeader::new(255, Address::new_from_array([1u8; 32]), 0, capacity);
+        let h = OrderSlabHeader::new(255, Address::new_from_array([1u8; 32]), 0, capacity, 0);
         let mut data = vec![0u8; OrderSlabHeader::account_size(capacity)];
         h.write_to_slice(&mut data).unwrap();
         // initialize all slots to Empty (status byte already 0 == Empty)
@@ -566,15 +612,42 @@ mod tests {
 
     #[test]
     fn test_slab_header_roundtrip() {
-        let h = OrderSlabHeader::new(254, Address::new_from_array([9u8; 32]), 3, 8);
+        let mut h = OrderSlabHeader::new(254, Address::new_from_array([9u8; 32]), 3, 8, 5);
+        h.set_resting_count(2);
         let bytes = h.to_bytes();
         assert_eq!(bytes[0], OrderSlabHeader::DISCRIMINATOR);
         assert_eq!(bytes[1], OrderSlabHeader::VERSION);
+        assert_eq!(bytes[1], 4); // v4 (sharding)
         let de = OrderSlabHeader::from_bytes(&bytes).unwrap();
         assert_eq!(de.auction_id(), 3);
         assert_eq!(de.capacity(), 8);
         assert_eq!(de.bump, 254);
         assert_eq!(de.count(), 0);
+        // v4 sharding fields roundtrip
+        assert_eq!(de.shard_id(), 5);
+        assert_eq!(de.resting_count(), 2);
+    }
+
+    #[test]
+    fn test_slab_shard_seed_includes_shard_id() {
+        // The shard id is the 3rd PDA seed, so two shards of the same market derive
+        // different addresses.
+        let market = Address::new_from_array([9u8; 32]);
+        let a = OrderSlabHeader::new(0, market, 0, 8, 0);
+        let b = OrderSlabHeader::new(0, market, 0, 8, 1);
+        assert_eq!(a.seeds().len(), 3);
+        assert_eq!(a.seeds()[0], OrderSlabHeader::PREFIX);
+        assert_eq!(a.seeds()[1], market.as_ref());
+        assert_ne!(a.seeds()[2], b.seeds()[2]);
+    }
+
+    #[test]
+    fn test_slab_resting_count_set_get() {
+        let mut h = OrderSlabHeader::new(0, Address::new_from_array([1u8; 32]), 0, 8, 3);
+        assert_eq!(h.resting_count(), 0);
+        h.set_resting_count(7);
+        assert_eq!(h.resting_count(), 7);
+        assert_eq!(h.shard_id(), 3);
     }
 
     #[test]

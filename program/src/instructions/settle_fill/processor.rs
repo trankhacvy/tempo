@@ -108,18 +108,22 @@ pub fn process_settle_fill(
     let order_side;
     let settle_price;
     let reserved_margin;
+    let order_shard_id;
     {
         let mut slab_account = *ix.accounts.order_slab;
         let mut slab_data = slab_account.try_borrow_mut()?;
 
-        let capacity = {
+        let (capacity, shard_id) = {
             let header = OrderSlabHeader::from_bytes(&slab_data)?;
             if header.market != market_key {
                 return Err(TempoProgramError::AccountMarketMismatch.into());
             }
+            // Stage A: `validate_pda` ties the account to its stored shard_id (a PDA seed),
+            // so this confirms the passed account is a canonical shard of this market.
             header.validate_pda(ix.accounts.order_slab, program_id, header.bump)?;
-            header.capacity()
+            (header.capacity(), header.shard_id())
         };
+        order_shard_id = shard_id;
 
         let slot =
             find_order_by_id_hinted(&slab_data, capacity, ix.data.order_id, ix.data.slot_hint)?;
@@ -439,6 +443,7 @@ pub fn process_settle_fill(
         // A settle_fill fill is always a taker (§1.3); the maker tier reports
         // is_maker=1 only from the settle_maker_quote path.
         is_maker: 0,
+        shard_id: order_shard_id,
     };
     emit_event(
         program_id,

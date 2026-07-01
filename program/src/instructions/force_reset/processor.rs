@@ -12,10 +12,14 @@ use crate::{
 
 /// Processes the ForceReset instruction — an authority-gated escape hatch that
 /// abandons a wedged round and reopens `Collect`, regardless of phase or
-/// unsettled orders (system-design §7). It bumps the auction id, zeroes the slab
-/// and histogram, resets the counters, and opens a fresh collection window. This
-/// is an operational backstop for a stuck round, NOT a normal path — the
+/// unsettled orders (system-design §7). It bumps the auction id, zeroes the
+/// histogram, resets the counters + shard aggregates, and opens a fresh collection
+/// window. This is an operational backstop for a stuck round, NOT a normal path — the
 /// permissionless cranks drain a round under the freeze model on their own.
+///
+/// Stage A sharding: this does NOT zero the slab shards (a market may have too many for
+/// one tx). It re-arms `shards_pending`/`shards_ready` for the new round, so the admin
+/// must `reset_shard` each dirty shard afterward before the next `start_auction`.
 pub fn process_force_reset(
     program_id: &Address,
     accounts: &[AccountView],
@@ -40,7 +44,6 @@ pub fn process_force_reset(
         program_id,
         ix.accounts.market,
         ix.accounts.histogram,
-        ix.accounts.order_slab,
         num_ticks,
         next_id,
         slot,

@@ -52,6 +52,7 @@ pub fn process_submit_order(
         initial_bps,
         window_top_price,
         max_position_notional,
+        num_slab_shards,
     ) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
@@ -70,14 +71,26 @@ pub fn process_submit_order(
             market.initial_margin_bps(),
             window_top_price,
             market.max_position_notional(),
+            market.num_slab_shards(),
         )
     };
+
+    // The requested shard must be within the market's shard set (Stage A sharding).
+    if ix.data.shard_id >= num_slab_shards {
+        return Err(TempoProgramError::InvalidTick.into());
+    }
 
     // --- validate order slab PDA matches this market + anti-spam + reduce headroom ---
     let already_same_side = {
         let slab_data = ix.accounts.order_slab.try_borrow()?;
         let slab = OrderSlabHeader::from_bytes(&slab_data)?;
         if slab.market != market_key {
+            return Err(TempoProgramError::AccountMarketMismatch.into());
+        }
+        // The supplied slab account is the canonical PDA for its own stored shard_id
+        // (validate_pda ties the address to the seeds, which include shard_id); require
+        // that stored shard matches the requested one so data and account agree.
+        if slab.shard_id() != ix.data.shard_id {
             return Err(TempoProgramError::AccountMarketMismatch.into());
         }
         slab.validate_pda(ix.accounts.order_slab, program_id, slab.bump)?;
@@ -232,6 +245,15 @@ pub fn process_submit_order(
                 .checked_add(1)
                 .ok_or(TempoProgramError::MathOverflow)?,
         );
+        // Stage A: the fresh order is `Resting` (not yet folded), so it counts toward
+        // this shard's completeness. Maintained in the same borrow as the order write,
+        // so `resting_count` can never drift from the shard's contents.
+        header.set_resting_count(
+            header
+                .resting_count()
+                .checked_add(1)
+                .ok_or(TempoProgramError::MathOverflow)?,
+        );
         header.set_next_free_hint(slot.saturating_add(1).min(capacity));
     }
 
@@ -247,6 +269,7 @@ pub fn process_submit_order(
         side: ix.data.side,
         // Taker-only (§1.3); kept in the event for indexer schema stability.
         is_maker: 0,
+        shard_id: ix.data.shard_id,
     };
     emit_event(
         program_id,

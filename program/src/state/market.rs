@@ -160,6 +160,19 @@ pub struct Market {
     /// (missing-features §1.2). `0` = disabled. A per-position risk bound that the
     /// leverage limit does not give (a whale at low leverage).
     pub max_position_notional_le: [u8; 16],
+    // --- sharding (VERSION 10; appended, offsets stable) ---
+    /// Number of `OrderSlab` shards for this market (set at init). Orders are routed
+    /// across shards `[0, num_slab_shards)` so submit/settle run in parallel.
+    pub num_slab_shards_le: [u8; 2],
+    /// Shards not yet fully folded THIS round — the O(1) completeness aggregate
+    /// `finalize_clear` gates on. Each shard decrements it once when its
+    /// `resting_count` reaches 0 (confirmed by a per-shard scan). Reset to
+    /// `num_slab_shards` at each roll.
+    pub shards_pending_le: [u8; 2],
+    /// Shards reset (drained + zeroed) for the next round — the roll aggregate
+    /// `start_auction` gates on. Each `reset_shard` increments it once; reset to 0 at
+    /// roll (see clearing-protocol §4, freeze model).
+    pub shards_ready_le: [u8; 2],
 }
 
 assert_no_padding!(
@@ -190,6 +203,9 @@ assert_no_padding!(
         + 8
         + 2
         + 16
+        + 2
+        + 2
+        + 2
 );
 
 impl Discriminator for Market {
@@ -197,6 +213,12 @@ impl Discriminator for Market {
 }
 
 impl Versioned for Market {
+    // v10 (sharding): appended `num_slab_shards` + the `shards_pending` (completeness)
+    // and `shards_ready` (roll) aggregates. A market now has `num_slab_shards` slabs;
+    // the single-slab layout is gone, so a pre-v10 market must be re-provisioned (the
+    // version bump fails it loudly). An append is prefix-compatible for readers, but the
+    // account is sized by `DATA_LEN`, so a shorter pre-v10 account fails the size check.
+    //
     // v9 (PERF-1): removed the redundant `accumulated_order_count` /
     // `active_order_count` mirror fields so `submit_order`/`cancel_order` no longer
     // write-lock `Market` (known-issues §2.1). The authoritative live-order count is
@@ -222,7 +244,7 @@ impl Versioned for Market {
     // (known-issues §3). A prefix change is NOT append-compatible, so that bump
     // made any pre-v6 account fail the zero-copy version check loudly instead of
     // decoding off-by-one — old accounts must be re-provisioned, not migrated.
-    const VERSION: u8 = 9;
+    const VERSION: u8 = 10;
 }
 
 impl AccountSize for Market {
@@ -251,7 +273,10 @@ impl AccountSize for Market {
         + 8
         + 8
         + 2
-        + 16;
+        + 16
+        + 2
+        + 2
+        + 2;
 }
 
 impl AccountDeserialize for Market {}
@@ -297,6 +322,9 @@ impl AccountSerialize for Market {
         data.extend_from_slice(&self.window_floor_price_le);
         data.extend_from_slice(&self.initial_margin_bps_le);
         data.extend_from_slice(&self.max_position_notional_le);
+        data.extend_from_slice(&self.num_slab_shards_le);
+        data.extend_from_slice(&self.shards_pending_le);
+        data.extend_from_slice(&self.shards_ready_le);
         data
     }
 }
@@ -453,6 +481,14 @@ impl Market {
         max_position_notional_le,
         u128
     );
+    le_field!(
+        num_slab_shards,
+        set_num_slab_shards,
+        num_slab_shards_le,
+        u16
+    );
+    le_field!(shards_pending, set_shards_pending, shards_pending_le, u16);
+    le_field!(shards_ready, set_shards_ready, shards_ready_le, u16);
 
     #[inline(always)]
     pub fn max_price_move_bps_per_slot(&self) -> u16 {
@@ -611,6 +647,7 @@ impl Market {
         soft_stale_slots: u64,
         initial_margin_bps: u16,
         max_position_notional: u128,
+        num_slab_shards: u16,
     ) -> Self {
         Self {
             current_auction_id_le: 0u64.to_le_bytes(),
@@ -653,6 +690,13 @@ impl Market {
             window_floor_price_le: tick_size.to_le_bytes(),
             initial_margin_bps_le: initial_margin_bps.to_le_bytes(),
             max_position_notional_le: max_position_notional.to_le_bytes(),
+            num_slab_shards_le: num_slab_shards.to_le_bytes(),
+            // Round 0 opens in Collect expecting every shard to be folded, so start the
+            // completeness aggregate at the full shard count. `finalize_clear` is blocked
+            // until each shard (created by `init_shard`) has been folded once, which drives
+            // this to 0. No shards are reset yet.
+            shards_pending_le: num_slab_shards.to_le_bytes(),
+            shards_ready_le: 0u16.to_le_bytes(),
         }
     }
 
@@ -803,6 +847,7 @@ mod tests {
             30,
             600,
             0,
+            16, // num_slab_shards
         )
     }
 
@@ -812,6 +857,9 @@ mod tests {
         assert_eq!(m.current_auction_id(), 0);
         assert_eq!(m.phase, AuctionPhase::Collect as u8);
         assert_eq!(m.tick_size(), 10);
+        assert_eq!(m.num_slab_shards(), 16);
+        assert_eq!(m.shards_pending(), 16);
+        assert_eq!(m.shards_ready(), 0);
         assert_eq!(m.num_ticks(), 64);
         assert_eq!(m.orders_per_auction_cap(), 256);
     }

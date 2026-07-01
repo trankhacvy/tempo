@@ -8,8 +8,8 @@ use crate::{
     errors::TempoProgramError,
     instructions::{reset_round_to_collect, StartAuction},
     oracle::{read_price, MAX_AGE_SECS, PYTH_RECEIVER_ID},
-    state::{AuctionPhase, Market, OrderSlabHeader},
-    traits::{AccountDeserialize, PdaSeeds},
+    state::{AuctionPhase, Market},
+    traits::AccountDeserialize,
 };
 
 /// Processes the StartAuction instruction — rolls the market into its next
@@ -32,17 +32,16 @@ pub fn process_start_auction(
     _instruction_data: &[u8],
 ) -> ProgramResult {
     let ix = StartAuction::try_from((_instruction_data, accounts))?;
-    let market_key = *ix.accounts.market.address();
 
     // --- validate phase + capture params ---
-    let (num_ticks, auction_id, oracle_key, feed_id) = {
+    let (num_ticks, auction_id, oracle_key, feed_id, num_slab_shards, shards_ready) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
         // Roll from Settling (the normal path) or from Discovered when the book was
         // empty: an order-less round never reaches Settling (no settle_fill to make
         // the transition), so without this it wedges in Discovered forever. The
-        // empty-slab precondition below is the real gate — a Discovered round that
-        // still holds orders has count > 0 and is refused.
+        // shards-ready precondition below is the real gate — a round whose shards are
+        // not all drained + reset is refused.
         let phase = market.phase()?;
         if phase != AuctionPhase::Settling && phase != AuctionPhase::Discovered {
             return Err(TempoProgramError::AuctionWrongPhase.into());
@@ -52,8 +51,18 @@ pub fn process_start_auction(
             market.current_auction_id(),
             market.oracle,
             market.oracle_feed_id,
+            market.num_slab_shards(),
+            market.shards_ready(),
         )
     };
+
+    // --- precondition: every shard must be drained + reset for the next round ---
+    // Stage A sharding: `reset_shard` (one tx per shard) drains and re-arms each shard
+    // and increments `shards_ready`. The freeze model holds until they are ALL ready, so
+    // a new round cannot open on a partially-settled book (clearing-protocol §4).
+    if shards_ready != num_slab_shards {
+        return Err(TempoProgramError::AuctionNotComplete.into());
+    }
 
     // The supplied oracle MUST be the market's bound feed — a hostile cranker must
     // not be able to mis-center the new window with a fake account. A wrong/absent
@@ -70,28 +79,10 @@ pub fn process_start_auction(
     let slot = now.slot;
     let now_ts = now.unix_timestamp;
 
-    // --- precondition: the prior round must be fully settled ---
-    {
-        let slab_data = ix.accounts.order_slab.try_borrow()?;
-        let slab = OrderSlabHeader::from_bytes(&slab_data)?;
-        if slab.market != market_key {
-            return Err(TempoProgramError::AccountMarketMismatch.into());
-        }
-        slab.validate_pda(ix.accounts.order_slab, program_id, slab.bump)?;
-        if slab.auction_id() != auction_id {
-            return Err(TempoProgramError::AuctionIdMismatch.into());
-        }
-        // Every order must be settled (Consumed) before the round can roll.
-        if slab.count() != 0 {
-            return Err(TempoProgramError::AuctionNotComplete.into());
-        }
-    }
-
     reset_round_to_collect(
         program_id,
         ix.accounts.market,
         ix.accounts.histogram,
-        ix.accounts.order_slab,
         num_ticks,
         next_id,
         slot,

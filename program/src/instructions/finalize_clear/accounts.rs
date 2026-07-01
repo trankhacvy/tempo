@@ -14,19 +14,21 @@ use crate::{
 /// 0. `[signer, writable]` cranker (paid a fee)
 /// 1. `[writable]` market
 /// 2. `[]` histogram
-/// 3. `[]` order_slab - scanned for the slab-derived completeness gate
-/// 4. `[writable]` clearing_result - PDA to create
-/// 5. `[]` system_program
-/// 6. `[]` event_authority - Event authority PDA
-/// 7. `[]` tempo_program - Current program
-/// 8. `[writable]` cranker_collateral - (OPTIONAL) cranker's collateral
+/// 3. `[writable]` clearing_result - PDA to create
+/// 4. `[]` system_program
+/// 5. `[]` event_authority - Event authority PDA
+/// 6. `[]` tempo_program - Current program
+/// 7. `[writable]` cranker_collateral - (OPTIONAL) cranker's collateral
 ///    ledger; when present with `vault`, the flat crank fee is paid into it.
-/// 9. `[writable]` vault - (OPTIONAL) fee/insurance pool the crank fee is drawn from.
+/// 8. `[writable]` vault - (OPTIONAL) fee/insurance pool the crank fee is drawn from.
+///
+/// Stage A sharding: the completeness gate is now the O(1) `Market.shards_pending == 0`
+/// check (each shard decrements it once when fully folded), so the order slab(s) are no
+/// longer scanned here and the `order_slab` account was removed.
 pub struct FinalizeClearAccounts<'a> {
     pub cranker: &'a AccountView,
     pub market: &'a AccountView,
     pub histogram: &'a AccountView,
-    pub order_slab: &'a AccountView,
     pub clearing_result: &'a AccountView,
     pub system_program: &'a AccountView,
     pub event_authority: &'a AccountView,
@@ -40,7 +42,7 @@ impl<'a> TryFrom<&'a [AccountView]> for FinalizeClearAccounts<'a> {
 
     #[inline(always)]
     fn try_from(accounts: &'a [AccountView]) -> Result<Self, Self::Error> {
-        let [cranker, market, histogram, order_slab, clearing_result, system_program, event_authority, tempo_program, rest @ ..] =
+        let [cranker, market, histogram, clearing_result, system_program, event_authority, tempo_program, rest @ ..] =
             accounts
         else {
             return Err(ProgramError::NotEnoughAccountKeys);
@@ -52,7 +54,6 @@ impl<'a> TryFrom<&'a [AccountView]> for FinalizeClearAccounts<'a> {
 
         verify_current_program_account(market)?;
         verify_current_program_account(histogram)?;
-        verify_current_program_account(order_slab)?;
         verify_system_program(system_program)?;
 
         verify_event_authority(event_authority)?;
@@ -77,7 +78,6 @@ impl<'a> TryFrom<&'a [AccountView]> for FinalizeClearAccounts<'a> {
             cranker,
             market,
             histogram,
-            order_slab,
             clearing_result,
             system_program,
             event_authority,

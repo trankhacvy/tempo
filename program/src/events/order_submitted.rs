@@ -19,6 +19,9 @@ pub struct OrderSubmittedEvent {
     pub slot: u32,
     pub side: u8,
     pub is_maker: u8,
+    /// Stage A sharding: which OrderSlab shard the order was written to. Clients pass
+    /// this shard's PDA as the `order_slab` account on `cancel_order`/`settle_fill`.
+    pub shard_id: u16,
 }
 
 impl EventDiscriminator for OrderSubmittedEvent {
@@ -38,10 +41,11 @@ impl EventSerialize for OrderSubmittedEvent {
         data.extend_from_slice(&self.slot.to_le_bytes());
         data.push(self.side);
         data.push(self.is_maker);
+        data.extend_from_slice(&self.shard_id.to_le_bytes());
         data
     }
 }
 
 impl OrderSubmittedEvent {
-    pub const DATA_LEN: usize = 32 + 32 + 8 + 8 + 8 + 8 + 4 + 1 + 1;
+    pub const DATA_LEN: usize = 32 + 32 + 8 + 8 + 8 + 8 + 4 + 1 + 1 + 2;
 }

@@ -10,7 +10,7 @@ use pinocchio::{
 use crate::{
     events::MarketInitializedEvent,
     instructions::InitializeMarket,
-    state::{AuctionHistogramHeader, Market, OrderSlabHeader, COLLECT_WINDOW_SLOTS},
+    state::{AuctionHistogramHeader, Market, COLLECT_WINDOW_SLOTS},
     traits::{AccountSerialize, AccountSize, EventSerialize, PdaSeeds},
     utils::{create_pda_account, emit_event},
 };
@@ -48,6 +48,7 @@ pub fn process_initialize_market(
         d.soft_stale_slots,
         d.initial_margin_bps,
         d.max_position_notional,
+        d.num_slab_shards,
     );
     // Open the first collection window: accumulation is blocked until this slot.
     let now_ts = Clock::get()?.unix_timestamp;
@@ -124,34 +125,10 @@ pub fn process_initialize_market(
         histogram.write_to_slice(&mut slice)?;
     }
 
-    // --- OrderSlab ---
-    let order_slab = OrderSlabHeader::new(
-        d.order_slab_bump,
-        market_key,
-        market.current_auction_id(),
-        d.orders_per_auction_cap,
-    );
-    order_slab.validate_pda(ix.accounts.order_slab, program_id, d.order_slab_bump)?;
-
-    let order_slab_bump = [d.order_slab_bump];
-    let order_slab_seeds: Vec<Seed> = order_slab.seeds_with_bump(&order_slab_bump);
-    let order_slab_seeds_array: [Seed; 3] = order_slab_seeds
-        .try_into()
-        .map_err(|_| ProgramError::InvalidArgument)?;
-    let order_slab_size = OrderSlabHeader::account_size(d.orders_per_auction_cap);
-    create_pda_account(
-        ix.accounts.payer,
-        order_slab_size,
-        program_id,
-        ix.accounts.order_slab,
-        order_slab_seeds_array,
-    )?;
-    {
-        // Slots are zero-initialized (status 0 == Empty); only the header needs writing.
-        let mut order_slab_account = *ix.accounts.order_slab;
-        let mut slice = order_slab_account.try_borrow_mut()?;
-        order_slab.write_to_slice(&mut slice)?;
-    }
+    // Stage A sharding: the OrderSlab shards are NOT created here (a market may have up
+    // to `MAX_SLAB_SHARDS`, too many for one tx). They are created one-per-tx by
+    // `init_shard` before trading. `Market.num_slab_shards`/`shards_pending` are set by
+    // `Market::new` above.
 
     // Emit event via CPI.
     let event = MarketInitializedEvent {

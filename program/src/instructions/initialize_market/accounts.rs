@@ -16,18 +16,19 @@ use crate::{
 /// 2. `[signer]` market_seed
 /// 3. `[writable]` market - PDA to create
 /// 4. `[writable]` histogram - PDA to create
-/// 5. `[writable]` order_slab - PDA to create
-/// 6. `[]` oracle - Pyth PriceUpdateV2 recorded on the market (funding/liquidation)
-/// 7. `[]` system_program
-/// 8. `[]` event_authority - Event authority PDA
-/// 9. `[]` tempo_program - Current program
+/// 5. `[]` oracle - Pyth PriceUpdateV2 recorded on the market (funding/liquidation)
+/// 6. `[]` system_program
+/// 7. `[]` event_authority - Event authority PDA
+/// 8. `[]` tempo_program - Current program
+///
+/// Stage A sharding: the OrderSlab shards are created separately by `init_shard`
+/// (a market may have too many shards for one tx), so no `order_slab` account here.
 pub struct InitializeMarketAccounts<'a> {
     pub payer: &'a AccountView,
     pub authority: &'a AccountView,
     pub market_seed: &'a AccountView,
     pub market: &'a AccountView,
     pub histogram: &'a AccountView,
-    pub order_slab: &'a AccountView,
     pub oracle: &'a AccountView,
     pub system_program: &'a AccountView,
     pub event_authority: &'a AccountView,
@@ -39,7 +40,7 @@ impl<'a> TryFrom<&'a [AccountView]> for InitializeMarketAccounts<'a> {
 
     #[inline(always)]
     fn try_from(accounts: &'a [AccountView]) -> Result<Self, Self::Error> {
-        let [payer, authority, market_seed, market, histogram, order_slab, oracle, system_program, event_authority, tempo_program] =
+        let [payer, authority, market_seed, market, histogram, oracle, system_program, event_authority, tempo_program] =
             accounts
         else {
             return Err(ProgramError::NotEnoughAccountKeys);
@@ -51,7 +52,6 @@ impl<'a> TryFrom<&'a [AccountView]> for InitializeMarketAccounts<'a> {
 
         verify_writable(market, true)?;
         verify_writable(histogram, true)?;
-        verify_writable(order_slab, true)?;
 
         verify_system_program(system_program)?;
 
@@ -64,7 +64,6 @@ impl<'a> TryFrom<&'a [AccountView]> for InitializeMarketAccounts<'a> {
             market_seed,
             market,
             histogram,
-            order_slab,
             oracle,
             system_program,
             event_authority,

@@ -143,6 +143,16 @@ macro_rules! le_field {
             self.$field = v.to_le_bytes();
         }
     };
+    ($name:ident, $set:ident, $field:ident, u16) => {
+        #[inline(always)]
+        pub fn $name(&self) -> u16 {
+            u16::from_le_bytes(self.$field)
+        }
+        #[inline(always)]
+        pub fn $set(&mut self, v: u16) {
+            self.$field = v.to_le_bytes();
+        }
+    };
     ($name:ident, $set:ident, $field:ident, i64) => {
         #[inline(always)]
         pub fn $name(&self) -> i64 {

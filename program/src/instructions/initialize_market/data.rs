@@ -13,6 +13,11 @@ pub const MAX_NUM_TICKS: u32 = 256;
 /// 128 orders ≈ 9 KB. This single-account ceiling — not compute — is what bounds
 /// orders-per-auction today (see `cu_report.md`).
 pub const MAX_ORDERS_PER_AUCTION_CAP: u32 = 128;
+/// Upper bound on `num_slab_shards` (Stage A sharding). A market has this many
+/// `OrderSlab` shards (created one-per-tx by `init_shard`). Bounded so a caller can't
+/// force an unbounded number of completeness-aggregate slots; 256 shards × ~90 orders
+/// ≈ 23k orders/round is already far past the throughput target.
+pub const MAX_SLAB_SHARDS: u16 = 256;
 
 /// Upper bound on `maintenance_margin_bps` (50%). A maintenance margin above half
 /// the notional is economically nonsensical for a perp (sub-2× max leverage).
@@ -44,6 +49,11 @@ pub const MAX_LIQUIDATION_PENALTY_BPS: u16 = 5_000;
 /// * `soft_stale_slots` (u64)
 /// * `initial_margin_bps` (u16) — initial-margin buffer, must be ≥ `maintenance_margin_bps`
 /// * `max_position_notional` (u128) — per-position notional cap (0 = disabled)
+/// * `num_slab_shards` (u16) — number of OrderSlab shards (Stage A sharding, ≥ 1). The
+///   shards themselves are created one-per-tx by `init_shard`, not here.
+///
+/// Note: `order_slab_bump` is retained for wire-format stability but is UNUSED — Stage A
+/// creates the slab shards via `init_shard`, not in `initialize_market`.
 pub struct InitializeMarketData {
     pub market_bump: u8,
     pub histogram_bump: u8,
@@ -63,6 +73,7 @@ pub struct InitializeMarketData {
     pub soft_stale_slots: u64,
     pub initial_margin_bps: u16,
     pub max_position_notional: u128,
+    pub num_slab_shards: u16,
 }
 
 impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
@@ -90,6 +101,7 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
         let soft_stale_slots = u64::from_le_bytes(data[103..111].try_into().unwrap());
         let initial_margin_bps = u16::from_le_bytes(data[111..113].try_into().unwrap());
         let max_position_notional = u128::from_le_bytes(data[113..129].try_into().unwrap());
+        let num_slab_shards = u16::from_le_bytes(data[129..131].try_into().unwrap());
 
         if tick_size == 0 {
             return Err(TempoProgramError::InvalidPrice.into());
@@ -101,6 +113,10 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
         // creation must not let a caller mint arbitrarily large histogram/slab
         // accounts.
         if num_ticks > MAX_NUM_TICKS || orders_per_auction_cap > MAX_ORDERS_PER_AUCTION_CAP {
+            return Err(TempoProgramError::MarketConfigOutOfRange.into());
+        }
+        // At least one shard, and bounded (Stage A sharding).
+        if num_slab_shards == 0 || num_slab_shards > MAX_SLAB_SHARDS {
             return Err(TempoProgramError::MarketConfigOutOfRange.into());
         }
         // Fee config bounds: signed fees within ±10% and the integrator share a
@@ -158,20 +174,22 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
             soft_stale_slots,
             initial_margin_bps,
             max_position_notional,
+            num_slab_shards,
         })
     }
 }
 
 impl<'a> InstructionData<'a> for InitializeMarketData {
-    const LEN: usize = 1 + 1 + 1 + 8 + 4 + 4 + 32 + 2 + 2 + 2 + 2 + 2 + 8 + 32 + 2 + 8 + 2 + 16;
+    const LEN: usize =
+        1 + 1 + 1 + 8 + 4 + 4 + 32 + 2 + 2 + 2 + 2 + 2 + 8 + 32 + 2 + 8 + 2 + 16 + 2;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn encode(tick_size: u64, num_ticks: u32, cap: u32) -> [u8; 129] {
-        let mut buf = [0u8; 129];
+    fn encode(tick_size: u64, num_ticks: u32, cap: u32) -> [u8; 131] {
+        let mut buf = [0u8; 131];
         buf[0] = 250;
         buf[1] = 251;
         buf[2] = 252;
@@ -191,6 +209,8 @@ mod tests {
         // initial_margin_bps (≥ maintenance 500) + max_position_notional (0 = off).
         buf[111..113].copy_from_slice(&1000u16.to_le_bytes());
         buf[113..129].copy_from_slice(&0u128.to_le_bytes());
+        // num_slab_shards (Stage A) — default 16 for the tests.
+        buf[129..131].copy_from_slice(&16u16.to_le_bytes());
         buf
     }
 
@@ -214,6 +234,27 @@ mod tests {
         assert_eq!(d.collateral_mint, [8u8; 32]);
         assert_eq!(d.initial_margin_bps, 1000);
         assert_eq!(d.max_position_notional, 0);
+        assert_eq!(d.num_slab_shards, 16);
+    }
+
+    #[test]
+    fn test_zero_shards_rejected() {
+        let mut buf = encode(10, 64, 128);
+        buf[129..131].copy_from_slice(&0u16.to_le_bytes());
+        assert_eq!(
+            InitializeMarketData::try_from(&buf[..]).err().unwrap(),
+            TempoProgramError::MarketConfigOutOfRange.into()
+        );
+    }
+
+    #[test]
+    fn test_shards_over_max_rejected() {
+        let mut buf = encode(10, 64, 128);
+        buf[129..131].copy_from_slice(&(MAX_SLAB_SHARDS + 1).to_le_bytes());
+        assert_eq!(
+            InitializeMarketData::try_from(&buf[..]).err().unwrap(),
+            TempoProgramError::MarketConfigOutOfRange.into()
+        );
     }
 
     #[test]

@@ -13,7 +13,8 @@ use crate::{
 /// # Account Layout
 /// 0. `[signer, writable]` trader
 /// 1. `[]` market
-/// 2. `[writable]` order_slab
+/// 2. `[writable]` order_slab — the chosen shard `[b"order_slab", market, shard_id]`
+///    (Stage A sharding); the processor validates its PDA against `data.shard_id`
 /// 3. `[]` event_authority - Event authority PDA
 /// 4. `[]` tempo_program - Current program
 /// 5. `[writable]` position *(optional)* - the trader's position for this market
