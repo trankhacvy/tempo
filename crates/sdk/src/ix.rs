@@ -66,13 +66,14 @@ pub fn push_cross_legs(metas: &mut Vec<AccountMeta>, legs: &[CrossLeg], live_wri
 pub fn process_chunk(
     pdas: &MarketPdas,
     cranker: Pubkey,
+    shard_id: u16,
     start_index: u32,
     max_count: u32,
 ) -> Instruction {
     ProcessChunk {
         cranker,
         market: pdas.market,
-        order_slab: pdas.order_slab,
+        order_slab: pdas.slab_shard(shard_id),
         histogram: pdas.histogram,
         event_authority: pdas.event_authority,
         tempo_program: TEMPO_PROGRAM_ID,
@@ -110,7 +111,6 @@ pub fn finalize_clear(
         cranker,
         market: pdas.market,
         histogram: pdas.histogram,
-        order_slab: pdas.order_slab,
         clearing_result: pdas.clearing,
         system_program: SYSTEM_PROGRAM_ID,
         event_authority: pdas.event_authority,
@@ -128,6 +128,7 @@ pub fn finalize_clear(
 pub fn settle_fill(
     pdas: &MarketPdas,
     cranker: Pubkey,
+    shard_id: u16,
     order_id: u64,
     slot_hint: u32,
     money: &SettleMoney,
@@ -135,7 +136,7 @@ pub fn settle_fill(
     SettleFill {
         cranker,
         market: pdas.market,
-        order_slab: pdas.order_slab,
+        order_slab: pdas.slab_shard(shard_id),
         clearing_result: pdas.clearing,
         event_authority: pdas.event_authority,
         tempo_program: TEMPO_PROGRAM_ID,
@@ -173,6 +174,7 @@ impl SubmitMoney {
 /// SUBMIT (`submit_order`): a taker resting order. `price` must be tick-aligned and
 /// in-window; `quantity != 0`. Pass `SubmitMoney::default()` for a clearing-only
 /// market, or `SubmitMoney::for_trader(..)` on a money-path market.
+#[allow(clippy::too_many_arguments)]
 pub fn submit_order(
     pdas: &MarketPdas,
     trader: Pubkey,
@@ -180,12 +182,13 @@ pub fn submit_order(
     price: u64,
     quantity: u64,
     reduce_only: bool,
+    shard_id: u16,
     money: &SubmitMoney,
 ) -> Instruction {
     SubmitOrder {
         trader,
         market: pdas.market,
-        order_slab: pdas.order_slab,
+        order_slab: pdas.slab_shard(shard_id),
         event_authority: pdas.event_authority,
         tempo_program: TEMPO_PROGRAM_ID,
         position: money.position,
@@ -196,6 +199,7 @@ pub fn submit_order(
         price,
         quantity,
         reduce_only,
+        shard_id,
     })
 }
 
@@ -206,8 +210,31 @@ pub fn start_auction(pdas: &MarketPdas, cranker: Pubkey, oracle: Pubkey) -> Inst
         cranker,
         market: pdas.market,
         histogram: pdas.histogram,
-        order_slab: pdas.order_slab,
         oracle,
+    }
+    .instruction()
+}
+
+/// Create one OrderSlab shard (`init_shard`, Stage A sharding). Call once per shard
+/// (`[0, num_slab_shards)`) after `initialize_market`, before trading.
+pub fn init_shard(pdas: &MarketPdas, payer: Pubkey, shard_id: u16) -> Instruction {
+    let (shard, bump) = crate::pda::order_slab(&pdas.market, shard_id);
+    InitShard {
+        payer,
+        market: pdas.market,
+        order_slab: shard,
+        system_program: SYSTEM_PROGRAM_ID,
+    }
+    .instruction(InitShardInstructionArgs { shard_id, bump })
+}
+
+/// Drain + re-arm one shard for the next round (`reset_shard`, Stage A sharding).
+/// Call once per shard after settlement; `start_auction` rolls once all are ready.
+pub fn reset_shard(pdas: &MarketPdas, cranker: Pubkey, shard_id: u16) -> Instruction {
+    ResetShard {
+        cranker,
+        market: pdas.market,
+        order_slab: pdas.slab_shard(shard_id),
     }
     .instruction()
 }
@@ -505,7 +532,7 @@ mod tests {
     fn test_process_chunk_targets_program() {
         let market = Pubkey::new_unique();
         let pdas = MarketPdas::derive(market);
-        let ix = process_chunk(&pdas, Pubkey::new_unique(), 0, 16);
+        let ix = process_chunk(&pdas, Pubkey::new_unique(), 0, 0, 16);
         assert_eq!(ix.program_id, TEMPO_PROGRAM_ID);
         assert_eq!(ix.data[0], PROCESS_CHUNK_DISCRIMINATOR);
         assert_eq!(ix.accounts.len(), 6);
@@ -535,7 +562,7 @@ mod tests {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let cranker = Pubkey::new_unique();
         // Bare clearing-only settle → 6 accounts.
-        let bare = settle_fill(&pdas, cranker, 7, 3, &SettleMoney::default());
+        let bare = settle_fill(&pdas, cranker, 7, 3, 0, &SettleMoney::default());
         assert_eq!(bare.data[0], SETTLE_FILL_DISCRIMINATOR);
         assert_eq!(bare.accounts.len(), 6);
         // Full money path → 6 + position + collateral + vault + integrator = 10.
@@ -544,6 +571,7 @@ mod tests {
             cranker,
             7,
             3,
+            0,
             &SettleMoney {
                 position: Some(Pubkey::new_unique()),
                 user_collateral: Some(Pubkey::new_unique()),
@@ -559,7 +587,7 @@ mod tests {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let trader = Pubkey::new_unique();
         // Clearing-only (no money path) → 5 accounts.
-        let bare = submit_order(&pdas, trader, 0, 100, 5, false, &SubmitMoney::default());
+        let bare = submit_order(&pdas, trader, 0, 100, 5, false, 0, &SubmitMoney::default());
         assert_eq!(bare.program_id, TEMPO_PROGRAM_ID);
         assert_eq!(bare.data[0], SUBMIT_ORDER_DISCRIMINATOR);
         assert_eq!(bare.accounts.len(), 5);
@@ -572,6 +600,7 @@ mod tests {
             200,
             7,
             true,
+            0,
             &SubmitMoney::for_trader(&pdas, trader, mint),
         );
         assert_eq!(full.accounts.len(), 7);

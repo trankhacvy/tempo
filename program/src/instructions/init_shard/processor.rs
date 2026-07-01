@@ -44,7 +44,13 @@ pub fn process_init_shard(
     }
 
     // --- build + create the shard PDA ---
-    let shard = OrderSlabHeader::new(ix.data.bump, market_key, auction_id, capacity, ix.data.shard_id);
+    let shard = OrderSlabHeader::new(
+        ix.data.bump,
+        market_key,
+        auction_id,
+        capacity,
+        ix.data.shard_id,
+    );
     shard.validate_pda(ix.accounts.order_slab, program_id, ix.data.bump)?;
 
     let bump = [ix.data.bump];

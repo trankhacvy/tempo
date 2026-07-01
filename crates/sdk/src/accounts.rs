@@ -364,9 +364,9 @@ pub const STATUS_RESTING: u8 = 1;
 pub const STATUS_ACCUMULATED: u8 = 2;
 pub const STATUS_CONSUMED: u8 = 3;
 
-/// One decoded slab slot. Slab on-disk layout (`state/order.rs`):
-/// `[disc(1)][version(1)][OrderSlabHeader(61)][Order; capacity]` ⇒ slots start at
-/// offset 63, each `Order` is `ORDER_LEN = 88` bytes. Within a slot:
+/// One decoded slab slot. Slab on-disk layout (`state/order.rs`, v4 sharding):
+/// `[disc(1)][version(1)][OrderSlabHeader(75)][Order; capacity]` ⇒ slots start at
+/// offset 77, each `Order` is `ORDER_LEN = 88` bytes. Within a slot:
 /// `price@0 qty@8 remaining@16 order_id@24 trader@32..64 side@64 is_maker@65
 /// status@66 cum_before@72 reserved_margin@80`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -382,8 +382,9 @@ pub struct SlabOrder {
 }
 
 /// Offset of the first order slot in the slab account data (2-byte prefix +
-/// `OrderSlabHeader::DATA_LEN` = 61).
-const SLAB_SLOTS_OFFSET: usize = 63;
+/// `OrderSlabHeader::DATA_LEN` = 75 in v4 sharding: the base 61 + shard_id(2) +
+/// resting_count(4) + folded_auction_id(8)).
+const SLAB_SLOTS_OFFSET: usize = 77;
 
 /// Decode every non-empty slot from a raw `OrderSlab` account. Empty slots
 /// (`status == 0`) are skipped; the returned `slot` field is the on-disk index.

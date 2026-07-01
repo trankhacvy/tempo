@@ -15,7 +15,8 @@ use solana_system_interface::instruction as system_instruction;
 use tempo_common::load_keypair_file;
 use tempo_sdk::accounts::UserCollateralView;
 use tempo_sdk::ix::{
-    InitVault, InitVaultInstructionArgs, InitializeMarket, InitializeMarketInstructionArgs,
+    InitShard, InitShardInstructionArgs, InitVault, InitVaultInstructionArgs, InitializeMarket,
+    InitializeMarketInstructionArgs,
 };
 use tempo_sdk::{ix, pda, MarketPdas, SOL_USD_FEED_ID, TEMPO_PROGRAM_ID};
 
@@ -206,9 +207,16 @@ fn ensure_market(
         tracing::info!(market = %pdas.market, "provisioner: market already exists, skipping");
         return Ok(());
     }
+    // Stage A sharding: the sim uses ONE shard so it runs end-to-end with the current
+    // shard-0-only keeper (multi-shard fan-out — folding/settling/resetting every shard —
+    // is the remaining keeper work, docs/plan.md A12.3). A single shard exercises all the
+    // new sharded code paths; raise this once the keeper fans out.
+    let num_slab_shards: u16 = 1;
     let (_, market_bump) = pda::market(&market_seed.pubkey());
     let (_, histogram_bump) = pda::histogram(&pdas.market);
-    let (_, order_slab_bump) = pda::order_slab(&pdas.market);
+    // `order_slab_bump` is retained in InitializeMarket args for wire stability but
+    // UNUSED (shards are created by init_shard below); shard 0's bump is fine.
+    let (_, order_slab_bump) = pda::order_slab(&pdas.market, 0);
     let (event_authority, _) = pda::event_authority();
 
     let ix = InitializeMarket {
@@ -217,7 +225,6 @@ fn ensure_market(
         market_seed: market_seed.pubkey(),
         market: pdas.market,
         histogram: pdas.histogram,
-        order_slab: pdas.order_slab,
         oracle,
         system_program: SYSTEM_PROGRAM_ID,
         event_authority,
@@ -227,6 +234,7 @@ fn ensure_market(
         market_bump,
         histogram_bump,
         order_slab_bump,
+        num_slab_shards,
         tick_size: cfg.tick_size,
         num_ticks: cfg.num_ticks,
         orders_per_auction_cap: cfg.cap,
@@ -245,6 +253,20 @@ fn ensure_market(
     });
     spl::send(rpc, &[master, market_seed], &[ix])?;
     tracing::info!(market = %pdas.market, money = cfg.is_money_market(), "provisioner: market created");
+
+    // Stage A sharding: create each OrderSlab shard (one tx per shard).
+    for shard_id in 0..num_slab_shards {
+        let (shard, bump) = pda::order_slab(&pdas.market, shard_id);
+        let ix = InitShard {
+            payer: master.pubkey(),
+            market: pdas.market,
+            order_slab: shard,
+            system_program: SYSTEM_PROGRAM_ID,
+        }
+        .instruction(InitShardInstructionArgs { shard_id, bump });
+        spl::send(rpc, &[master], &[ix])?;
+    }
+    tracing::info!(market = %pdas.market, num_slab_shards, "provisioner: slab shards created");
     Ok(())
 }
 

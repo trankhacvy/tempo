@@ -12,8 +12,14 @@ pub fn histogram(market: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"histogram", market.as_ref()], &TEMPO_PROGRAM_ID)
 }
 
-pub fn order_slab(market: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"order_slab", market.as_ref()], &TEMPO_PROGRAM_ID)
+/// A market's OrderSlab **shard** PDA (Stage A sharding): seeds
+/// `[b"order_slab", market, shard_id.to_le_bytes()]`. A market has `num_slab_shards`
+/// shards; orders are routed across them so submit/settle run in parallel.
+pub fn order_slab(market: &Pubkey, shard_id: u16) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[b"order_slab", market.as_ref(), &shard_id.to_le_bytes()],
+        &TEMPO_PROGRAM_ID,
+    )
 }
 
 pub fn clearing(market: &Pubkey) -> (Pubkey, u8) {
@@ -70,6 +76,8 @@ pub fn event_authority() -> (Pubkey, u8) {
 pub struct MarketPdas {
     pub market: Pubkey,
     pub histogram: Pubkey,
+    /// Shard 0's OrderSlab PDA (Stage A sharding). Use [`MarketPdas::slab_shard`] for a
+    /// specific shard; this convenience field is shard 0.
     pub order_slab: Pubkey,
     pub clearing: Pubkey,
     /// Canonical bump of the `clearing` PDA — `finalize_clear` takes it as an arg
@@ -84,11 +92,16 @@ impl MarketPdas {
         Self {
             market,
             histogram: histogram(&market).0,
-            order_slab: order_slab(&market).0,
+            order_slab: order_slab(&market, 0).0,
             clearing,
             clearing_bump,
             event_authority: event_authority().0,
         }
+    }
+
+    /// The OrderSlab shard PDA for `shard_id` (Stage A sharding).
+    pub fn slab_shard(&self, shard_id: u16) -> Pubkey {
+        order_slab(&self.market, shard_id).0
     }
 }
 

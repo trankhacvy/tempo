@@ -180,8 +180,7 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
 }
 
 impl<'a> InstructionData<'a> for InitializeMarketData {
-    const LEN: usize =
-        1 + 1 + 1 + 8 + 4 + 4 + 32 + 2 + 2 + 2 + 2 + 2 + 8 + 32 + 2 + 8 + 2 + 16 + 2;
+    const LEN: usize = 1 + 1 + 1 + 8 + 4 + 4 + 32 + 2 + 2 + 2 + 2 + 2 + 8 + 32 + 2 + 8 + 2 + 16 + 2;
 }
 
 #[cfg(test)]

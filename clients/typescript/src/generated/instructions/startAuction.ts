@@ -35,7 +35,7 @@ import {
   getAddressFromResolvedInstructionAccount,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { findAuctionHistogramHeaderPda, findOrderSlabHeaderPda } from "../pdas";
+import { findAuctionHistogramHeaderPda } from "../pdas";
 import { TEMPO_PROGRAM_PROGRAM_ADDRESS } from "../programs";
 
 export const START_AUCTION_DISCRIMINATOR = 6;
@@ -49,7 +49,6 @@ export type StartAuctionInstruction<
   TAccountCranker extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountHistogram extends string | AccountMeta<string> = string,
-  TAccountOrderSlab extends string | AccountMeta<string> = string,
   TAccountOracle extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
@@ -66,9 +65,6 @@ export type StartAuctionInstruction<
       TAccountHistogram extends string
         ? WritableAccount<TAccountHistogram>
         : TAccountHistogram,
-      TAccountOrderSlab extends string
-        ? WritableAccount<TAccountOrderSlab>
-        : TAccountOrderSlab,
       TAccountOracle extends string
         ? ReadonlyAccount<TAccountOracle>
         : TAccountOracle,
@@ -105,7 +101,6 @@ export type StartAuctionAsyncInput<
   TAccountCranker extends string = string,
   TAccountMarket extends string = string,
   TAccountHistogram extends string = string,
-  TAccountOrderSlab extends string = string,
   TAccountOracle extends string = string,
 > = {
   /** Permissionless caller */
@@ -114,9 +109,7 @@ export type StartAuctionAsyncInput<
   market: Address<TAccountMarket>;
   /** AuctionHistogram to zero */
   histogram?: Address<TAccountHistogram>;
-  /** OrderSlab to clear */
-  orderSlab?: Address<TAccountOrderSlab>;
-  /** Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. */
+  /** Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards. */
   oracle: Address<TAccountOracle>;
 };
 
@@ -124,7 +117,6 @@ export async function getStartAuctionInstructionAsync<
   TAccountCranker extends string,
   TAccountMarket extends string,
   TAccountHistogram extends string,
-  TAccountOrderSlab extends string,
   TAccountOracle extends string,
   TProgramAddress extends Address = typeof TEMPO_PROGRAM_PROGRAM_ADDRESS,
 >(
@@ -132,7 +124,6 @@ export async function getStartAuctionInstructionAsync<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle
   >,
   config?: { programAddress?: TProgramAddress },
@@ -142,7 +133,6 @@ export async function getStartAuctionInstructionAsync<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle
   >
 > {
@@ -155,7 +145,6 @@ export async function getStartAuctionInstructionAsync<
     cranker: { value: input.cranker ?? null, isWritable: false },
     market: { value: input.market ?? null, isWritable: true },
     histogram: { value: input.histogram ?? null, isWritable: true },
-    orderSlab: { value: input.orderSlab ?? null, isWritable: true },
     oracle: { value: input.oracle ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -172,14 +161,6 @@ export async function getStartAuctionInstructionAsync<
       ),
     });
   }
-  if (!accounts.orderSlab.value) {
-    accounts.orderSlab.value = await findOrderSlabHeaderPda({
-      market: getAddressFromResolvedInstructionAccount(
-        "market",
-        accounts.market.value,
-      ),
-    });
-  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "omitted");
   return Object.freeze({
@@ -187,7 +168,6 @@ export async function getStartAuctionInstructionAsync<
       getAccountMeta("cranker", accounts.cranker),
       getAccountMeta("market", accounts.market),
       getAccountMeta("histogram", accounts.histogram),
-      getAccountMeta("orderSlab", accounts.orderSlab),
       getAccountMeta("oracle", accounts.oracle),
     ],
     data: getStartAuctionInstructionDataEncoder().encode({}),
@@ -197,7 +177,6 @@ export async function getStartAuctionInstructionAsync<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle
   >);
 }
@@ -206,7 +185,6 @@ export type StartAuctionInput<
   TAccountCranker extends string = string,
   TAccountMarket extends string = string,
   TAccountHistogram extends string = string,
-  TAccountOrderSlab extends string = string,
   TAccountOracle extends string = string,
 > = {
   /** Permissionless caller */
@@ -215,9 +193,7 @@ export type StartAuctionInput<
   market: Address<TAccountMarket>;
   /** AuctionHistogram to zero */
   histogram: Address<TAccountHistogram>;
-  /** OrderSlab to clear */
-  orderSlab: Address<TAccountOrderSlab>;
-  /** Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. */
+  /** Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards. */
   oracle: Address<TAccountOracle>;
 };
 
@@ -225,7 +201,6 @@ export function getStartAuctionInstruction<
   TAccountCranker extends string,
   TAccountMarket extends string,
   TAccountHistogram extends string,
-  TAccountOrderSlab extends string,
   TAccountOracle extends string,
   TProgramAddress extends Address = typeof TEMPO_PROGRAM_PROGRAM_ADDRESS,
 >(
@@ -233,7 +208,6 @@ export function getStartAuctionInstruction<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle
   >,
   config?: { programAddress?: TProgramAddress },
@@ -242,7 +216,6 @@ export function getStartAuctionInstruction<
   TAccountCranker,
   TAccountMarket,
   TAccountHistogram,
-  TAccountOrderSlab,
   TAccountOracle
 > {
   // Program address.
@@ -254,7 +227,6 @@ export function getStartAuctionInstruction<
     cranker: { value: input.cranker ?? null, isWritable: false },
     market: { value: input.market ?? null, isWritable: true },
     histogram: { value: input.histogram ?? null, isWritable: true },
-    orderSlab: { value: input.orderSlab ?? null, isWritable: true },
     oracle: { value: input.oracle ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -268,7 +240,6 @@ export function getStartAuctionInstruction<
       getAccountMeta("cranker", accounts.cranker),
       getAccountMeta("market", accounts.market),
       getAccountMeta("histogram", accounts.histogram),
-      getAccountMeta("orderSlab", accounts.orderSlab),
       getAccountMeta("oracle", accounts.oracle),
     ],
     data: getStartAuctionInstructionDataEncoder().encode({}),
@@ -278,7 +249,6 @@ export function getStartAuctionInstruction<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle
   >);
 }
@@ -295,10 +265,8 @@ export type ParsedStartAuctionInstruction<
     market: TAccountMetas[1];
     /** AuctionHistogram to zero */
     histogram: TAccountMetas[2];
-    /** OrderSlab to clear */
-    orderSlab: TAccountMetas[3];
-    /** Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. */
-    oracle: TAccountMetas[4];
+    /** Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards. */
+    oracle: TAccountMetas[3];
   };
   data: StartAuctionInstructionData;
 };
@@ -311,12 +279,12 @@ export function parseStartAuctionInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedStartAuctionInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 5) {
+  if (instruction.accounts.length < 4) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 5,
+        expectedAccountMetas: 4,
       },
     );
   }
@@ -332,7 +300,6 @@ export function parseStartAuctionInstruction<
       cranker: getNextAccount(),
       market: getNextAccount(),
       histogram: getNextAccount(),
-      orderSlab: getNextAccount(),
       oracle: getNextAccount(),
     },
     data: getStartAuctionInstructionDataDecoder().decode(instruction.data),

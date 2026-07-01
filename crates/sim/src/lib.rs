@@ -167,6 +167,9 @@ async fn tick(
                     o.price,
                     o.quantity,
                     o.reduce_only,
+                    // Stage A: route to shard 0 only, to match the shard-0-only keeper
+                    // (multi-shard end-to-end awaits the keeper fan-out, docs/plan.md A12.3).
+                    0,
                     &money,
                 )
             })

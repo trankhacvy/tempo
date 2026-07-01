@@ -323,7 +323,11 @@ impl PdaSeeds for OrderSlabHeader {
 
     #[inline(always)]
     fn seeds(&self) -> Vec<&[u8]> {
-        vec![Self::PREFIX, self.market.as_ref(), self.shard_id_le.as_ref()]
+        vec![
+            Self::PREFIX,
+            self.market.as_ref(),
+            self.shard_id_le.as_ref(),
+        ]
     }
 
     #[inline(always)]

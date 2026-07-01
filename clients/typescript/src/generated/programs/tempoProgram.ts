@@ -74,6 +74,7 @@ import {
   getInitMakerQuoteInstructionAsync,
   getInitMarginAccountInstruction,
   getInitPositionInstructionAsync,
+  getInitShardInstruction,
   getInitVaultInstructionAsync,
   getLiquidateCrossInstruction,
   getLiquidateInstruction,
@@ -83,10 +84,11 @@ import {
   getProcessMakerQuoteInstructionAsync,
   getReadOracleInstruction,
   getRemovePositionFromMarginInstruction,
+  getResetShardInstruction,
   getSettleFillInstructionAsync,
   getSettleMakerQuoteInstructionAsync,
   getStartAuctionInstructionAsync,
-  getSubmitOrderInstructionAsync,
+  getSubmitOrderInstruction,
   getUpdateFundingInstruction,
   getUpdateMakerQuoteLevelsInstruction,
   getUpdateMakerQuoteMidInstruction,
@@ -104,6 +106,7 @@ import {
   parseInitMakerQuoteInstruction,
   parseInitMarginAccountInstruction,
   parseInitPositionInstruction,
+  parseInitShardInstruction,
   parseInitVaultInstruction,
   parseLiquidateCrossInstruction,
   parseLiquidateInstruction,
@@ -113,6 +116,7 @@ import {
   parseProcessMakerQuoteInstruction,
   parseReadOracleInstruction,
   parseRemovePositionFromMarginInstruction,
+  parseResetShardInstruction,
   parseSettleFillInstruction,
   parseSettleMakerQuoteInstruction,
   parseStartAuctionInstruction,
@@ -134,6 +138,7 @@ import {
   type InitMakerQuoteAsyncInput,
   type InitMarginAccountInput,
   type InitPositionAsyncInput,
+  type InitShardInput,
   type InitVaultAsyncInput,
   type LiquidateCrossInput,
   type LiquidateInput,
@@ -151,6 +156,7 @@ import {
   type ParsedInitMakerQuoteInstruction,
   type ParsedInitMarginAccountInstruction,
   type ParsedInitPositionInstruction,
+  type ParsedInitShardInstruction,
   type ParsedInitVaultInstruction,
   type ParsedLiquidateCrossInstruction,
   type ParsedLiquidateInstruction,
@@ -160,6 +166,7 @@ import {
   type ParsedProcessMakerQuoteInstruction,
   type ParsedReadOracleInstruction,
   type ParsedRemovePositionFromMarginInstruction,
+  type ParsedResetShardInstruction,
   type ParsedSettleFillInstruction,
   type ParsedSettleMakerQuoteInstruction,
   type ParsedStartAuctionInstruction,
@@ -173,10 +180,11 @@ import {
   type ProcessMakerQuoteAsyncInput,
   type ReadOracleInput,
   type RemovePositionFromMarginInput,
+  type ResetShardInput,
   type SettleFillAsyncInput,
   type SettleMakerQuoteAsyncInput,
   type StartAuctionAsyncInput,
-  type SubmitOrderAsyncInput,
+  type SubmitOrderInput,
   type UpdateFundingInput,
   type UpdateMakerQuoteLevelsInput,
   type UpdateMakerQuoteMidInput,
@@ -275,6 +283,8 @@ export enum TempoProgramInstruction {
   MigratePosition,
   RemovePositionFromMargin,
   CloseMakerQuote,
+  InitShard,
+  ResetShard,
 }
 
 export function identifyTempoProgramInstruction(
@@ -370,6 +380,12 @@ export function identifyTempoProgramInstruction(
   }
   if (containsBytes(data, getU8Encoder().encode(29), 0)) {
     return TempoProgramInstruction.CloseMakerQuote;
+  }
+  if (containsBytes(data, getU8Encoder().encode(30), 0)) {
+    return TempoProgramInstruction.InitShard;
+  }
+  if (containsBytes(data, getU8Encoder().encode(31), 0)) {
+    return TempoProgramInstruction.ResetShard;
   }
   throw new SolanaError(
     SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
@@ -469,7 +485,13 @@ export type ParsedTempoProgramInstruction<
     } & ParsedRemovePositionFromMarginInstruction<TProgram>)
   | ({
       instructionType: TempoProgramInstruction.CloseMakerQuote;
-    } & ParsedCloseMakerQuoteInstruction<TProgram>);
+    } & ParsedCloseMakerQuoteInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.InitShard;
+    } & ParsedInitShardInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ResetShard;
+    } & ParsedResetShardInstruction<TProgram>);
 
 export function parseTempoProgramInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
@@ -686,6 +708,20 @@ export function parseTempoProgramInstruction<TProgram extends string>(
         ...parseCloseMakerQuoteInstruction(instruction),
       };
     }
+    case TempoProgramInstruction.InitShard: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.InitShard,
+        ...parseInitShardInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.ResetShard: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ResetShard,
+        ...parseResetShardInstruction(instruction),
+      };
+    }
     default:
       throw new SolanaError(
         SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
@@ -733,9 +769,8 @@ export type TempoProgramPluginInstructions = {
   ) => ReturnType<typeof getInitializeMarketInstructionAsync> &
     SelfPlanAndSendFunctions;
   submitOrder: (
-    input: SubmitOrderAsyncInput,
-  ) => ReturnType<typeof getSubmitOrderInstructionAsync> &
-    SelfPlanAndSendFunctions;
+    input: SubmitOrderInput,
+  ) => ReturnType<typeof getSubmitOrderInstruction> & SelfPlanAndSendFunctions;
   cancelOrder: (
     input: CancelOrderAsyncInput,
   ) => ReturnType<typeof getCancelOrderInstructionAsync> &
@@ -844,6 +879,12 @@ export type TempoProgramPluginInstructions = {
     input: CloseMakerQuoteInput,
   ) => ReturnType<typeof getCloseMakerQuoteInstruction> &
     SelfPlanAndSendFunctions;
+  initShard: (
+    input: InitShardInput,
+  ) => ReturnType<typeof getInitShardInstruction> & SelfPlanAndSendFunctions;
+  resetShard: (
+    input: ResetShardInput,
+  ) => ReturnType<typeof getResetShardInstruction> & SelfPlanAndSendFunctions;
 };
 
 export type TempoProgramPluginPdas = {
@@ -905,7 +946,7 @@ export function tempoProgramProgram() {
           submitOrder: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getSubmitOrderInstructionAsync(input),
+              getSubmitOrderInstruction(input),
             ),
           cancelOrder: (input) =>
             addSelfPlanAndSendFunctions(
@@ -1037,6 +1078,13 @@ export function tempoProgramProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getCloseMakerQuoteInstruction(input),
+            ),
+          initShard: (input) =>
+            addSelfPlanAndSendFunctions(client, getInitShardInstruction(input)),
+          resetShard: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getResetShardInstruction(input),
             ),
         },
         pdas: {

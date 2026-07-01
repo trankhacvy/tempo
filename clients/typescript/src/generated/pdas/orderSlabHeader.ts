@@ -9,6 +9,7 @@
 import {
   getAddressEncoder,
   getProgramDerivedAddress,
+  getU16Encoder,
   getUtf8Encoder,
   type Address,
   type ProgramDerivedAddress,
@@ -16,6 +17,7 @@ import {
 
 export type OrderSlabHeaderSeeds = {
   market: Address;
+  shardId: number;
 };
 
 export async function findOrderSlabHeaderPda(
@@ -30,6 +32,7 @@ export async function findOrderSlabHeaderPda(
     seeds: [
       getUtf8Encoder().encode("order_slab"),
       getAddressEncoder().encode(seeds.market),
+      getU16Encoder().encode(seeds.shardId),
     ],
   });
 }

@@ -40,7 +40,10 @@ async fn send_one(ctx: &KeeperCtx, ixs: &[Instruction], label: &'static str) -> 
 pub async fn accumulate(ctx: &KeeperCtx, chunks: Vec<(u32, u32)>, quotes: Vec<Pubkey>) {
     let cranker = ctx.cranker.pubkey();
     for (start, count) in chunks {
-        let ix = ix::process_chunk(&ctx.pdas, cranker, start, count);
+        // TODO(Stage A fan-out): the snapshot currently reads shard 0 only; a full keeper
+        // folds every shard `[0, num_slab_shards)` (each a separate process_chunk tx). See
+        // docs/plan.md A12.3.
+        let ix = ix::process_chunk(&ctx.pdas, cranker, 0, start, count);
         send_one(ctx, &[ix], "process_chunk").await;
     }
     for quote in quotes {
@@ -81,7 +84,10 @@ pub async fn settle(ctx: &KeeperCtx, orders: Vec<SlabOrder>, quotes: Vec<Pubkey>
     stream::iter(orders)
         .for_each_concurrent(ctx.settle_concurrency, |order| async move {
             let money = settle_money(ctx, &order.trader);
-            let ix = ix::settle_fill(&ctx.pdas, cranker, order.order_id, order.slot, &money);
+            // TODO(Stage A fan-out): shard 0 only (snapshot reads shard 0). A full keeper
+            // carries each order's shard_id (from the OrderSubmitted event) here. See
+            // docs/plan.md A12.3.
+            let ix = ix::settle_fill(&ctx.pdas, cranker, 0, order.order_id, order.slot, &money);
             send_one(ctx, &[ix], "settle_fill").await;
         })
         .await;
@@ -107,8 +113,17 @@ pub async fn settle(ctx: &KeeperCtx, orders: Vec<SlabOrder>, quotes: Vec<Pubkey>
     }
 }
 
-/// ROLL: open the next round (only reached when slab empty + quotes settled).
+/// ROLL: drain+re-arm each shard, then open the next round (only reached when the slab
+/// is empty + quotes settled). Stage A: `start_auction` gates on every shard being reset
+/// (`shards_ready == num_slab_shards`), so `reset_shard` must run first.
+///
+/// TODO(Stage A fan-out): this resets shard 0 only. A full keeper resets every shard
+/// `[0, num_slab_shards)` (one tx each) — see docs/plan.md A12.3. With `num_slab_shards
+/// == 1` (the sim default) this is complete.
 pub async fn roll(ctx: &KeeperCtx, oracle: Pubkey) {
-    let ix = ix::start_auction(&ctx.pdas, ctx.cranker.pubkey(), oracle);
+    let cranker = ctx.cranker.pubkey();
+    let reset = ix::reset_shard(&ctx.pdas, cranker, 0);
+    send_one(ctx, &[reset], "reset_shard").await;
+    let ix = ix::start_auction(&ctx.pdas, cranker, oracle);
     send_one(ctx, &[ix], "start_auction").await;
 }

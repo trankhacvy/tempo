@@ -19,6 +19,9 @@ pub struct OrderSlabHeader {
     pub market: Address,
     pub bump: u8,
     pub next_free_hint_le: [u8; 4],
+    pub shard_id_le: [u8; 2],
+    pub resting_count_le: [u8; 4],
+    pub folded_auction_id_le: [u8; 8],
 }
 
 pub const ORDER_SLAB_HEADER_DISCRIMINATOR: u8 = 4;
@@ -30,21 +33,32 @@ impl OrderSlabHeader {
     ///
     ///   0. `OrderSlabHeader::PREFIX`
     ///   1. market (`Address`)
+    ///   2. shard_id (`u16`)
     pub const PREFIX: &'static [u8] = "order_slab".as_bytes();
 
     pub fn create_pda(
         market: Address,
+        shard_id: u16,
         bump: u8,
     ) -> Result<solana_address::Address, solana_address::error::AddressError> {
         solana_address::Address::create_program_address(
-            &["order_slab".as_bytes(), market.as_ref(), &[bump]],
+            &[
+                "order_slab".as_bytes(),
+                market.as_ref(),
+                shard_id.to_string().as_ref(),
+                &[bump],
+            ],
             &crate::TEMPO_PROGRAM_ID,
         )
     }
 
-    pub fn find_pda(market: &Address) -> (solana_address::Address, u8) {
+    pub fn find_pda(market: &Address, shard_id: u16) -> (solana_address::Address, u8) {
         solana_address::Address::find_program_address(
-            &["order_slab".as_bytes(), market.as_ref()],
+            &[
+                "order_slab".as_bytes(),
+                market.as_ref(),
+                shard_id.to_string().as_ref(),
+            ],
             &crate::TEMPO_PROGRAM_ID,
         )
     }

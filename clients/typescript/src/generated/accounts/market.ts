@@ -81,6 +81,9 @@ export type Market = {
   windowFloorPriceLe: Array<number>;
   initialMarginBpsLe: Array<number>;
   maxPositionNotionalLe: Array<number>;
+  numSlabShardsLe: Array<number>;
+  shardsPendingLe: Array<number>;
+  shardsReadyLe: Array<number>;
 };
 
 export type MarketArgs = {
@@ -122,6 +125,9 @@ export type MarketArgs = {
   windowFloorPriceLe: Array<number>;
   initialMarginBpsLe: Array<number>;
   maxPositionNotionalLe: Array<number>;
+  numSlabShardsLe: Array<number>;
+  shardsPendingLe: Array<number>;
+  shardsReadyLe: Array<number>;
 };
 
 /** Gets the encoder for {@link MarketArgs} account data. */
@@ -169,6 +175,9 @@ export function getMarketEncoder(): FixedSizeEncoder<MarketArgs> {
       ["windowFloorPriceLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
       ["initialMarginBpsLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
       ["maxPositionNotionalLe", getArrayEncoder(getU8Encoder(), { size: 16 })],
+      ["numSlabShardsLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
+      ["shardsPendingLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
+      ["shardsReadyLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
     ]),
     (value) => ({
       ...value,
@@ -218,6 +227,9 @@ export function getMarketDecoder(): FixedSizeDecoder<Market> {
     ["windowFloorPriceLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
     ["initialMarginBpsLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
     ["maxPositionNotionalLe", getArrayDecoder(getU8Decoder(), { size: 16 })],
+    ["numSlabShardsLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
+    ["shardsPendingLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
+    ["shardsReadyLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
   ]);
 }
 

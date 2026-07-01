@@ -20,4 +20,5 @@ pub struct OrderSubmittedEvent {
     pub slot: u32,
     pub side: u8,
     pub is_maker: u8,
+    pub shard_id: u16,
 }

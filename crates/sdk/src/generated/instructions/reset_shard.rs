@@ -8,22 +8,20 @@
 use borsh::BorshDeserialize;
 use borsh::BorshSerialize;
 
-pub const START_AUCTION_DISCRIMINATOR: u8 = 6;
+pub const RESET_SHARD_DISCRIMINATOR: u8 = 31;
 
 /// Accounts.
 #[derive(Debug)]
-pub struct StartAuction {
+pub struct ResetShard {
     /// Permissionless caller
     pub cranker: solana_address::Address,
-    /// Market to roll forward
+    /// Market (increments shards_ready)
     pub market: solana_address::Address,
-    /// AuctionHistogram to zero
-    pub histogram: solana_address::Address,
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
-    pub oracle: solana_address::Address,
+    /// Drained OrderSlab shard to zero for the next round
+    pub order_slab: solana_address::Address,
 }
 
-impl StartAuction {
+impl ResetShard {
     pub fn instruction(&self) -> solana_instruction::Instruction {
         self.instruction_with_remaining_accounts(&[])
     }
@@ -33,19 +31,15 @@ impl StartAuction {
         &self,
         remaining_accounts: &[solana_instruction::AccountMeta],
     ) -> solana_instruction::Instruction {
-        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
+        let mut accounts = Vec::with_capacity(3 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.cranker,
             true,
         ));
         accounts.push(solana_instruction::AccountMeta::new(self.market, false));
-        accounts.push(solana_instruction::AccountMeta::new(self.histogram, false));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.oracle,
-            false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.order_slab, false));
         accounts.extend_from_slice(remaining_accounts);
-        let data = StartAuctionInstructionData::new().try_to_vec().unwrap();
+        let data = ResetShardInstructionData::new().try_to_vec().unwrap();
 
         solana_instruction::Instruction {
             program_id: crate::TEMPO_PROGRAM_ID,
@@ -56,13 +50,13 @@ impl StartAuction {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
-pub struct StartAuctionInstructionData {
+pub struct ResetShardInstructionData {
     discriminator: u8,
 }
 
-impl StartAuctionInstructionData {
+impl ResetShardInstructionData {
     pub fn new() -> Self {
-        Self { discriminator: 6 }
+        Self { discriminator: 31 }
     }
 
     pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
@@ -70,30 +64,28 @@ impl StartAuctionInstructionData {
     }
 }
 
-impl Default for StartAuctionInstructionData {
+impl Default for ResetShardInstructionData {
     fn default() -> Self {
         Self::new()
     }
 }
 
-/// Instruction builder for `StartAuction`.
+/// Instruction builder for `ResetShard`.
 ///
 /// ### Accounts:
 ///
 ///   0. `[signer]` cranker
 ///   1. `[writable]` market
-///   2. `[writable]` histogram
-///   3. `[]` oracle
+///   2. `[writable]` order_slab
 #[derive(Clone, Debug, Default)]
-pub struct StartAuctionBuilder {
+pub struct ResetShardBuilder {
     cranker: Option<solana_address::Address>,
     market: Option<solana_address::Address>,
-    histogram: Option<solana_address::Address>,
-    oracle: Option<solana_address::Address>,
+    order_slab: Option<solana_address::Address>,
     __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
-impl StartAuctionBuilder {
+impl ResetShardBuilder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -103,22 +95,16 @@ impl StartAuctionBuilder {
         self.cranker = Some(cranker);
         self
     }
-    /// Market to roll forward
+    /// Market (increments shards_ready)
     #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
         self.market = Some(market);
         self
     }
-    /// AuctionHistogram to zero
+    /// Drained OrderSlab shard to zero for the next round
     #[inline(always)]
-    pub fn histogram(&mut self, histogram: solana_address::Address) -> &mut Self {
-        self.histogram = Some(histogram);
-        self
-    }
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
-    #[inline(always)]
-    pub fn oracle(&mut self, oracle: solana_address::Address) -> &mut Self {
-        self.oracle = Some(oracle);
+    pub fn order_slab(&mut self, order_slab: solana_address::Address) -> &mut Self {
+        self.order_slab = Some(order_slab);
         self
     }
     /// Add an additional account to the instruction.
@@ -138,54 +124,48 @@ impl StartAuctionBuilder {
     }
     #[allow(clippy::clone_on_copy)]
     pub fn instruction(&self) -> solana_instruction::Instruction {
-        let accounts = StartAuction {
+        let accounts = ResetShard {
             cranker: self.cranker.expect("cranker is not set"),
             market: self.market.expect("market is not set"),
-            histogram: self.histogram.expect("histogram is not set"),
-            oracle: self.oracle.expect("oracle is not set"),
+            order_slab: self.order_slab.expect("order_slab is not set"),
         };
 
         accounts.instruction_with_remaining_accounts(&self.__remaining_accounts)
     }
 }
 
-/// `start_auction` CPI accounts.
-pub struct StartAuctionCpiAccounts<'a, 'b> {
+/// `reset_shard` CPI accounts.
+pub struct ResetShardCpiAccounts<'a, 'b> {
     /// Permissionless caller
     pub cranker: &'b solana_account_info::AccountInfo<'a>,
-    /// Market to roll forward
+    /// Market (increments shards_ready)
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// AuctionHistogram to zero
-    pub histogram: &'b solana_account_info::AccountInfo<'a>,
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
-    pub oracle: &'b solana_account_info::AccountInfo<'a>,
+    /// Drained OrderSlab shard to zero for the next round
+    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
 }
 
-/// `start_auction` CPI instruction.
-pub struct StartAuctionCpi<'a, 'b> {
+/// `reset_shard` CPI instruction.
+pub struct ResetShardCpi<'a, 'b> {
     /// The program to invoke.
     pub __program: &'b solana_account_info::AccountInfo<'a>,
     /// Permissionless caller
     pub cranker: &'b solana_account_info::AccountInfo<'a>,
-    /// Market to roll forward
+    /// Market (increments shards_ready)
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// AuctionHistogram to zero
-    pub histogram: &'b solana_account_info::AccountInfo<'a>,
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
-    pub oracle: &'b solana_account_info::AccountInfo<'a>,
+    /// Drained OrderSlab shard to zero for the next round
+    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
 }
 
-impl<'a, 'b> StartAuctionCpi<'a, 'b> {
+impl<'a, 'b> ResetShardCpi<'a, 'b> {
     pub fn new(
         program: &'b solana_account_info::AccountInfo<'a>,
-        accounts: StartAuctionCpiAccounts<'a, 'b>,
+        accounts: ResetShardCpiAccounts<'a, 'b>,
     ) -> Self {
         Self {
             __program: program,
             cranker: accounts.cranker,
             market: accounts.market,
-            histogram: accounts.histogram,
-            oracle: accounts.oracle,
+            order_slab: accounts.order_slab,
         }
     }
     #[inline(always)]
@@ -211,7 +191,7 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
         signers_seeds: &[&[&[u8]]],
         remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
     ) -> solana_program_error::ProgramResult {
-        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
+        let mut accounts = Vec::with_capacity(3 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             *self.cranker.key,
             true,
@@ -221,11 +201,7 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
             false,
         ));
         accounts.push(solana_instruction::AccountMeta::new(
-            *self.histogram.key,
-            false,
-        ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.oracle.key,
+            *self.order_slab.key,
             false,
         ));
         remaining_accounts.iter().for_each(|remaining_account| {
@@ -235,19 +211,18 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
                 is_writable: remaining_account.2,
             })
         });
-        let data = StartAuctionInstructionData::new().try_to_vec().unwrap();
+        let data = ResetShardInstructionData::new().try_to_vec().unwrap();
 
         let instruction = solana_instruction::Instruction {
             program_id: crate::TEMPO_PROGRAM_ID,
             accounts,
             data,
         };
-        let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
+        let mut account_infos = Vec::with_capacity(4 + remaining_accounts.len());
         account_infos.push(self.__program.clone());
         account_infos.push(self.cranker.clone());
         account_infos.push(self.market.clone());
-        account_infos.push(self.histogram.clone());
-        account_infos.push(self.oracle.clone());
+        account_infos.push(self.order_slab.clone());
         remaining_accounts
             .iter()
             .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
@@ -260,27 +235,25 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
     }
 }
 
-/// Instruction builder for `StartAuction` via CPI.
+/// Instruction builder for `ResetShard` via CPI.
 ///
 /// ### Accounts:
 ///
 ///   0. `[signer]` cranker
 ///   1. `[writable]` market
-///   2. `[writable]` histogram
-///   3. `[]` oracle
+///   2. `[writable]` order_slab
 #[derive(Clone, Debug)]
-pub struct StartAuctionCpiBuilder<'a, 'b> {
-    instruction: Box<StartAuctionCpiBuilderInstruction<'a, 'b>>,
+pub struct ResetShardCpiBuilder<'a, 'b> {
+    instruction: Box<ResetShardCpiBuilderInstruction<'a, 'b>>,
 }
 
-impl<'a, 'b> StartAuctionCpiBuilder<'a, 'b> {
+impl<'a, 'b> ResetShardCpiBuilder<'a, 'b> {
     pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
-        let instruction = Box::new(StartAuctionCpiBuilderInstruction {
+        let instruction = Box::new(ResetShardCpiBuilderInstruction {
             __program: program,
             cranker: None,
             market: None,
-            histogram: None,
-            oracle: None,
+            order_slab: None,
             __remaining_accounts: Vec::new(),
         });
         Self { instruction }
@@ -291,22 +264,19 @@ impl<'a, 'b> StartAuctionCpiBuilder<'a, 'b> {
         self.instruction.cranker = Some(cranker);
         self
     }
-    /// Market to roll forward
+    /// Market (increments shards_ready)
     #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.market = Some(market);
         self
     }
-    /// AuctionHistogram to zero
+    /// Drained OrderSlab shard to zero for the next round
     #[inline(always)]
-    pub fn histogram(&mut self, histogram: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-        self.instruction.histogram = Some(histogram);
-        self
-    }
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
-    #[inline(always)]
-    pub fn oracle(&mut self, oracle: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-        self.instruction.oracle = Some(oracle);
+    pub fn order_slab(
+        &mut self,
+        order_slab: &'b solana_account_info::AccountInfo<'a>,
+    ) -> &mut Self {
+        self.instruction.order_slab = Some(order_slab);
         self
     }
     /// Add an additional account to the instruction.
@@ -343,16 +313,14 @@ impl<'a, 'b> StartAuctionCpiBuilder<'a, 'b> {
     #[allow(clippy::clone_on_copy)]
     #[allow(clippy::vec_init_then_push)]
     pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-        let instruction = StartAuctionCpi {
+        let instruction = ResetShardCpi {
             __program: self.instruction.__program,
 
             cranker: self.instruction.cranker.expect("cranker is not set"),
 
             market: self.instruction.market.expect("market is not set"),
 
-            histogram: self.instruction.histogram.expect("histogram is not set"),
-
-            oracle: self.instruction.oracle.expect("oracle is not set"),
+            order_slab: self.instruction.order_slab.expect("order_slab is not set"),
         };
         instruction.invoke_signed_with_remaining_accounts(
             signers_seeds,
@@ -362,12 +330,11 @@ impl<'a, 'b> StartAuctionCpiBuilder<'a, 'b> {
 }
 
 #[derive(Clone, Debug)]
-struct StartAuctionCpiBuilderInstruction<'a, 'b> {
+struct ResetShardCpiBuilderInstruction<'a, 'b> {
     __program: &'b solana_account_info::AccountInfo<'a>,
     cranker: Option<&'b solana_account_info::AccountInfo<'a>>,
     market: Option<&'b solana_account_info::AccountInfo<'a>>,
-    histogram: Option<&'b solana_account_info::AccountInfo<'a>>,
-    oracle: Option<&'b solana_account_info::AccountInfo<'a>>,
+    order_slab: Option<&'b solana_account_info::AccountInfo<'a>>,
     /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
     __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }

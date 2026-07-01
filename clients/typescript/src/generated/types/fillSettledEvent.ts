@@ -12,6 +12,8 @@ import {
   getAddressEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
@@ -30,6 +32,7 @@ export type FillSettledEvent = {
   fill: bigint;
   side: number;
   isMaker: number;
+  shardId: number;
 };
 
 export type FillSettledEventArgs = {
@@ -40,6 +43,7 @@ export type FillSettledEventArgs = {
   fill: number | bigint;
   side: number;
   isMaker: number;
+  shardId: number;
 };
 
 export function getFillSettledEventEncoder(): FixedSizeEncoder<FillSettledEventArgs> {
@@ -51,6 +55,7 @@ export function getFillSettledEventEncoder(): FixedSizeEncoder<FillSettledEventA
     ["fill", getU64Encoder()],
     ["side", getU8Encoder()],
     ["isMaker", getU8Encoder()],
+    ["shardId", getU16Encoder()],
   ]);
 }
 
@@ -63,6 +68,7 @@ export function getFillSettledEventDecoder(): FixedSizeDecoder<FillSettledEvent>
     ["fill", getU64Decoder()],
     ["side", getU8Decoder()],
     ["isMaker", getU8Decoder()],
+    ["shardId", getU16Decoder()],
   ]);
 }
 
