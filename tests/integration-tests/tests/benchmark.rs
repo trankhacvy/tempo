@@ -244,7 +244,7 @@ the marginal-tick cumulative scan. Measured: **{} CU**.\n",
 orders/round with no per-tx overhead, and — because submit is read-only on Market and each \
 shard is its own account — submissions and settlements to different shards run in parallel. \
 The single histogram is still O(ticks) and untouched. Completeness stays a hard gate: \
-`finalize_clear` refuses until every shard reports folded (`shards_pending == 0`), an O(1) \
+`finalize_clear` refuses until every shard it is passed scans as fully folded (Design Z), an O(K) \
 check backed by a per-shard confirming scan.\n"
     );
 

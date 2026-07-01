@@ -85,8 +85,10 @@ async fn tick(ctx: &KeeperCtx) -> Result<TickReport, KeeperError> {
 
     match plan {
         Plan::Idle => {}
-        Plan::Accumulate { chunks, quotes } => actions::accumulate(ctx, chunks, quotes).await,
-        Plan::Discover => actions::discover(ctx).await,
+        Plan::Accumulate { chunks, quotes } => {
+            actions::accumulate(ctx, chunks, quotes, snapshot.market.num_slab_shards).await
+        }
+        Plan::Discover => actions::discover(ctx, snapshot.market.num_slab_shards).await,
         Plan::Settle { orders, quotes } => actions::settle(ctx, orders, quotes).await,
         Plan::Roll { oracle } => actions::roll(ctx, oracle).await,
     }

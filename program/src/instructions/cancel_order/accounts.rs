@@ -12,7 +12,7 @@ use crate::{
 ///
 /// # Account Layout
 /// 0. `[signer]` trader
-/// 1. `[]` market
+/// 1. `[]` market — read-only (Design Z: cancel writes no shared account)
 /// 2. `[writable]` order_slab
 /// 3. `[]` event_authority - Event authority PDA
 /// 4. `[]` tempo_program - Current program
@@ -41,9 +41,7 @@ impl<'a> TryFrom<&'a [AccountView]> for CancelOrderAccounts<'a> {
         };
 
         verify_signer(trader, false)?;
-        // Stage A: `market` is writable — cancelling the last unfolded order in a shard
-        // decrements `Market.shards_pending` (the completeness aggregate).
-        verify_writable(market, true)?;
+        // Design Z (DDR-1): `market` is READ-ONLY — cancel writes only its own shard.
         verify_writable(order_slab, true)?;
 
         verify_current_program_account(market)?;

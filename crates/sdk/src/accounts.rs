@@ -41,6 +41,8 @@ pub struct MarketView {
     pub window_floor_price: u64,
     pub initial_margin_bps: u16,
     pub max_position_notional: u128,
+    /// Number of OrderSlab shards (Stage A). 1 when the field is absent (pre-shard account).
+    pub num_slab_shards: u16,
 }
 
 impl MarketView {
@@ -77,6 +79,13 @@ impl MarketView {
         } else {
             0
         };
+        // v10+ appends `num_slab_shards` (u16) at offset 402. Design Z (v11) removed the
+        // `shards_pending` counter that used to follow it; `shards_ready` now sits at 404.
+        let num_slab_shards = if data.len() >= 404 {
+            u16_at(data, 402)
+        } else {
+            1
+        };
         Ok(Self {
             version: data[1],
             current_auction_id: u64_at(data, 2),
@@ -95,6 +104,7 @@ impl MarketView {
             window_floor_price: u64_at(data, 376),
             initial_margin_bps,
             max_position_notional,
+            num_slab_shards,
         })
     }
 

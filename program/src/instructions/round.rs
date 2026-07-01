@@ -7,9 +7,9 @@ use crate::{
 };
 
 /// Reset a market's round state and reopen `Collect`: zero the histogram, bump it to
-/// `next_id`, reset the maker-quote fold counter, reset the shard aggregates
-/// (`shards_pending = 0` — only shards with unfolded orders get counted, `shards_ready = 0`), and open a fresh
-/// collection window at `slot + COLLECT_WINDOW_SLOTS`. Validates the histogram belongs
+/// `next_id`, reset the maker-quote fold counter, reset the shard roll gate
+/// (`shards_ready = 0`; Design Z has no `shards_pending` completeness counter), and open a
+/// fresh collection window at `slot + COLLECT_WINDOW_SLOTS`. Validates the histogram belongs
 /// to this market. Shared by `start_auction` (after `shards_ready == num_slab_shards`)
 /// and `force_reset` (after its authority check).
 ///
@@ -60,11 +60,9 @@ pub fn reset_round_to_collect(
         // Per-round maker-quote fold counter resets; the active count persists
         // (quotes survive across rounds, unlike the ephemeral slab).
         market.set_folded_maker_quote_count(0);
-        // Stage A: reset the shard aggregates for the new round. `shards_pending` counts
-        // only shards that hold unfolded orders, so it starts at 0 and is bumped by the
-        // first submit into each shard (empty shards stay uncounted). `shards_ready` (the
-        // drain/roll gate) resets to 0 — every shard must be reset again before the next roll.
-        market.set_shards_pending(0);
+        // Stage A: reset the roll gate for the new round. `shards_ready` resets to 0 — every
+        // shard must be `reset_shard`'d again before the next roll. (Design Z / DDR-1: there is
+        // no `shards_pending` completeness counter anymore; finalize scans all shards directly.)
         market.set_shards_ready(0);
         market.set_phase_deadline_slot(slot.saturating_add(COLLECT_WINDOW_SLOTS));
         market.phase = AuctionPhase::Collect as u8;

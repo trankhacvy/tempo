@@ -706,7 +706,9 @@ impl TestContext {
 
         let mut accounts = vec![
             AccountMeta::new(*trader, true),
-            AccountMeta::new(pdas.market, false),
+            // Design Z (DDR-1): `market` is READ-ONLY on submit — completeness is proven by the
+            // finalize shard scan, so submits into different shards never share a write-lock.
+            AccountMeta::new_readonly(pdas.market, false),
             AccountMeta::new(pdas.slab_shard(shard_id).0, false),
             AccountMeta::new_readonly(self.event_authority, false),
             AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
@@ -860,7 +862,8 @@ impl TestContext {
         data.extend_from_slice(&slot_hint.to_le_bytes());
         let mut accounts = vec![
             AccountMeta::new_readonly(trader.pubkey(), true),
-            AccountMeta::new(pdas.market, false),
+            // Design Z (DDR-1): `market` is READ-ONLY on cancel.
+            AccountMeta::new_readonly(pdas.market, false),
             AccountMeta::new(pdas.order_slab, false),
             AccountMeta::new_readonly(self.event_authority, false),
             AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
@@ -1000,18 +1003,33 @@ impl TestContext {
 
     fn finalize_clear_ix(&self, pdas: &MarketPdas, cranker: &Pubkey) -> Instruction {
         let data = vec![IX_FINALIZE_CLEAR, pdas.clearing_bump];
+        let mut accounts = vec![
+            AccountMeta::new(*cranker, true),
+            AccountMeta::new(pdas.market, false),
+            AccountMeta::new_readonly(pdas.histogram, false),
+            AccountMeta::new(pdas.clearing, false),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+            AccountMeta::new_readonly(self.event_authority, false),
+            AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            // Design Z: crank-fee slots (program-id sentinels = omitted) then ALL shards.
+            AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+        ];
+        self.push_all_shards(pdas, &mut accounts);
         Instruction {
             program_id: TEMPO_PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new(*cranker, true),
-                AccountMeta::new(pdas.market, false),
-                AccountMeta::new_readonly(pdas.histogram, false),
-                AccountMeta::new(pdas.clearing, false),
-                AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-                AccountMeta::new_readonly(self.event_authority, false),
-                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
-            ],
+            accounts,
             data,
+        }
+    }
+
+    /// Append every slab shard (read-only) — the Design Z finalize/completeness account set.
+    fn push_all_shards(&self, pdas: &MarketPdas, accounts: &mut Vec<AccountMeta>) {
+        for shard_id in 0..pdas.num_slab_shards.max(1) {
+            accounts.push(AccountMeta::new_readonly(
+                pdas.slab_shard(shard_id).0,
+                false,
+            ));
         }
     }
 
@@ -1025,19 +1043,21 @@ impl TestContext {
         let (cranker_collateral, _) = self.collateral_pda(&cranker.pubkey());
         let (vault, _) = self.vault_pda();
         let data = vec![IX_FINALIZE_CLEAR, pdas.clearing_bump];
+        let mut accounts = vec![
+            AccountMeta::new(cranker.pubkey(), true),
+            AccountMeta::new(pdas.market, false),
+            AccountMeta::new_readonly(pdas.histogram, false),
+            AccountMeta::new(pdas.clearing, false),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+            AccountMeta::new_readonly(self.event_authority, false),
+            AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            AccountMeta::new(cranker_collateral, false),
+            AccountMeta::new(vault, false),
+        ];
+        self.push_all_shards(pdas, &mut accounts);
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new(cranker.pubkey(), true),
-                AccountMeta::new(pdas.market, false),
-                AccountMeta::new_readonly(pdas.histogram, false),
-                AccountMeta::new(pdas.clearing, false),
-                AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-                AccountMeta::new_readonly(self.event_authority, false),
-                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
-                AccountMeta::new(cranker_collateral, false),
-                AccountMeta::new(vault, false),
-            ],
+            accounts,
             data,
         };
         self.send(ix, &[cranker]).expect("finalize_clear_with_fee")
@@ -1053,19 +1073,21 @@ impl TestContext {
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let (cranker_collateral, _) = self.collateral_pda(&cranker.pubkey());
         let data = vec![IX_FINALIZE_CLEAR, pdas.clearing_bump];
+        let mut accounts = vec![
+            AccountMeta::new(cranker.pubkey(), true),
+            AccountMeta::new(pdas.market, false),
+            AccountMeta::new_readonly(pdas.histogram, false),
+            AccountMeta::new(pdas.clearing, false),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+            AccountMeta::new_readonly(self.event_authority, false),
+            AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            AccountMeta::new(cranker_collateral, false),
+            AccountMeta::new(vault, false),
+        ];
+        self.push_all_shards(pdas, &mut accounts);
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new(cranker.pubkey(), true),
-                AccountMeta::new(pdas.market, false),
-                AccountMeta::new_readonly(pdas.histogram, false),
-                AccountMeta::new(pdas.clearing, false),
-                AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-                AccountMeta::new_readonly(self.event_authority, false),
-                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
-                AccountMeta::new(cranker_collateral, false),
-                AccountMeta::new(vault, false),
-            ],
+            accounts,
             data,
         };
         self.send(ix, &[cranker])
@@ -1113,6 +1135,23 @@ impl TestContext {
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let payer = self.payer.pubkey();
         let ix = self.finalize_clear_ix(pdas, &payer);
+        self.send(ix, &[])
+    }
+
+    /// Finalize with an EXPLICIT shard account list (Design Z adversarial tests): pass a
+    /// short, duplicated, or wrong shard set to prove the completeness scan rejects it.
+    pub fn try_finalize_clear_with_shards(
+        &mut self,
+        pdas: &MarketPdas,
+        shards: &[Pubkey],
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let mut ix = self.finalize_clear_ix(pdas, &self.payer.pubkey());
+        // finalize_clear_ix appended all shards after the 7 fixed + 2 sentinel slots; keep the
+        // first 9 accounts and replace the shard tail with the caller-supplied set.
+        ix.accounts.truncate(9);
+        for s in shards {
+            ix.accounts.push(AccountMeta::new_readonly(*s, false));
+        }
         self.send(ix, &[])
     }
 

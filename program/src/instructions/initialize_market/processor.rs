@@ -127,7 +127,7 @@ pub fn process_initialize_market(
 
     // Stage A sharding: the OrderSlab shards are NOT created here (a market may have up
     // to `MAX_SLAB_SHARDS`, too many for one tx). They are created one-per-tx by
-    // `init_shard` before trading. `Market.num_slab_shards`/`shards_pending` are set by
+    // `init_shard` before trading. `Market.num_slab_shards` is set here; the shards are created one-per-tx by
     // `Market::new` above.
 
     // Emit event via CPI.

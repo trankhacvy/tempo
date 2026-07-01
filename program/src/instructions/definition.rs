@@ -93,8 +93,7 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "trader", docs = "Order owner", signer, writable))]
     #[codama(account(
         name = "market",
-        docs = "Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`.",
-        writable
+        docs = "Market the order belongs to. Read-only (Design Z): submit writes only its own shard."
     ))]
     #[codama(account(
         name = "order_slab",
@@ -143,8 +142,7 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "trader", docs = "Order owner", signer))]
     #[codama(account(
         name = "market",
-        docs = "Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`.",
-        writable
+        docs = "Market the order belongs to. Read-only (Design Z): cancel writes only its own shard."
     ))]
     #[codama(account(
         name = "order_slab",
@@ -209,6 +207,12 @@ pub enum TempoProgramInstruction {
 
     /// Phase 2 DISCOVER (permissionless): one pass over the buckets to find the
     /// clearing price and write the ClearingResult. Requires completeness.
+    ///
+    /// Design Z (DDR-1): ALL of the market's slab shards are passed as trailing remaining
+    /// accounts (read-only), after the fixed accounts and the two crank-fee optional slots
+    /// (program-id sentinels when omitted). finalize scans every shard for completeness; the
+    /// count must equal `num_slab_shards`. Codama cannot model the variadic list, so callers
+    /// append the shard metas (see the `finalize_clear` SDK builder).
     #[codama(account(
         name = "cranker",
         docs = "Permissionless caller (paid a fee)",

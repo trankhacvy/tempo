@@ -164,11 +164,6 @@ pub struct Market {
     /// Number of `OrderSlab` shards for this market (set at init). Orders are routed
     /// across shards `[0, num_slab_shards)` so submit/settle run in parallel.
     pub num_slab_shards_le: [u8; 2],
-    /// Shards not yet fully folded THIS round — the O(1) completeness aggregate
-    /// `finalize_clear` gates on. Each shard decrements it once when its
-    /// `resting_count` reaches 0 (confirmed by a per-shard scan). Reset to
-    /// `num_slab_shards` at each roll.
-    pub shards_pending_le: [u8; 2],
     /// Shards reset (drained + zeroed) for the next round — the roll aggregate
     /// `start_auction` gates on. Each `reset_shard` increments it once; reset to 0 at
     /// roll (see clearing-protocol §4, freeze model).
@@ -203,7 +198,6 @@ assert_no_padding!(
         + 8
         + 2
         + 16
-        + 2
         + 2
         + 2
 );
@@ -244,7 +238,13 @@ impl Versioned for Market {
     // (known-issues §3). A prefix change is NOT append-compatible, so that bump
     // made any pre-v6 account fail the zero-copy version check loudly instead of
     // decoding off-by-one — old accounts must be re-provisioned, not migrated.
-    const VERSION: u8 = 10;
+    // v11 (sharding, Design Z / DDR-1): removed the `shards_pending` completeness counter.
+    // Completeness is now proven authoritatively by `finalize_clear` scanning every shard it
+    // is passed (`all_active_orders_accumulated` per shard), so `submit_order`/`cancel_order`
+    // no longer write `Market` (restoring parallel intake) and there is no aggregate to drift.
+    // Removing a prefix field is NOT append-compatible → a pre-v11 market must be re-provisioned
+    // (the version bump fails it loudly). `shards_ready` (the roll aggregate) is retained.
+    const VERSION: u8 = 11;
 }
 
 impl AccountSize for Market {
@@ -274,7 +274,6 @@ impl AccountSize for Market {
         + 8
         + 2
         + 16
-        + 2
         + 2
         + 2;
 }
@@ -323,7 +322,6 @@ impl AccountSerialize for Market {
         data.extend_from_slice(&self.initial_margin_bps_le);
         data.extend_from_slice(&self.max_position_notional_le);
         data.extend_from_slice(&self.num_slab_shards_le);
-        data.extend_from_slice(&self.shards_pending_le);
         data.extend_from_slice(&self.shards_ready_le);
         data
     }
@@ -487,7 +485,6 @@ impl Market {
         num_slab_shards_le,
         u16
     );
-    le_field!(shards_pending, set_shards_pending, shards_pending_le, u16);
     le_field!(shards_ready, set_shards_ready, shards_ready_le, u16);
 
     #[inline(always)]
@@ -691,11 +688,6 @@ impl Market {
             initial_margin_bps_le: initial_margin_bps.to_le_bytes(),
             max_position_notional_le: max_position_notional.to_le_bytes(),
             num_slab_shards_le: num_slab_shards.to_le_bytes(),
-            // The completeness aggregate counts only shards that CURRENTLY hold unfolded
-            // orders, so it starts at 0 (no orders yet) and is incremented by the first
-            // submit into each shard (resting_count 0→1). Empty shards are never counted,
-            // so `finalize_clear` (gated on `shards_pending == 0`) needs no per-shard crank.
-            shards_pending_le: 0u16.to_le_bytes(),
             shards_ready_le: 0u16.to_le_bytes(),
         }
     }
@@ -859,7 +851,6 @@ mod tests {
         assert_eq!(m.tick_size(), 10);
         assert_eq!(m.num_slab_shards(), 16);
         // Completeness aggregate starts at 0 — only shards with unfolded orders are counted.
-        assert_eq!(m.shards_pending(), 0);
         assert_eq!(m.shards_ready(), 0);
         assert_eq!(m.num_ticks(), 64);
         assert_eq!(m.orders_per_auction_cap(), 256);

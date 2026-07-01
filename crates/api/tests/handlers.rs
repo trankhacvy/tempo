@@ -40,6 +40,7 @@ fn market_view() -> MarketView {
         window_floor_price: 1000,
         initial_margin_bps: 600,
         max_position_notional: 1_000_000,
+        num_slab_shards: 1,
     }
 }
 

@@ -57,8 +57,7 @@ pub fn process_force_reset(
     let slot = Clock::get()?.slot;
     let market_key = *ix.accounts.market.address();
 
-    // Bump the round ONCE: zero the histogram, reset the market aggregates (shards_pending =
-    // 0, shards_ready = 0), reopen Collect at auction id `next_id`.
+    // Bump the round ONCE: zero the histogram, reset the roll gate (shards_ready = 0; Design Z has no shards_pending counter), reopen Collect at auction id `next_id`.
     reset_round_to_collect(
         program_id,
         ix.accounts.market,

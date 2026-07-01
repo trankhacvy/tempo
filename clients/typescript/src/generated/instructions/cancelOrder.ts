@@ -67,7 +67,7 @@ export type CancelOrderInstruction<
             AccountSignerMeta<TAccountTrader>
         : TAccountTrader,
       TAccountMarket extends string
-        ? WritableAccount<TAccountMarket>
+        ? ReadonlyAccount<TAccountMarket>
         : TAccountMarket,
       TAccountOrderSlab extends string
         ? WritableAccount<TAccountOrderSlab>
@@ -139,7 +139,7 @@ export type CancelOrderAsyncInput<
 > = {
   /** Order owner */
   trader: TransactionSigner<TAccountTrader>;
-  /** Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`. */
+  /** Market the order belongs to. Read-only (Design Z): cancel writes only its own shard. */
   market: Address<TAccountMarket>;
   /** OrderSlab to remove from */
   orderSlab?: Address<TAccountOrderSlab>;
@@ -189,7 +189,7 @@ export async function getCancelOrderInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     trader: { value: input.trader ?? null, isWritable: false },
-    market: { value: input.market ?? null, isWritable: true },
+    market: { value: input.market ?? null, isWritable: false },
     orderSlab: { value: input.orderSlab ?? null, isWritable: true },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     tempoProgram: { value: input.tempoProgram ?? null, isWritable: false },
@@ -248,7 +248,7 @@ export type CancelOrderInput<
 > = {
   /** Order owner */
   trader: TransactionSigner<TAccountTrader>;
-  /** Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`. */
+  /** Market the order belongs to. Read-only (Design Z): cancel writes only its own shard. */
   market: Address<TAccountMarket>;
   /** OrderSlab to remove from */
   orderSlab: Address<TAccountOrderSlab>;
@@ -296,7 +296,7 @@ export function getCancelOrderInstruction<
   // Original accounts.
   const originalAccounts = {
     trader: { value: input.trader ?? null, isWritable: false },
-    market: { value: input.market ?? null, isWritable: true },
+    market: { value: input.market ?? null, isWritable: false },
     orderSlab: { value: input.orderSlab ?? null, isWritable: true },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     tempoProgram: { value: input.tempoProgram ?? null, isWritable: false },
@@ -343,7 +343,7 @@ export type ParsedCancelOrderInstruction<
   accounts: {
     /** Order owner */
     trader: TAccountMetas[0];
-    /** Market the order belongs to. Writable (Stage A): cancelling the last unfolded order in a shard decrements `shards_pending`. */
+    /** Market the order belongs to. Read-only (Design Z): cancel writes only its own shard. */
     market: TAccountMetas[1];
     /** OrderSlab to remove from */
     orderSlab: TAccountMetas[2];

@@ -12,7 +12,7 @@ use crate::{
 ///
 /// # Account Layout
 /// 0. `[signer, writable]` trader
-/// 1. `[]` market
+/// 1. `[]` market — read-only (Design Z: submit writes no shared account)
 /// 2. `[writable]` order_slab — the chosen shard `[b"order_slab", market, shard_id]`
 ///    (Stage A sharding); the processor validates its PDA against `data.shard_id`
 /// 3. `[]` event_authority - Event authority PDA
@@ -45,9 +45,9 @@ impl<'a> TryFrom<&'a [AccountView]> for SubmitOrderAccounts<'a> {
         };
 
         verify_signer(trader, true)?;
-        // Stage A: `market` is writable — the FIRST order into an empty shard bumps
-        // `Market.shards_pending` (the completeness aggregate that excludes empty shards).
-        verify_writable(market, true)?;
+        // Design Z (DDR-1): `market` is READ-ONLY on submit. Completeness is proven by
+        // `finalize_clear` scanning all shards, so submit writes only its own shard →
+        // submits into different shards run in parallel (no shared write-lock).
         verify_writable(order_slab, true)?;
 
         // Both state accounts must be owned by this program.

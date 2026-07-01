@@ -1,17 +1,19 @@
-//! Stage A sharding (plan §2): the OrderSlab is split into `num_slab_shards`
-//! independent shards that fold into the single histogram in parallel. These tests
-//! prove the adversarial invariants survive sharding, and pin the fixes from the
-//! Stage-A code review:
+//! Stage A sharding (plan §2, Design Z / DDR-1): the OrderSlab is split into
+//! `num_slab_shards` independent shards that fold into the single histogram in parallel.
+//! Completeness is proven by `finalize_clear` scanning EVERY shard it is passed — there is
+//! no `shards_pending` aggregate counter (dropped in Design Z so submit/cancel stay
+//! `Market`-read-only and no counter can drift). These tests pin the adversarial invariants:
 //!   * cross-shard fold — orders in different shards fold into the same histogram
 //!     (commutative addition);
-//!   * completeness — `finalize_clear` refuses while any shard STILL HOLDS an unfolded
-//!     order, but empty shards never block (the `shards_pending` aggregate counts only
-//!     shards with unfolded orders — review bug 2);
-//!   * a submit+cancel can never wedge the market (cancel decrements `resting_count` —
-//!     review bug 1);
+//!   * completeness — finalize refuses while any shard STILL HOLDS an unfolded order, but
+//!     empty shards never block (the scan sees them holding no Resting order);
+//!   * a submit+cancel can never wedge the market;
+//!   * finalize rejects a short or duplicated shard set (a hostile cranker cannot dodge the
+//!     scan to finalize while an order sits unfolded);
 //!   * a multi-shard `force_reset` clears EVERY shard and bumps the auction id exactly
-//!     once, so the next roll still succeeds (review bugs 3 & 4).
+//!     once, so the next roll still succeeds.
 
+use solana_sdk::pubkey::Pubkey;
 use tempo_integration_tests::*;
 
 /// Orders submitted to different shards each land in their own slab account and fold
@@ -53,7 +55,7 @@ fn orders_route_to_distinct_shards_and_fold() {
 
 /// Review bug 2: empty shards must NOT impose a per-shard crank obligation. A market with
 /// orders only in shard 0 clears after folding ONLY shard 0 — the empty shards 1 & 2 are
-/// never counted in `shards_pending`, so `finalize_clear` is accepted without cranking them.
+/// never seen holding a Resting order, so `finalize_clear` is accepted without cranking them.
 #[test]
 fn empty_shards_do_not_block_finalize() {
     let mut ctx = TestContext::new();
@@ -101,9 +103,56 @@ fn nonempty_unfolded_shard_still_blocks_finalize() {
     );
 }
 
-/// Review bug 1: a submit followed by a cancel must not leave a phantom `resting_count`
-/// that wedges clearing forever. After a submit+cancel the shard is empty again; a fresh
-/// order then folds and clears normally.
+/// Design Z censorship guard: finalize scans the shards it is PASSED, so a hostile cranker
+/// must not be able to satisfy the count with a SHORT set (fewer than `num_slab_shards`) or a
+/// DUPLICATED set (one folded shard repeated) while a real shard holds an unfolded order.
+#[test]
+fn finalize_rejects_short_or_duplicate_shard_set() {
+    let mut ctx = TestContext::new();
+    ctx.market_num_slab_shards = 2;
+    let pdas = ctx.init_market(10, 64, 16);
+
+    // Orders in BOTH shards. Fold only shard 0; shard 1 stays unfolded.
+    let a = ctx.new_funded_signer();
+    let b = ctx.new_funded_signer();
+    ctx.submit_order_to_shard(&pdas, &a, SIDE_BUY, 40, 5, 0);
+    ctx.submit_order_to_shard(&pdas, &b, SIDE_BUY, 40, 6, 1);
+    ctx.process_chunk_shard(&pdas, 0, 0, 16);
+
+    let shard0 = pdas.slab_shard(0).0;
+    let shard1 = pdas.slab_shard(1).0;
+
+    // Short set (only shard 0) → count != num_slab_shards → rejected.
+    assert!(
+        ctx.try_finalize_clear_with_shards(&pdas, &[shard0])
+            .is_err(),
+        "a short shard set must be rejected",
+    );
+    // Duplicate set (shard 0 twice) — count matches, but dedup rejects it, so the unfolded
+    // shard 1 cannot be hidden.
+    assert!(
+        ctx.try_finalize_clear_with_shards(&pdas, &[shard0, shard0])
+            .is_err(),
+        "a duplicated shard set must be rejected (dedup)",
+    );
+    // A foreign account in place of shard 1 → PDA validation rejects it.
+    assert!(
+        ctx.try_finalize_clear_with_shards(&pdas, &[shard0, Pubkey::new_unique()])
+            .is_err(),
+        "a wrong shard account must be rejected",
+    );
+
+    // The honest, complete set still clears once shard 1 is folded.
+    ctx.process_chunk_shard(&pdas, 1, 0, 16);
+    assert!(
+        ctx.try_finalize_clear_with_shards(&pdas, &[shard0, shard1])
+            .is_ok(),
+        "the full, folded shard set clears",
+    );
+}
+
+/// Review bug 1: a submit followed by a cancel must not wedge clearing forever. After a
+/// submit+cancel the shard is empty again; a fresh order then folds and clears normally.
 #[test]
 fn submit_then_cancel_does_not_wedge_clearing() {
     let mut ctx = TestContext::new();
@@ -121,7 +170,7 @@ fn submit_then_cancel_does_not_wedge_clearing() {
     );
 
     // A fresh order in the same round: it is the ONLY unfolded order. With the bug, the
-    // cancelled order's stale count would keep `shards_pending > 0` and finalize would
+    // cancelled order left resting would keep the shard non-empty and finalize would
     // revert forever. With the fix, folding the shard drives it to 0 and finalize succeeds.
     let b = ctx.submit_order(&pdas, &t, SIDE_BUY, 40, 7);
     ctx.process_chunk_shard(&pdas, 0, 0, 16);

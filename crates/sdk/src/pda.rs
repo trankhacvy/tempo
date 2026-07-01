@@ -103,6 +103,12 @@ impl MarketPdas {
     pub fn slab_shard(&self, shard_id: u16) -> Pubkey {
         order_slab(&self.market, shard_id).0
     }
+
+    /// All `num_slab_shards` shard PDAs, in shard-id order. Callers pass this to
+    /// `finalize_clear` (Design Z scans every shard) and `force_reset`.
+    pub fn all_shards(&self, num_slab_shards: u16) -> Vec<Pubkey> {
+        (0..num_slab_shards).map(|i| self.slab_shard(i)).collect()
+    }
 }
 
 #[cfg(test)]

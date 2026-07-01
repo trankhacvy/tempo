@@ -68,7 +68,7 @@ export type SubmitOrderInstruction<
             AccountSignerMeta<TAccountTrader>
         : TAccountTrader,
       TAccountMarket extends string
-        ? WritableAccount<TAccountMarket>
+        ? ReadonlyAccount<TAccountMarket>
         : TAccountMarket,
       TAccountOrderSlab extends string
         ? WritableAccount<TAccountOrderSlab>
@@ -160,7 +160,7 @@ export type SubmitOrderInput<
 > = {
   /** Order owner */
   trader: TransactionSigner<TAccountTrader>;
-  /** Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`. */
+  /** Market the order belongs to. Read-only (Design Z): submit writes only its own shard. */
   market: Address<TAccountMarket>;
   /** OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`. */
   orderSlab: Address<TAccountOrderSlab>;
@@ -216,7 +216,7 @@ export function getSubmitOrderInstruction<
   // Original accounts.
   const originalAccounts = {
     trader: { value: input.trader ?? null, isWritable: true },
-    market: { value: input.market ?? null, isWritable: true },
+    market: { value: input.market ?? null, isWritable: false },
     orderSlab: { value: input.orderSlab ?? null, isWritable: true },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     tempoProgram: { value: input.tempoProgram ?? null, isWritable: false },
@@ -266,7 +266,7 @@ export type ParsedSubmitOrderInstruction<
   accounts: {
     /** Order owner */
     trader: TAccountMetas[0];
-    /** Market the order belongs to. Writable (Stage A): the first order into an empty shard bumps `shards_pending`. */
+    /** Market the order belongs to. Read-only (Design Z): submit writes only its own shard. */
     market: TAccountMetas[1];
     /** OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`. */
     orderSlab: TAccountMetas[2];

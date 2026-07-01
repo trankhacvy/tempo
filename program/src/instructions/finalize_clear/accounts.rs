@@ -18,13 +18,18 @@ use crate::{
 /// 4. `[]` system_program
 /// 5. `[]` event_authority - Event authority PDA
 /// 6. `[]` tempo_program - Current program
-/// 7. `[writable]` cranker_collateral - (OPTIONAL) cranker's collateral
-///    ledger; when present with `vault`, the flat crank fee is paid into it.
-/// 8. `[writable]` vault - (OPTIONAL) fee/insurance pool the crank fee is drawn from.
+/// 7. `[writable]` cranker_collateral - (OPTIONAL, sentinel = program id) cranker's
+///    collateral ledger; when present with `vault`, the flat crank fee is paid into it.
+/// 8. `[writable]` vault - (OPTIONAL, sentinel = program id) fee/insurance pool.
+/// 9.. `[]` order_slab shards — ALL of the market's shards, read-only. Design Z (DDR-1):
+///    completeness is proven by scanning every shard here (`all_active_orders_accumulated`
+///    per shard), so the caller MUST pass every shard (`shards.len() == num_slab_shards`,
+///    enforced in the processor); a short/wrong/duplicate set is rejected. The crank-fee
+///    accounts hold fixed slots 7/8 (program-id sentinels when omitted) so the shard region
+///    starts at a deterministic offset.
 ///
-/// Stage A sharding: the completeness gate is now the O(1) `Market.shards_pending == 0`
-/// check (each shard decrements it once when fully folded), so the order slab(s) are no
-/// longer scanned here and the `order_slab` account was removed.
+/// (Account-limit ceiling: a market with more shards than fit in one transaction's account
+/// list cannot be finalized in a single tx — size shard counts accordingly; see DDR-1.)
 pub struct FinalizeClearAccounts<'a> {
     pub cranker: &'a AccountView,
     pub market: &'a AccountView,
@@ -35,6 +40,7 @@ pub struct FinalizeClearAccounts<'a> {
     pub tempo_program: &'a AccountView,
     pub cranker_collateral: Option<&'a AccountView>,
     pub vault: Option<&'a AccountView>,
+    pub shards: &'a [AccountView],
 }
 
 impl<'a> TryFrom<&'a [AccountView]> for FinalizeClearAccounts<'a> {
@@ -42,11 +48,15 @@ impl<'a> TryFrom<&'a [AccountView]> for FinalizeClearAccounts<'a> {
 
     #[inline(always)]
     fn try_from(accounts: &'a [AccountView]) -> Result<Self, Self::Error> {
-        let [cranker, market, histogram, clearing_result, system_program, event_authority, tempo_program, rest @ ..] =
+        let [cranker, market, histogram, clearing_result, system_program, event_authority, tempo_program, cranker_collateral, vault, shards @ ..] =
             accounts
         else {
             return Err(ProgramError::NotEnoughAccountKeys);
         };
+        // At least one shard must follow the (sentinel-filled) crank-fee slots.
+        if shards.is_empty() {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        }
 
         verify_signer(cranker, true)?;
         verify_writable(market, true)?;
@@ -59,19 +69,23 @@ impl<'a> TryFrom<&'a [AccountView]> for FinalizeClearAccounts<'a> {
         verify_event_authority(event_authority)?;
         verify_current_program(tempo_program)?;
 
-        // Codama fills an omitted optional account with the program id as a
-        // sentinel, so an optional account whose address == the program id is
-        // treated as "not provided".
+        // Codama fills an omitted optional account with the program id as a sentinel, so an
+        // optional account whose address == the program id is treated as "not provided".
         let present = |a: &&'a AccountView| a.address() != &crate::ID;
-        let cranker_collateral = rest.first().filter(present);
+        let cranker_collateral = Some(cranker_collateral).filter(present);
         if let Some(cc) = cranker_collateral {
             verify_writable(cc, true)?;
             verify_current_program_account(cc)?;
         }
-        let vault = rest.get(1).filter(present);
+        let vault = Some(vault).filter(present);
         if let Some(v) = vault {
             verify_writable(v, true)?;
             verify_current_program_account(v)?;
+        }
+
+        // Shard accounts are READ-ONLY here — finalize only scans them for completeness.
+        for shard in shards.iter() {
+            verify_current_program_account(shard)?;
         }
 
         Ok(Self {
@@ -84,6 +98,7 @@ impl<'a> TryFrom<&'a [AccountView]> for FinalizeClearAccounts<'a> {
             tempo_program,
             cranker_collateral,
             vault,
+            shards,
         })
     }
 }

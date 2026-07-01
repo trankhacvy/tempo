@@ -95,32 +95,52 @@ pub struct SettleMoney {
     pub integrator_collateral: Option<Pubkey>,
 }
 
-/// DISCOVER (`finalize_clear`): the completeness-gated single-pass cross. Pass
-/// `crank_fee_accounts = Some((cranker_collateral, vault))` to collect the crank
-/// fee, or `None` for a clearing-only market.
+/// DISCOVER (`finalize_clear`): the completeness-gated single-pass cross. Design Z
+/// (DDR-1): pass ALL of the market's slab shards in `shards` (read-only) — finalize scans
+/// every one for completeness, so `shards.len()` must equal `Market.num_slab_shards`. The two
+/// crank-fee slots hold fixed positions (program-id sentinels when `crank_fee_accounts` is
+/// `None`) so the shard region starts at a deterministic offset. Built manually because Codama
+/// cannot model the trailing shard list.
 pub fn finalize_clear(
     pdas: &MarketPdas,
     cranker: Pubkey,
     crank_fee_accounts: Option<(Pubkey, Pubkey)>,
+    shards: &[Pubkey],
 ) -> Instruction {
-    let (cranker_collateral, vault) = match crank_fee_accounts {
-        Some((c, v)) => (Some(c), Some(v)),
-        None => (None, None),
-    };
-    FinalizeClear {
-        cranker,
-        market: pdas.market,
-        histogram: pdas.histogram,
-        clearing_result: pdas.clearing,
-        system_program: SYSTEM_PROGRAM_ID,
-        event_authority: pdas.event_authority,
-        tempo_program: TEMPO_PROGRAM_ID,
-        cranker_collateral,
-        vault,
+    let mut accounts = vec![
+        AccountMeta::new(cranker, true),
+        AccountMeta::new(pdas.market, false),
+        AccountMeta::new_readonly(pdas.histogram, false),
+        AccountMeta::new(pdas.clearing, false),
+        AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+        AccountMeta::new_readonly(pdas.event_authority, false),
+        AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+    ];
+    // Crank-fee optional slots at fixed positions 7/8 (program-id sentinel = "omitted").
+    match crank_fee_accounts {
+        Some((cc, v)) => {
+            accounts.push(AccountMeta::new(cc, false));
+            accounts.push(AccountMeta::new(v, false));
+        }
+        None => {
+            accounts.push(AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false));
+            accounts.push(AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false));
+        }
     }
-    .instruction(FinalizeClearInstructionArgs {
-        clearing_bump: pdas.clearing_bump,
-    })
+    // All slab shards, read-only.
+    for shard in shards {
+        accounts.push(AccountMeta::new_readonly(*shard, false));
+    }
+    Instruction {
+        program_id: TEMPO_PROGRAM_ID,
+        accounts,
+        data: alloc_finalize_data(pdas.clearing_bump),
+    }
+}
+
+/// `finalize_clear` instruction data: `[discriminator, clearing_bump]`.
+fn alloc_finalize_data(clearing_bump: u8) -> Vec<u8> {
+    vec![FINALIZE_CLEAR_DISCRIMINATOR, clearing_bump]
 }
 
 /// SETTLE (`settle_fill`): one order pulls its own fill. `slot_hint` is the slab
@@ -542,20 +562,28 @@ mod tests {
     fn test_finalize_clear_wrapper() {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let cranker = Pubkey::new_unique();
-        // No crank-fee accounts → 7 accounts (Stage A removed the order_slab completeness
-        // scan; finalize now gates on Market.shards_pending). The bump arg is the clearing bump.
-        let bare = finalize_clear(&pdas, cranker, None);
+        // Design Z: 7 fixed + 2 crank-fee slots (sentinels when omitted) + K shards.
+        let shards = [pdas.slab_shard(0), pdas.slab_shard(1), pdas.slab_shard(2)];
+        // No crank-fee accounts → 7 + 2 sentinels + 3 shards = 12.
+        let bare = finalize_clear(&pdas, cranker, None, &shards);
         assert_eq!(bare.program_id, TEMPO_PROGRAM_ID);
         assert_eq!(bare.data[0], FINALIZE_CLEAR_DISCRIMINATOR);
         assert_eq!(bare.data[1], pdas.clearing_bump);
-        assert_eq!(bare.accounts.len(), 7);
-        // With the crank-fee pair → 9 accounts.
+        assert_eq!(bare.accounts.len(), 12);
+        // Omitted crank-fee slots are the program-id sentinel (parser treats as "not provided").
+        assert_eq!(bare.accounts[7].pubkey, TEMPO_PROGRAM_ID);
+        assert_eq!(bare.accounts[8].pubkey, TEMPO_PROGRAM_ID);
+        // Shards are read-only.
+        assert!(!bare.accounts[9].is_writable);
+        // With the crank-fee pair → 7 + 2 + 3 = 12 (real fee accounts in slots 7/8).
         let fee = finalize_clear(
             &pdas,
             cranker,
             Some((Pubkey::new_unique(), Pubkey::new_unique())),
+            &shards,
         );
-        assert_eq!(fee.accounts.len(), 9);
+        assert_eq!(fee.accounts.len(), 12);
+        assert_ne!(fee.accounts[7].pubkey, TEMPO_PROGRAM_ID);
     }
 
     #[test]

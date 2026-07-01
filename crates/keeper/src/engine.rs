@@ -117,6 +117,7 @@ mod tests {
             window_floor_price: 10,
             initial_margin_bps: 0,
             max_position_notional: 0,
+            num_slab_shards: 1,
         }
     }
 

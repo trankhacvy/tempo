@@ -35,9 +35,8 @@ pub fn process_cancel_order(
     let market_key = *ix.accounts.market.address();
     let trader = *ix.accounts.trader.address();
 
-    // --- locate + remove order from slab; capture its reservation + whether removing it
-    // emptied the shard's unfolded set (resting_count 1→0, so it leaves the aggregate). ---
-    let (reserved_margin, shard_became_empty) = {
+    // --- locate + remove order from slab; capture its reservation ---
+    let reserved_margin = {
         let mut slab_account = *ix.accounts.order_slab;
         let mut slab_data = slab_account.try_borrow_mut()?;
 
@@ -72,28 +71,19 @@ pub fn process_cancel_order(
             .ok_or(TempoProgramError::MathOverflow)?;
         header.set_count(c);
 
-        // Stage A completeness: the cancelled order was `Resting` (unfolded — guaranteed by
-        // the status check above), so it was counted in this shard's `resting_count`.
-        // Decrement it in the SAME borrow as the slot free, so the counter can never drift.
-        // Without this, a submit+cancel leaves resting_count > 0 forever and finalize_clear
-        // can never satisfy the completeness gate — a permissionless market wedge.
+        // Design Z (DDR-1): the cancelled order was `Resting` (unfolded — guaranteed by the
+        // status check above), so it was counted in this shard's own `resting_count`. Decrement
+        // it in the SAME borrow as the slot free so it can never drift. This is shard-local only
+        // (the keeper uses it to skip empty shards); completeness is proven by finalize scanning
+        // every shard, so `cancel_order` writes NO shared account (`Market` stays read-only).
         let new_rc = header
             .resting_count()
             .checked_sub(1)
             .ok_or(TempoProgramError::MathOverflow)?;
         header.set_resting_count(new_rc);
 
-        // `new_rc == 0` ⟺ this shard now holds no unfolded orders, so it leaves the set.
-        (order.reserved_margin, new_rc == 0)
+        order.reserved_margin
     };
-
-    // If cancelling emptied the shard, drop it from the market's completeness aggregate.
-    if shard_became_empty {
-        let mut market_account = *ix.accounts.market;
-        let mut market_data = market_account.try_borrow_mut()?;
-        let market = Market::from_bytes_mut(&mut market_data)?;
-        market.set_shards_pending(market.shards_pending().saturating_sub(1));
-    }
 
     // --- release the worst-case margin reserved at submit (missing-features §1.1) ---
     if reserved_margin > 0 {

@@ -36,15 +36,22 @@ async fn send_one(ctx: &KeeperCtx, ixs: &[Instruction], label: &'static str) -> 
     }
 }
 
-/// ACCUMULATE: fold the slab chunk range, then fold each unfolded maker quote.
-pub async fn accumulate(ctx: &KeeperCtx, chunks: Vec<(u32, u32)>, quotes: Vec<Pubkey>) {
+/// ACCUMULATE: fold the slab chunk range across every shard, then fold each unfolded
+/// maker quote. Folding an empty shard is a cheap no-op, so cranking all shards over the
+/// chunk range is correct; refining the per-shard ranges from a full multi-shard snapshot
+/// is the deferred A12.3 optimization (the snapshot reads shard 0 today).
+pub async fn accumulate(
+    ctx: &KeeperCtx,
+    chunks: Vec<(u32, u32)>,
+    quotes: Vec<Pubkey>,
+    num_slab_shards: u16,
+) {
     let cranker = ctx.cranker.pubkey();
-    for (start, count) in chunks {
-        // TODO(Stage A fan-out): the snapshot currently reads shard 0 only; a full keeper
-        // folds every shard `[0, num_slab_shards)` (each a separate process_chunk tx). See
-        // docs/plan.md A12.3.
-        let ix = ix::process_chunk(&ctx.pdas, cranker, 0, start, count);
-        send_one(ctx, &[ix], "process_chunk").await;
+    for shard_id in 0..num_slab_shards {
+        for &(start, count) in &chunks {
+            let ix = ix::process_chunk(&ctx.pdas, cranker, shard_id, start, count);
+            send_one(ctx, &[ix], "process_chunk").await;
+        }
     }
     for quote in quotes {
         let ix = ix::process_maker_quote(&ctx.pdas, cranker, quote);
@@ -52,10 +59,12 @@ pub async fn accumulate(ctx: &KeeperCtx, chunks: Vec<(u32, u32)>, quotes: Vec<Pu
     }
 }
 
-/// DISCOVER: publish the cross. The crank fee is left uncollected (None) — the
-/// program no-ops it; a fee-collecting deployment can wire the accounts here.
-pub async fn discover(ctx: &KeeperCtx) {
-    let ix = ix::finalize_clear(&ctx.pdas, ctx.cranker.pubkey(), None);
+/// DISCOVER: publish the cross. Design Z (DDR-1) — finalize scans every shard for
+/// completeness, so all `num_slab_shards` shards are passed. The crank fee is left
+/// uncollected (None); a fee-collecting deployment can wire the accounts here.
+pub async fn discover(ctx: &KeeperCtx, num_slab_shards: u16) {
+    let shards = ctx.pdas.all_shards(num_slab_shards);
+    let ix = ix::finalize_clear(&ctx.pdas, ctx.cranker.pubkey(), None, &shards);
     send_one(ctx, &[ix], "finalize_clear").await;
 }
 

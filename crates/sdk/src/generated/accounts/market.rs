@@ -50,7 +50,6 @@ pub struct Market {
     pub initial_margin_bps_le: [u8; 2],
     pub max_position_notional_le: [u8; 16],
     pub num_slab_shards_le: [u8; 2],
-    pub shards_pending_le: [u8; 2],
     pub shards_ready_le: [u8; 2],
 }
 

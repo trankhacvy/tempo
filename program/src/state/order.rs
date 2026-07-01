@@ -220,9 +220,10 @@ impl Order {
 /// One market has `num_slab_shards` slab accounts, seeds `[b"order_slab", market,
 /// shard_id_le]`. Orders are routed to a shard by the client; each shard folds and
 /// settles independently, so submit/settle across shards run in parallel (they
-/// write-lock different accounts). `resting_count` is the per-shard, updated-in-the
-/// -same-borrow fold counter that drives the O(1) completeness gate in
-/// `finalize_clear` (see `Market.shards_pending`).
+/// write-lock different accounts; Design Z keeps `Market` read-only on submit/cancel).
+/// `resting_count` is a per-shard, updated-in-the-same-borrow hint (unfolded orders) the
+/// keeper uses to skip empty shards; completeness itself is proven authoritatively by
+/// `finalize_clear` scanning every shard (DDR-1), not by any aggregate counter.
 ///
 /// # Header layout (`#[repr(C)]`, **alignment 1** — see `le_field!`)
 /// 2 × [u8;8] (16) + 3 × [u8;4] (12) + Address (32) + u8 (1) + [u8;2] (2) + [u8;4] (4)
@@ -259,15 +260,14 @@ pub struct OrderSlabHeader {
     /// This shard's index (also the 3rd PDA seed). `[0, num_slab_shards)`.
     pub shard_id_le: [u8; 2],
     /// Orders in this shard still `Resting` (not yet folded into the histogram).
-    /// Maintained in the same borrow as each order's `status`, so it cannot drift
-    /// from the shard's contents — this is the per-shard completeness source of
-    /// truth (clearing-protocol §4.2). When it hits 0, `process_chunk` confirms with
-    /// a scan and decrements `Market.shards_pending` once.
+    /// Maintained in the same borrow as each order's `status`, so it cannot drift from the
+    /// shard's contents. Design Z (DDR-1): this is a keeper HINT (skip empty shards) — the
+    /// authoritative completeness gate is `finalize_clear`'s per-shard
+    /// `all_active_orders_accumulated` scan, not this counter.
     pub resting_count_le: [u8; 4],
-    /// Auction round in which this shard was last marked "fully folded" — the
-    /// exactly-once guard so `process_chunk` decrements `Market.shards_pending` at most
-    /// once per shard per round (idempotent under repeated cranks; fires for an empty
-    /// shard too). Init `u64::MAX` (never equals a real auction id until folded).
+    /// DEAD under Design Z (DDR-1): retained only to keep the slab layout/version stable.
+    /// (Formerly the exactly-once guard for the removed `Market.shards_pending` decrement.)
+    /// Init `u64::MAX`.
     pub folded_auction_id_le: [u8; 8],
 }
 

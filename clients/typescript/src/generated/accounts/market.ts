@@ -82,7 +82,6 @@ export type Market = {
   initialMarginBpsLe: Array<number>;
   maxPositionNotionalLe: Array<number>;
   numSlabShardsLe: Array<number>;
-  shardsPendingLe: Array<number>;
   shardsReadyLe: Array<number>;
 };
 
@@ -126,7 +125,6 @@ export type MarketArgs = {
   initialMarginBpsLe: Array<number>;
   maxPositionNotionalLe: Array<number>;
   numSlabShardsLe: Array<number>;
-  shardsPendingLe: Array<number>;
   shardsReadyLe: Array<number>;
 };
 
@@ -176,7 +174,6 @@ export function getMarketEncoder(): FixedSizeEncoder<MarketArgs> {
       ["initialMarginBpsLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
       ["maxPositionNotionalLe", getArrayEncoder(getU8Encoder(), { size: 16 })],
       ["numSlabShardsLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
-      ["shardsPendingLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
       ["shardsReadyLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
     ]),
     (value) => ({
@@ -228,7 +225,6 @@ export function getMarketDecoder(): FixedSizeDecoder<Market> {
     ["initialMarginBpsLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
     ["maxPositionNotionalLe", getArrayDecoder(getU8Decoder(), { size: 16 })],
     ["numSlabShardsLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
-    ["shardsPendingLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
     ["shardsReadyLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
   ]);
 }

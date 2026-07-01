@@ -9,9 +9,8 @@ use crate::{
     events::ChunkProcessedEvent,
     instructions::ProcessChunk,
     state::{
-        all_active_orders_accumulated, fold, read_order, read_region, write_order,
-        AuctionHistogramHeader, AuctionPhase, Market, OrderSide, OrderSlabHeader, OrderStatus,
-        Region,
+        fold, read_order, read_region, write_order, AuctionHistogramHeader, AuctionPhase, Market,
+        OrderSide, OrderSlabHeader, OrderStatus, Region,
     },
     traits::{AccountDeserialize, EventSerialize, PdaSeeds},
     utils::emit_event,
@@ -86,7 +85,7 @@ pub fn process_process_chunk(
 
     // --- fold a bounded slice of resting orders ---
     let mut folded: u64 = 0;
-    let (accumulated_total, shard_newly_complete) = {
+    let accumulated_total = {
         let mut slab_account = *ix.accounts.order_slab;
         let mut slab_data = slab_account.try_borrow_mut()?;
         let mut hist_account = *ix.accounts.histogram;
@@ -158,45 +157,18 @@ pub fn process_process_chunk(
             .ok_or(TempoProgramError::MathOverflow)?;
         hist.set_accumulated_count(c);
 
-        // Stage A completeness: decrement this shard's resting counter, then decide
-        // whether the shard just left the market's completeness set. `resting_count` is the
-        // per-shard authoritative-by-locality counter (maintained in the same borrow as the
-        // order status above). A shard was ADDED to `shards_pending` by the first submit into
-        // it (resting_count 0→1); it must leave EXACTLY when its last unfolded order is folded.
-        //
-        // The gate is `folded > 0 && rc == 0`:
-        //  - `folded > 0` ⟹ this call actually folded ≥1 order, so an EMPTY shard (never
-        //    submitted to; never counted) is a no-op and never decrements — no per-shard crank
-        //    obligation, and `shards_pending` stays balanced against the submit increments.
-        //  - a re-crank after completion folds 0 ⟹ `folded > 0` is false ⟹ fires exactly once.
-        // The `folded_auction_id` guard is belt-and-suspenders (redundant given `folded > 0`),
-        // and the authoritative slab scan confirms the counter so a corrupt `resting_count`
-        // can never let finalize proceed with an unfolded order (the censorship guarantee,
-        // amortized per-shard at fold time).
+        // Design Z (DDR-1): maintain this shard's own `resting_count` (unfolded orders) in the
+        // same borrow as the order status above, so the keeper can tell which shards still need
+        // folding and skip empty ones. It is a hint only — completeness is NOT gated on it.
+        // `finalize_clear` proves completeness authoritatively by scanning every shard, so no
+        // market-level aggregate is touched here (the `folded_auction_id` header field is now
+        // dead — retained only to keep the slab layout/version stable).
         let slab = OrderSlabHeader::from_bytes_mut(&mut slab_data)?;
         // `folded` counts orders folded this call (≤ capacity ≤ u32::MAX), safe to narrow.
         let rc = slab.resting_count().saturating_sub(folded as u32);
         slab.set_resting_count(rc);
-        let prev_folded_id = slab.folded_auction_id();
-        let newly_complete = folded > 0
-            && rc == 0
-            && prev_folded_id != auction_id
-            && all_active_orders_accumulated(&slab_data, capacity)?;
-        if newly_complete {
-            OrderSlabHeader::from_bytes_mut(&mut slab_data)?.set_folded_auction_id(auction_id);
-        }
-        (c, newly_complete)
+        c
     };
-
-    // A shard that just became fully folded decrements the market's completeness
-    // aggregate exactly once. `finalize_clear` gates on `shards_pending == 0` (O(1)),
-    // so the whole book's completeness is a single check instead of a full slab scan.
-    if shard_newly_complete {
-        let mut market_account = *ix.accounts.market;
-        let mut market_data = market_account.try_borrow_mut()?;
-        let market = Market::from_bytes_mut(&mut market_data)?;
-        market.set_shards_pending(market.shards_pending().saturating_sub(1));
-    }
 
     // Emit event via CPI (carries `folded`/`accumulated_total`; no log! — this is
     // the hot crank path and logging is the costliest avoidable op, §1).
