@@ -3,12 +3,12 @@
 //! Measures the compute-unit (CU) profile of every hot-path instruction under
 //! LiteSVM and derives the orders-per-block ceiling from Solana's per-account
 //! write-lock budget (12M CU/account/block) and per-transaction limit
-//! (1.4M CU/tx). Writes the result to `cu_report.md` at the workspace root.
+//! (1.4M CU/tx). Writes the result to `docs/bench/cu_report.md`.
 //!
-//! This measures the CURRENT (unsharded) design — Market, OrderSlab and the
-//! AuctionHistogram are each written by hot-path transactions, so per-market
-//! throughput is gated by the tightest shared write-lock. The report is the
-//! evidence for whether histogram/slab sharding is needed (the sharding follow-up).
+//! This measures the Stage A **sharded** design — the OrderSlab is split into
+//! `num_slab_shards` shards (`SLAB_CAP` orders each) that submit and fold in parallel;
+//! the single AuctionHistogram and Market stay shared. Per-instruction CU matches the
+//! pre-shard baseline (`cu_report_pre_shard.md`); the win is parallel intake across shards.
 //!
 //! Run with:  cargo test -p tempo-integration-tests --test benchmark -- --ignored --nocapture
 //!
@@ -25,12 +25,18 @@ use tempo_integration_tests::*;
 const TX_CU_LIMIT: u64 = 1_400_000;
 /// Per-account write-lock CU budget per block (Solana scheduler).
 const ACCOUNT_BLOCK_CU: u64 = 12_000_000;
+/// Stage A per-shard slab capacity. A shard is created by `init_shard` via a single CPI
+/// `CreateAccount`, which the runtime caps at 10_240 bytes — so at `ORDER_LEN = 88` a
+/// shard holds at most ~115 orders; the plan (§0.3) sizes it at 90 to stay within one
+/// create through all stages (`ORDER_LEN` grows to ~112 by C1). Throughput scales by
+/// running `num_slab_shards` of these in parallel.
+const SLAB_CAP: u32 = 90;
 
 /// Measure the CU of submitting the `occupancy+1`-th order into a fresh market
 /// (so the find_free_slot + per-trader-count scans run over `occupancy` orders).
 fn measure_submit_cu(occupancy: u32) -> u64 {
     let mut ctx = TestContext::new();
-    let pdas = ctx.init_market(1, 256, 128);
+    let pdas = ctx.init_market(1, 256, SLAB_CAP);
     // Fill `occupancy` orders across enough traders (per-trader cap = 8).
     let mut filled = 0u32;
     while filled < occupancy {
@@ -54,7 +60,7 @@ fn measure_submit_cu(occupancy: u32) -> u64 {
 /// Measure the CU of folding `k` orders in a single process_chunk.
 fn measure_chunk_cu(k: u32) -> u64 {
     let mut ctx = TestContext::new();
-    let pdas = ctx.init_market(1, 256, 128);
+    let pdas = ctx.init_market(1, 256, SLAB_CAP);
     let mut filled = 0u32;
     while filled < k {
         let t = ctx.new_funded_signer();
@@ -113,16 +119,16 @@ fn workspace_root() -> PathBuf {
 #[ignore = "benchmark; run with --ignored to regenerate cu_report.md"]
 fn benchmark_cu_profile() {
     // --- submit_order: CU vs slab occupancy (shows the O(n) free-slot scan) ---
-    let submit: Vec<(u32, u64)> = [1u32, 32, 64, 120]
+    let submit: Vec<(u32, u64)> = [1u32, 30, 60, 89]
         .iter()
         .map(|&occ| (occ, measure_submit_cu(occ)))
         .collect();
 
     // --- process_chunk: fold cost at the clean endpoints (1 order vs a full
-    // 128-order slab). The per-order fold cost is small relative to the fixed
-    // base, so we report the endpoints and the incremental cost rather than a
+    // shard, SLAB_CAP orders). The per-order fold cost is small relative to the
+    // fixed base, so we report the endpoints and the incremental cost rather than a
     // noisy multi-point series. ---
-    let chunk: Vec<(u32, u64)> = [1u32, 128]
+    let chunk: Vec<(u32, u64)> = [1u32, SLAB_CAP]
         .iter()
         .map(|&k| (k, measure_chunk_cu(k)))
         .collect();
@@ -143,11 +149,12 @@ fn benchmark_cu_profile() {
     // --- settle_fill ---
     let settle_cu = measure_settle_cu();
 
-    // --- derived: write-lock load of one FULL auction (the slab cap, 128) ---
-    // Every hot-path tx write-locks Market, so the whole round's CU competes for
-    // Market's 12M/block budget. A full auction is bounded at 128 orders (the
-    // single-account cap), so model that worst case end-to-end.
-    const FULL_AUCTION_ORDERS: u64 = 128;
+    // --- derived: per-shard write-lock load of one full shard (SLAB_CAP orders) ---
+    // Settle write-locks Market for the OI update, so a shard's settle CU competes for
+    // Market's 12M/block budget. Submission now write-locks only its own shard (Market is
+    // read-only on submit since PERF-1), so K shards submit in parallel; this models one
+    // shard's end-to-end load, and aggregate throughput is K× the parallel part.
+    const FULL_AUCTION_ORDERS: u64 = SLAB_CAP as u64;
     let submit_cu_worst = submit.last().unwrap().1;
     let submit_total = FULL_AUCTION_ORDERS * submit_cu_worst;
     let settle_total = FULL_AUCTION_ORDERS * settle_cu;
@@ -161,9 +168,12 @@ fn benchmark_cu_profile() {
         r,
         "Measured under LiteSVM 0.13 (in-process SVM). CU accounting is a faithful \
 proxy for the on-chain meter; treat the *relative profile*, the *scaling*, and the \
-*derived ceilings* as the signal, not the absolute digits. This is the CURRENT \
-**unsharded** design (Market / OrderSlab / AuctionHistogram are each written on the \
-hot path).\n"
+*derived ceilings* as the signal, not the absolute digits. This is the **Stage A sharded** \
+design: the OrderSlab is split into `num_slab_shards` shards, each holding up to \
+`SLAB_CAP` orders, that submit and fold in parallel (submit is read-only on Market since \
+PERF-1); the single AuctionHistogram and Market remain shared. Per-instruction CU is \
+unchanged from the pre-shard baseline (`cu_report_pre_shard.md`) — sharding adds no \
+per-tx overhead; it multiplies intake throughput by the shard count.\n"
     );
     let _ = writeln!(
         r,
@@ -180,7 +190,7 @@ hot path).\n"
     }
 
     let _ = writeln!(r, "\n## process_chunk — fold cost\n");
-    let _ = writeln!(r, "Writes Market + OrderSlab + AuctionHistogram. Folding is O(orders) but the per-order cost is small next to the fixed base (event CPI + account I/O), so we report the clean endpoints: one order vs a full 128-order slab in a single chunk.\n");
+    let _ = writeln!(r, "Writes the shard + Market + AuctionHistogram. Folding is O(orders) but the per-order cost is small next to the fixed base (event CPI + account I/O), so we report the clean endpoints: one order vs a full shard (SLAB_CAP orders) in a single chunk. Shards fold in parallel into the one histogram (commutative addition).\n");
     let _ = writeln!(r, "| orders folded | CU |");
     let _ = writeln!(r, "|---|---|");
     for (k, cu) in &chunk {
@@ -222,31 +232,30 @@ the marginal-tick cumulative scan. Measured: **{} CU**.\n",
         settle_cu
     );
 
-    let _ = writeln!(
-        r,
-        "## The hard ceiling: single-account size (not compute)\n"
-    );
+    let _ = writeln!(r, "## The former hard ceiling — now sharded away\n");
     let _ = writeln!(
         r,
         "Solana caps a CPI-created/grown account at **10_240 bytes** per instruction \
-(`MAX_PERMITTED_DATA_INCREASE`). The OrderSlab (~72 bytes/order) and the AuctionHistogram \
-(~32 bytes/tick) are created this way, so a single market is capped at roughly **140 \
-orders/auction** and **~310 ticks** — *regardless of compute budget*. The program enforces \
-`orders_per_auction_cap ≤ 128` and `num_ticks ≤ 256` accordingly. Reaching the \"thousands \
-of orders\" goal therefore requires either pre-sizing the accounts over multiple realloc \
-transactions, or **sharding the slab/histogram** across several accounts \
-— which would *also* relieve the write-lock contention below. This is the single most \
-important measured constraint.\n"
+(`MAX_PERMITTED_DATA_INCREASE`). At `ORDER_LEN = 88` one OrderSlab account tops out near \
+**115 orders**, which is why the pre-shard design was capped at 128 and could not reach \
+\"thousands of orders\". **Stage A removes this by sharding**: the slab is split into \
+`num_slab_shards` independent shard accounts (`init_shard`), each sized at `SLAB_CAP` \
+(90 orders, kept within one CPI `CreateAccount` through every stage). N shards ⇒ N·SLAB_CAP \
+orders/round with no per-tx overhead, and — because submit is read-only on Market and each \
+shard is its own account — submissions and settlements to different shards run in parallel. \
+The single histogram is still O(ticks) and untouched. Completeness stays a hard gate: \
+`finalize_clear` refuses until every shard reports folded (`shards_pending == 0`), an O(1) \
+check backed by a per-shard confirming scan.\n"
     );
 
-    let _ = writeln!(r, "## Throughput of one full auction (≤128 orders)\n");
-    let _ = writeln!(r, "Every hot-path tx write-locks the Market account, so the whole round's CU competes for Market's 12M-CU/block budget. Modelling a full 128-order auction end-to-end:\n");
+    let _ = writeln!(r, "## Throughput of one full shard (SLAB_CAP orders)\n");
+    let _ = writeln!(r, "Settle write-locks Market (OI), so a shard's settle CU competes for Market's 12M-CU/block budget; submit is read-only on Market and hits only its own shard, so shards submit in parallel. Modelling one full shard end-to-end (aggregate = this × num_slab_shards for the parallel parts):\n");
     let _ = writeln!(r, "| phase | txs | CU each | CU total |");
     let _ = writeln!(r, "|---|---|---|---|");
     let _ = writeln!(
         r,
-        "| submit | 128 | ~{} (occ 120) | ~{} |",
-        submit_cu_worst, submit_total
+        "| submit (own shard, parallel) | {} | ~{} (occ 89) | ~{} |",
+        FULL_AUCTION_ORDERS, submit_cu_worst, submit_total
     );
     let _ = writeln!(r, "| accumulate | 1 | ~{} | ~{} |", cu_hi, cu_hi);
     let _ = writeln!(
@@ -254,7 +263,11 @@ important measured constraint.\n"
         "| finalize | 1 | ~{} | ~{} |",
         max_finalize_cu, max_finalize_cu
     );
-    let _ = writeln!(r, "| settle | 128 | ~{} | ~{} |", settle_cu, settle_total);
+    let _ = writeln!(
+        r,
+        "| settle | {} | ~{} | ~{} |",
+        FULL_AUCTION_ORDERS, settle_cu, settle_total
+    );
     let _ = writeln!(
         r,
         "| **total Market write-lock** | | | **~{} CU** |",
@@ -262,10 +275,11 @@ important measured constraint.\n"
     );
     let _ = writeln!(
         r,
-        "\nA full 128-order auction puts ~{} CU on the Market write-lock — about {:.1}% of \
-one block's 12M budget — so a single market clears a **full auction in ~{} block(s)**. \
-Submission and settlement (128 txs each, serialized on the shared Market/OrderSlab locks) \
-dominate; clearing itself is negligible.\n",
+        "\nA full shard puts ~{} CU on the Market write-lock — about {:.1}% of one block's \
+12M budget — so one shard's settle-side load clears in ~{} block(s). Submission is now \
+parallel across shards (Market read-only), so intake scales with `num_slab_shards`; the \
+remaining shared serialization is the Market OI write on settle (a candidate for OI-sharding \
+if the benchmark shows it is the wall).\n",
         market_load,
         100.0 * market_load as f64 / ACCOUNT_BLOCK_CU as f64,
         blocks_for_full_auction
@@ -284,7 +298,7 @@ ceiling; sharding the slab + histogram would lift the accumulation ceiling. Whet
 work is warranted is exactly what these numbers are meant to decide.\n"
     );
 
-    let path = workspace_root().join("cu_report.md");
+    let path = workspace_root().join("docs/bench/cu_report.md");
     std::fs::write(&path, r).expect("write cu_report.md");
     eprintln!("wrote {}", path.display());
 

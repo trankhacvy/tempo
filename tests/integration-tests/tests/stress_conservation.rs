@@ -15,6 +15,10 @@
 //! winner/loser gate, and `start_auction` slab/histogram reuse under sustained
 //! random load. Deterministic (seeded) so any failure reproduces exactly.
 
+// The paired-trader loops index `traders` by position (parity selects long/short
+// legs), so the range-index form reads clearer than an iterator here.
+#![allow(clippy::needless_range_loop)]
+
 use tempo_integration_tests::*;
 
 const ROUNDS: u64 = 40;
@@ -83,7 +87,7 @@ fn stress_many_rounds_conserve_and_oi_returns_to_zero() {
     let pairs = N / 2;
     // Per-maker strictly-increasing quote sequence (UpdateMakerQuoteLevels rejects
     // a non-increasing sequence; it persists across rounds).
-    let mut quote_seq = vec![0u64; N];
+    let mut quote_seq = [0u64; N];
 
     for _round in 0..ROUNDS {
         let p_open = price;

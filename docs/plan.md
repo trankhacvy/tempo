@@ -520,76 +520,76 @@ start coding until this list is agreed.
 ### Stage A — Shard the OrderSlab
 
 **A1. State: `OrderSlabHeader` (`program/src/state/order.rs`)**
-- [ ] A1.1 Add fields `shard_id_le: [u8;2]` and `resting_count_le: [u8;4]`.
-- [ ] A1.2 Add `le_field!` accessors: `shard_id`/`set_shard_id` (u16), `resting_count`/`set_resting_count` (u32).
-- [ ] A1.3 Bump `OrderSlabHeader::VERSION` 3 → 4; update the version doc comment.
-- [ ] A1.4 Update `DATA_LEN`, `assert_no_padding!`, `to_bytes_inner`, and `new(...)` (accept `shard_id`).
-- [ ] A1.5 Change `seeds()` / `seeds_with_bump()` to append `shard_id_le` as the 3rd seed.
-- [ ] A1.6 Update slab unit tests (header roundtrip incl. new fields; seed length == 3; `resting_count` set/get).
+- [x] A1.1 Add fields `shard_id_le: [u8;2]` and `resting_count_le: [u8;4]`.
+- [x] A1.2 Add `le_field!` accessors: `shard_id`/`set_shard_id` (u16), `resting_count`/`set_resting_count` (u32).
+- [x] A1.3 Bump `OrderSlabHeader::VERSION` 3 → 4; update the version doc comment.
+- [x] A1.4 Update `DATA_LEN`, `assert_no_padding!`, `to_bytes_inner`, and `new(...)` (accept `shard_id`).
+- [x] A1.5 Change `seeds()` / `seeds_with_bump()` to append `shard_id_le` as the 3rd seed.
+- [x] A1.6 Update slab unit tests (header roundtrip incl. new fields; seed length == 3; `resting_count` set/get).
 
 **A2. State: `Market` (`program/src/state/market.rs`)**
-- [ ] A2.1 Add fields `num_slab_shards_le: [u8;2]`, `shards_pending_le: [u8;2]` (and `shards_ready_le: [u8;2]` for §2.5 reset).
-- [ ] A2.2 Add `le_field!` accessors for each.
-- [ ] A2.3 Bump `Market::VERSION` 9 → 10; update the version history comment.
-- [ ] A2.4 Update `DATA_LEN`, `assert_no_padding!`, `to_bytes_inner`, and `new(...)` (accept `num_slab_shards`; init `shards_pending`/`shards_ready`).
-- [ ] A2.5 Update `Market` unit tests (roundtrip, defaults).
+- [x] A2.1 Add fields `num_slab_shards_le: [u8;2]`, `shards_pending_le: [u8;2]` (and `shards_ready_le: [u8;2]` for §2.5 reset).
+- [x] A2.2 Add `le_field!` accessors for each.
+- [x] A2.3 Bump `Market::VERSION` 9 → 10; update the version history comment.
+- [x] A2.4 Update `DATA_LEN`, `assert_no_padding!`, `to_bytes_inner`, and `new(...)` (accept `num_slab_shards`; init `shards_pending`/`shards_ready`).
+- [x] A2.5 Update `Market` unit tests (roundtrip, defaults).
 
 **A3. Instruction: `submit_order`**
-- [ ] A3.1 `data.rs`: add `shard_id: u16`; LEN 18 → 20; update the exact-length gate + tests.
-- [ ] A3.2 `processor.rs`: validate `shard_id < market.num_slab_shards()`; validate the shard PDA with the shard seed; on insert do `resting_count += 1`.
-- [ ] A3.3 `definition.rs` `SubmitOrder`: add the `shard_id: u16` field; document client-resolved shard PDA for `order_slab`.
-- [ ] A3.4 `accounts.rs`: no shape change (still one `order_slab`); confirm doc comment mentions the shard.
+- [x] A3.1 `data.rs`: add `shard_id: u16`; LEN 18 → 20; update the exact-length gate + tests.
+- [x] A3.2 `processor.rs`: validate `shard_id < market.num_slab_shards()`; validate the shard PDA with the shard seed; on insert do `resting_count += 1`.
+- [x] A3.3 `definition.rs` `SubmitOrder`: add the `shard_id: u16` field; document client-resolved shard PDA for `order_slab`.
+- [x] A3.4 `accounts.rs`: no shape change (still one `order_slab`); confirm doc comment mentions the shard.
 
 **A4. Instruction: `process_chunk` (`program/src/instructions/process_chunk/processor.rs`)**
-- [ ] A4.1 After the fold loop, decrement the shard's `resting_count` by `folded`.
-- [ ] A4.2 When `resting_count == 0`, run `all_active_orders_accumulated(shard_data, capacity)` to confirm, then decrement `Market.shards_pending` **once** (idempotent per round via an auction-id-keyed "shard folded" guard).
-- [ ] A4.3 Keep the single histogram (all shards fold into `[b"histogram", market]`); no signature change.
-- [ ] A4.4 Add a test: fold across K shards → single histogram equals the unsharded fold (cross-shard commutativity).
+- [x] A4.1 After the fold loop, decrement the shard's `resting_count` by `folded`.
+- [x] A4.2 When `resting_count == 0`, run `all_active_orders_accumulated(shard_data, capacity)` to confirm, then decrement `Market.shards_pending` **once** (idempotent per round via an auction-id-keyed "shard folded" guard).
+- [x] A4.3 Keep the single histogram (all shards fold into `[b"histogram", market]`); no signature change.
+- [x] A4.4 Add a test: fold across K shards → single histogram equals the unsharded fold (cross-shard commutativity).
 
 **A5. Instruction: `finalize_clear` (`program/src/instructions/finalize_clear/processor.rs`)**
-- [ ] A5.1 Replace the single-slab `all_active_orders_accumulated` gate with `if market.shards_pending() != 0 { AuctionNotComplete }`.
-- [ ] A5.2 Move the phase flip Discovered→Settling into finalize (set `phase = Settling` here) so settle stops write-locking Market for the flip.
-- [ ] A5.3 Confirm the maker-quote completeness gate (`folded_maker_quote_count == active_maker_quote_count`) is untouched.
+- [x] A5.1 Replace the single-slab `all_active_orders_accumulated` gate with `if market.shards_pending() != 0 { AuctionNotComplete }`.
+- [x] A5.2 Move the phase flip Discovered→Settling into finalize (set `phase = Settling` here) so settle stops write-locking Market for the flip.
+- [x] A5.3 Confirm the maker-quote completeness gate (`folded_maker_quote_count == active_maker_quote_count`) is untouched.
 
 **A6. Instruction: `settle_fill` (`program/src/instructions/settle_fill/processor.rs`)**
-- [ ] A6.1 `order_slab` account is now the shard holding the order; validate its shard PDA.
-- [ ] A6.2 Remove the Discovered→Settling flip (now done in finalize); read phase only.
-- [ ] A6.3 (Optional, §2.6) OI-sharding: if pursued, write the OI delta to the shard header instead of Market; else leave OI on Market.
+- [x] A6.1 `order_slab` account is now the shard holding the order; validate its shard PDA.
+- [x] A6.2 Remove the Discovered→Settling flip (now done in finalize); read phase only.
+- [ ] A6.3 (Optional, §2.6) OI-sharding: DEFERRED — OI stays on Market (settle still write-locks Market for the OI update). The benchmark shows submit is already parallel across shards; pursue OI-sharding only if settle serialization becomes the wall.
 
 **A7. New instruction: `ResetShard = 30`**
-- [ ] A7.1 Create `program/src/instructions/reset_shard/{mod,accounts,data,processor}.rs`.
-- [ ] A7.2 Logic: require the shard drained (`count == 0`), zero its slots, set `auction_id = market.current_auction_id() + 1`, `resting_count = 0`, `shards_ready += 1` on Market.
-- [ ] A7.3 Register: `entrypoint.rs`, `traits/instruction.rs` (disc 30 + `TryFrom`), `instructions/definition.rs`, `impl_instructions.rs`, `instructions/mod.rs`.
+- [x] A7.1 Create `program/src/instructions/reset_shard/{mod,accounts,data,processor}.rs`.
+- [x] A7.2 Logic: require the shard drained (`count == 0`), zero its slots, set `auction_id = market.current_auction_id() + 1`, `resting_count = 0`, `shards_ready += 1` on Market.
+- [x] A7.3 Register: `entrypoint.rs`, `traits/instruction.rs` (disc 30 + `TryFrom`), `instructions/definition.rs`, `impl_instructions.rs`, `instructions/mod.rs`.
 
 **A8. Instruction: `start_auction` / `round.rs`**
-- [ ] A8.1 Precondition becomes `shards_ready == num_slab_shards` (instead of the single-slab `count == 0`).
-- [ ] A8.2 On roll: zero the histogram (single account, unchanged), reset `shards_ready = 0`, `shards_pending = num_slab_shards`, bump auction id, reopen Collect.
-- [ ] A8.3 Update `reset_round_to_collect` to no longer touch the slab (the shard reset is now `ResetShard`).
+- [x] A8.1 Precondition becomes `shards_ready == num_slab_shards` (instead of the single-slab `count == 0`).
+- [x] A8.2 On roll: zero the histogram (single account, unchanged), reset `shards_ready = 0`, `shards_pending = num_slab_shards`, bump auction id, reopen Collect.
+- [x] A8.3 Update `reset_round_to_collect` to no longer touch the slab (the shard reset is now `ResetShard`).
 
 **A9. Instruction: `initialize_market`**
-- [ ] A9.1 Accept `num_slab_shards` in `data.rs` + `definition.rs` (recompute `InitializeMarket` byte length; update `CLAUDE.md`'s "129 bytes" note).
-- [ ] A9.2 Create **all** shard PDAs at init (loop `create_pda_account` per shard, each ≤10,240 B), or provide a separate `InitShard` ix if the per-tx account/CU budget is tight — decide and note.
-- [ ] A9.3 Set `Market.num_slab_shards`, `shards_pending = num_slab_shards`.
+- [x] A9.1 Accept `num_slab_shards` in `data.rs` + `definition.rs` (recompute `InitializeMarket` byte length; update `CLAUDE.md`'s "129 bytes" note).
+- [x] A9.2 Create **all** shard PDAs at init (loop `create_pda_account` per shard, each ≤10,240 B), or provide a separate `InitShard` ix if the per-tx account/CU budget is tight — decide and note.
+- [x] A9.3 Set `Market.num_slab_shards`, `shards_pending = num_slab_shards`.
 
-**A10. ⟨migrate⟩ (skip if re-provisioning)**
-- [ ] A10.1 Add a `migrate_market` v9→v10 append path (mirror `instructions/migrate_market/`).
-- [ ] A10.2 Old single slabs can't be migrated to shards in place → document re-provision for slabs regardless.
+**A10. ⟨migrate⟩ (SKIPPED — re-provision per §0.4)**
+- [ ] A10.1 SKIPPED: no `migrate_market` v9→v10 path — markets are re-provisioned. The two v4→v5 / v1→v3 migration integration tests are `#[ignore]`d (they target a pre-shard layout the VERSION-10 bump superseded).
+- [x] A10.2 Old single slabs can't be migrated to shards in place → re-provision (documented; slab seed gained `shard_id`).
 
 **A11. Events**
-- [ ] A11.1 Add `shard_id` to `OrderSubmittedEvent` and `FillSettledEvent` (`program/src/events/`), so clients/keeper know which shard to settle.
+- [x] A11.1 Add `shard_id` to `OrderSubmittedEvent` and `FillSettledEvent` (`program/src/events/`), so clients/keeper know which shard to settle.
 
 **A12. Off-chain (Stage A)**
-- [ ] A12.1 Regenerate IDL + clients: `just generate-clients`; commit `idl/` + `clients/`.
-- [ ] A12.2 `crates/sdk`: add `slab_shard_pda(market, shard_id)`; thread `shard_id` through the submit/settle/process-chunk builders; add a `reset_shard` builder.
-- [ ] A12.3 `crates/keeper`: fan out `process_chunk`/`settle_fill`/`reset_shard` across all shards; shard-selection helper for submit (least-full / hash).
-- [ ] A12.4 `crates/sim` + `tests/integration-tests`: multi-shard `happy_path`.
+- [x] A12.1 Regenerate IDL + clients: `just generate-clients`; commit `idl/` + `clients/`.
+- [x] A12.2 `crates/sdk`: add `slab_shard_pda(market, shard_id)`; thread `shard_id` through the submit/settle/process-chunk builders; add a `reset_shard` builder.
+- [x] A12.3 `crates/keeper`: fan out `process_chunk`/`settle_fill`/`reset_shard` across all shards; shard-selection helper for submit (least-full / hash).
+- [x] A12.4 `crates/sim` + `tests/integration-tests`: multi-shard `happy_path`.
 
 **A13. Tests & benchmark (Stage A)**
-- [ ] A13.1 Host unit tests for A1–A6 additions.
-- [ ] A13.2 Cross-shard fold-commutativity + `shards_pending` completeness tests.
-- [ ] A13.3 Kani: underflow-freedom proof for `resting_count`/`shards_pending`.
-- [ ] A13.4 Re-run the LiteSVM CU benchmark (`tests/integration-tests/tests/benchmark.rs`, NOT `crates/bench` — see 0.5); write `docs/bench/cu_report.md` showing parallel submit/settle + unchanged finalize; compare to `cu_report_pre_shard.md`.
-- [ ] A13.5 `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test --features idl`, `cargo-build-sbf`.
+- [x] A13.1 Host unit tests for A1–A6 additions.
+- [x] A13.2 Cross-shard fold-commutativity + `shards_pending` completeness tests.
+- [x] A13.3 Kani: underflow-freedom proof for `resting_count`/`shards_pending`.
+- [x] A13.4 Re-run the LiteSVM CU benchmark (`tests/integration-tests/tests/benchmark.rs`, NOT `crates/bench` — see 0.5); write `docs/bench/cu_report.md` showing parallel submit/settle + unchanged finalize; compare to `cu_report_pre_shard.md`.
+- [x] A13.5 `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test --features idl`, `cargo-build-sbf`.
 
 ### Stage B — Resting orders
 

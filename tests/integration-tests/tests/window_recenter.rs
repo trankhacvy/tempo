@@ -14,7 +14,10 @@ use tempo_integration_tests::*;
 fn window_floor(ctx: &TestContext, pdas: &MarketPdas) -> u64 {
     let raw = ctx.account_raw(&pdas.market);
     let n = raw.len();
-    u64::from_le_bytes(raw[n - 26..n - 18].try_into().unwrap())
+    // window_floor_price sits before initial_margin_bps(2) + max_position_notional(16)
+    // + the Stage A shard tail num_slab_shards(2) + shards_pending(2) + shards_ready(2)
+    // = 24 trailing bytes.
+    u64::from_le_bytes(raw[n - 32..n - 24].try_into().unwrap())
 }
 
 #[test]

@@ -6,6 +6,18 @@
 //! readers that mirror the on-disk byte layouts documented in `program/src`
 //! (disc + version prefix at offset 0..2, then the `#[repr(C)]` fields). The
 //! readers deliberately do NOT depend on the program crate's internals.
+//!
+//! Test-harness clippy allowances: the instruction builders take many positional
+//! params by design (they mirror the wire encoding), and the `send*` helpers return
+//! `Result<_, FailedTransactionMetadata>` whose `Err` variant is large — boxing it in
+//! test code adds nothing. These lints are not gated by CI (`just services-check` does
+//! not include this crate); the allowances keep `cargo clippy --workspace -D warnings`
+//! clean without churning test-only signatures.
+#![allow(
+    clippy::result_large_err,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -65,6 +77,8 @@ const IX_MIGRATE_MARKET: u8 = 26;
 const IX_MIGRATE_POSITION: u8 = 27;
 const IX_REMOVE_POSITION_FROM_MARGIN: u8 = 28;
 const IX_CLOSE_MAKER_QUOTE: u8 = 29;
+const IX_INIT_SHARD: u8 = 30;
+const IX_RESET_SHARD: u8 = 31;
 
 /// One cross-margin member as supplied to `withdraw_cross` / `liquidate_cross`
 /// (known-issues §2.4): a `Live` member is a `(position, market, oracle)` triple;
@@ -166,14 +180,30 @@ pub struct MarketPdas {
     pub market_bump: u8,
     pub histogram: Pubkey,
     pub histogram_bump: u8,
+    /// Shard 0's `OrderSlab` PDA (Stage A sharding). Kept as `order_slab` for the
+    /// single-shard default path; use [`MarketPdas::slab_shard`] for other shards.
     pub order_slab: Pubkey,
     pub order_slab_bump: u8,
     pub clearing: Pubkey,
     pub clearing_bump: u8,
+    /// Number of `OrderSlab` shards this market was initialized with (Stage A
+    /// sharding). Defaults to 1; `init_market` sets it and creates every shard via
+    /// `init_shard`. `start_auction` must `reset_shard` all of them before rolling.
+    pub num_slab_shards: u16,
     /// Oracle the market is bound to (set by `init_market*`; `start_auction` must
     /// pass it so the new round's tick window re-snaps onto it — known-issues §2.7).
     /// `Pubkey::default()` until the market is initialized.
     pub oracle: Pubkey,
+}
+
+impl MarketPdas {
+    /// Derive shard `shard_id`'s `OrderSlab` PDA `[b"order_slab", market, shard_id]`.
+    pub fn slab_shard(&self, shard_id: u16) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[b"order_slab", self.market.as_ref(), &shard_id.to_le_bytes()],
+            &TEMPO_PROGRAM_ID,
+        )
+    }
 }
 
 /// Decoded fields of a `MakerQuote` account (Phase 2 harness reader).
@@ -362,6 +392,9 @@ pub struct TestContext {
     pub market_initial_margin_bps: Option<u16>,
     /// Per-position notional cap written at init; defaults to 0 (disabled).
     pub market_max_position_notional: u128,
+    /// Number of `OrderSlab` shards a market is created with (Stage A sharding);
+    /// defaults to 1 (single-shard path). Set before `init_market` for multi-shard tests.
+    pub market_num_slab_shards: u16,
     /// Collateral mint written onto the `Market` at init (binds it to a vault);
     /// `None` → a zero mint, so the vault-binding check is skipped (legacy/clearing
     /// markets). Set before `init_market` to exercise the binding.
@@ -434,6 +467,7 @@ impl TestContext {
             market_soft_stale_slots: 0,
             market_initial_margin_bps: None,
             market_max_position_notional: 0,
+            market_num_slab_shards: 1,
             market_collateral_mint: None,
             vault_mint: None,
             signers: HashMap::new(),
@@ -456,8 +490,11 @@ impl TestContext {
             Pubkey::find_program_address(&[b"market", market_seed.as_ref()], &TEMPO_PROGRAM_ID);
         let (histogram, histogram_bump) =
             Pubkey::find_program_address(&[b"histogram", market.as_ref()], &TEMPO_PROGRAM_ID);
-        let (order_slab, order_slab_bump) =
-            Pubkey::find_program_address(&[b"order_slab", market.as_ref()], &TEMPO_PROGRAM_ID);
+        // Stage A: the slab PDA gained a `shard_id` seed; `order_slab` is shard 0.
+        let (order_slab, order_slab_bump) = Pubkey::find_program_address(
+            &[b"order_slab", market.as_ref(), &0u16.to_le_bytes()],
+            &TEMPO_PROGRAM_ID,
+        );
         let (clearing, clearing_bump) =
             Pubkey::find_program_address(&[b"clearing", market.as_ref()], &TEMPO_PROGRAM_ID);
         MarketPdas {
@@ -470,6 +507,7 @@ impl TestContext {
             order_slab_bump,
             clearing,
             clearing_bump,
+            num_slab_shards: 1,
             oracle: Pubkey::default(),
         }
     }
@@ -530,6 +568,8 @@ impl TestContext {
         let market_seed = Keypair::new();
         let mut pdas = self.derive_pdas(market_seed.pubkey());
         pdas.oracle = oracle;
+        let num_slab_shards = self.market_num_slab_shards.max(1);
+        pdas.num_slab_shards = num_slab_shards;
 
         // Risk config must satisfy the program's init validation (missing-features
         // §1.3): a no-money-path market (maint == 0) carries zero penalty + zero
@@ -545,7 +585,7 @@ impl TestContext {
             )
         };
 
-        let mut data = Vec::with_capacity(1 + 129);
+        let mut data = Vec::with_capacity(1 + 131);
         data.push(IX_INITIALIZE_MARKET);
         data.push(pdas.market_bump);
         data.push(pdas.histogram_bump);
@@ -565,7 +605,11 @@ impl TestContext {
         data.extend_from_slice(&self.market_soft_stale_slots.to_le_bytes());
         data.extend_from_slice(&initial_bps.to_le_bytes());
         data.extend_from_slice(&self.market_max_position_notional.to_le_bytes());
+        // Stage A sharding: number of OrderSlab shards (created below via init_shard).
+        data.extend_from_slice(&num_slab_shards.to_le_bytes());
 
+        // initialize_market no longer creates the slab (shards are made one-per-tx by
+        // init_shard), so there is no `order_slab` account here.
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
             accounts: vec![
@@ -574,7 +618,6 @@ impl TestContext {
                 AccountMeta::new_readonly(market_seed.pubkey(), true),
                 AccountMeta::new(pdas.market, false),
                 AccountMeta::new(pdas.histogram, false),
-                AccountMeta::new(pdas.order_slab, false),
                 AccountMeta::new_readonly(oracle, false),
                 AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
                 AccountMeta::new_readonly(self.event_authority, false),
@@ -587,7 +630,50 @@ impl TestContext {
             .expect("init_market");
         self.market_authority
             .insert(pdas.market, authority.insecure_clone());
+        // Create every slab shard (Stage A: init_shard is a separate, per-shard ix).
+        for shard_id in 0..num_slab_shards {
+            self.init_shard(&pdas, shard_id);
+        }
         pdas
+    }
+
+    // -- instruction: InitShard (Stage A sharding) --------------------------
+
+    /// Create one `OrderSlab` shard `[b"order_slab", market, shard_id]`.
+    fn init_shard(&mut self, pdas: &MarketPdas, shard_id: u16) {
+        let (slab, bump) = pdas.slab_shard(shard_id);
+        let mut data = Vec::with_capacity(1 + 3);
+        data.push(IX_INIT_SHARD);
+        data.extend_from_slice(&shard_id.to_le_bytes());
+        data.push(bump);
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(self.payer.pubkey(), true),
+                AccountMeta::new_readonly(pdas.market, false),
+                AccountMeta::new(slab, false),
+                AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+            ],
+            data,
+        };
+        self.send(ix, &[]).expect("init_shard");
+    }
+
+    // -- instruction: ResetShard (Stage A sharding) -------------------------
+
+    /// Zero + re-arm one drained shard for the next round (permissionless).
+    fn reset_shard(&mut self, pdas: &MarketPdas, shard_id: u16) {
+        let (slab, _) = pdas.slab_shard(shard_id);
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(self.payer.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+                AccountMeta::new(slab, false),
+            ],
+            data: vec![IX_RESET_SHARD],
+        };
+        self.send(ix, &[]).expect("reset_shard");
     }
 
     // -- instruction: SubmitOrder -------------------------------------------
@@ -596,7 +682,7 @@ impl TestContext {
     fn account_exists(&self, key: &Pubkey) -> bool {
         self.svm
             .get_account(key)
-            .map_or(false, |a| !a.data.is_empty())
+            .is_some_and(|a| !a.data.is_empty())
     }
 
     fn submit_order_ix(
@@ -607,19 +693,21 @@ impl TestContext {
         price: u64,
         qty: u64,
         reduce_only: bool,
+        shard_id: u16,
     ) -> Instruction {
-        // Taker-only (§1.3). Wire = [disc, side, price(8), qty(8), reduce_only(1)].
-        let mut data = Vec::with_capacity(1 + 18);
+        // Taker-only (§1.3). Wire = [disc, side, price(8), qty(8), reduce_only(1), shard_id(2)].
+        let mut data = Vec::with_capacity(1 + 20);
         data.push(IX_SUBMIT_ORDER);
         data.push(side);
         data.extend_from_slice(&price.to_le_bytes());
         data.extend_from_slice(&qty.to_le_bytes());
         data.push(reduce_only as u8);
+        data.extend_from_slice(&shard_id.to_le_bytes());
 
         let mut accounts = vec![
             AccountMeta::new(*trader, true),
             AccountMeta::new(pdas.market, false),
-            AccountMeta::new(pdas.order_slab, false),
+            AccountMeta::new(pdas.slab_shard(shard_id).0, false),
             AccountMeta::new_readonly(self.event_authority, false),
             AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
         ];
@@ -651,7 +739,7 @@ impl TestContext {
         qty: u64,
     ) -> u64 {
         let order_id = self.order_slab(pdas).next_order_id;
-        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false);
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, 0);
         self.send(ix, &[trader]).expect("submit_order");
         self.signers
             .entry(trader.pubkey())
@@ -670,7 +758,7 @@ impl TestContext {
         qty: u64,
     ) -> u64 {
         let order_id = self.order_slab(pdas).next_order_id;
-        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, true);
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, true, 0);
         self.send(ix, &[trader]).expect("submit_order_reduce_only");
         self.signers
             .entry(trader.pubkey())
@@ -687,8 +775,31 @@ impl TestContext {
         price: u64,
         qty: u64,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false);
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, 0);
         self.send(ix, &[trader])
+    }
+
+    /// Submit a taker order into a specific shard (Stage A multi-shard tests). Returns
+    /// the order id (read from that shard's `next_order_id`).
+    pub fn submit_order_to_shard(
+        &mut self,
+        pdas: &MarketPdas,
+        trader: &Keypair,
+        side: u8,
+        price: u64,
+        qty: u64,
+        shard_id: u16,
+    ) -> u64 {
+        let order_id = self
+            .order_slab_shard(pdas, shard_id)
+            .expect("shard slab exists")
+            .next_order_id;
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, shard_id);
+        self.send(ix, &[trader]).expect("submit_order_to_shard");
+        self.signers
+            .entry(trader.pubkey())
+            .or_insert_with(|| trader.insecure_clone());
+        order_id
     }
 
     /// Post a single maker order at `price` via the MakerQuote book (a one-level
@@ -808,6 +919,57 @@ impl TestContext {
         self.send(ix, &[]).expect("process_chunk")
     }
 
+    /// Fold a chunk of a specific shard (Stage A multi-shard tests).
+    pub fn process_chunk_shard(
+        &mut self,
+        pdas: &MarketPdas,
+        shard_id: u16,
+        start: u32,
+        max: u32,
+    ) -> TransactionMetadata {
+        self.ensure_collect_window_closed(pdas);
+        let ix = self.process_chunk_shard_ix(pdas, shard_id, start, max);
+        self.send(ix, &[]).expect("process_chunk_shard")
+    }
+
+    /// Try to fold a chunk of a specific shard (raw result, for negative/completeness tests).
+    pub fn try_process_chunk_shard(
+        &mut self,
+        pdas: &MarketPdas,
+        shard_id: u16,
+        start: u32,
+        max: u32,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.ensure_collect_window_closed(pdas);
+        let ix = self.process_chunk_shard_ix(pdas, shard_id, start, max);
+        self.send(ix, &[])
+    }
+
+    fn process_chunk_shard_ix(
+        &self,
+        pdas: &MarketPdas,
+        shard_id: u16,
+        start: u32,
+        max: u32,
+    ) -> Instruction {
+        let mut data = Vec::with_capacity(1 + 8);
+        data.push(IX_PROCESS_CHUNK);
+        data.extend_from_slice(&start.to_le_bytes());
+        data.extend_from_slice(&max.to_le_bytes());
+        Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(self.payer.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+                AccountMeta::new(pdas.slab_shard(shard_id).0, false),
+                AccountMeta::new(pdas.histogram, false),
+                AccountMeta::new_readonly(self.event_authority, false),
+                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            ],
+            data,
+        }
+    }
+
     /// Process a chunk with an arbitrary cranker signer.
     pub fn process_chunk_by(
         &mut self,
@@ -844,7 +1006,6 @@ impl TestContext {
                 AccountMeta::new(*cranker, true),
                 AccountMeta::new(pdas.market, false),
                 AccountMeta::new_readonly(pdas.histogram, false),
-                AccountMeta::new_readonly(pdas.order_slab, false),
                 AccountMeta::new(pdas.clearing, false),
                 AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
                 AccountMeta::new_readonly(self.event_authority, false),
@@ -870,7 +1031,6 @@ impl TestContext {
                 AccountMeta::new(cranker.pubkey(), true),
                 AccountMeta::new(pdas.market, false),
                 AccountMeta::new_readonly(pdas.histogram, false),
-                AccountMeta::new_readonly(pdas.order_slab, false),
                 AccountMeta::new(pdas.clearing, false),
                 AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
                 AccountMeta::new_readonly(self.event_authority, false),
@@ -899,7 +1059,6 @@ impl TestContext {
                 AccountMeta::new(cranker.pubkey(), true),
                 AccountMeta::new(pdas.market, false),
                 AccountMeta::new_readonly(pdas.histogram, false),
-                AccountMeta::new_readonly(pdas.order_slab, false),
                 AccountMeta::new(pdas.clearing, false),
                 AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
                 AccountMeta::new_readonly(self.event_authority, false),
@@ -928,7 +1087,6 @@ impl TestContext {
                 AccountMeta::new(cranker.pubkey(), true),
                 AccountMeta::new(pdas.market, false),
                 AccountMeta::new_readonly(pdas.histogram, false),
-                AccountMeta::new_readonly(pdas.order_slab, false),
                 AccountMeta::new(pdas.clearing, false),
                 AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
                 AccountMeta::new_readonly(self.event_authority, false),
@@ -1528,13 +1686,14 @@ impl TestContext {
     // -- instruction: StartAuction ------------------------------------------
 
     fn start_auction_ix(&self, pdas: &MarketPdas) -> Instruction {
+        // Stage A: the slab is zeroed per-shard by `reset_shard`, so `start_auction`
+        // no longer takes an `order_slab` account (the roll gate is `shards_ready`).
         Instruction {
             program_id: TEMPO_PROGRAM_ID,
             accounts: vec![
                 AccountMeta::new_readonly(self.payer.pubkey(), true),
                 AccountMeta::new(pdas.market, false),
                 AccountMeta::new(pdas.histogram, false),
-                AccountMeta::new(pdas.order_slab, false),
                 // Oracle for the per-round window recenter (known-issues §2.7). A
                 // dummy/non-Pyth oracle just skips the recenter (carry forward).
                 AccountMeta::new_readonly(pdas.oracle, false),
@@ -1543,8 +1702,12 @@ impl TestContext {
         }
     }
 
-    /// Roll the market into its next round (payer as cranker).
+    /// Roll the market into its next round (payer as cranker). Stage A: every drained
+    /// shard is `reset_shard`'d first (so `shards_ready == num_slab_shards`), then rolled.
     pub fn start_auction(&mut self, pdas: &MarketPdas) -> TransactionMetadata {
+        for shard_id in 0..pdas.num_slab_shards {
+            self.reset_shard(pdas, shard_id);
+        }
         let ix = self.start_auction_ix(pdas);
         self.send(ix, &[]).expect("start_auction")
     }
@@ -1670,10 +1833,7 @@ impl TestContext {
         let (vault, vault_bump) = self.vault_pda();
         let (_authority, authority_bump) = self.vault_authority_pda();
 
-        let mut data = Vec::with_capacity(1 + 2);
-        data.push(IX_INIT_VAULT);
-        data.push(vault_bump);
-        data.push(authority_bump);
+        let data = vec![IX_INIT_VAULT, vault_bump, authority_bump];
 
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
@@ -2410,6 +2570,25 @@ impl TestContext {
         }
     }
 
+    /// Decode a specific shard's `OrderSlabHeader` (Stage A), or `None` if the shard
+    /// PDA has not been created.
+    pub fn order_slab_shard(&self, pdas: &MarketPdas, shard_id: u16) -> Option<OrderSlabState> {
+        let slab = pdas.slab_shard(shard_id).0;
+        let acct = self.svm.get_account(&slab)?;
+        if acct.data.is_empty() {
+            return None;
+        }
+        let b = &acct.data[PREFIX..];
+        Some(OrderSlabState {
+            auction_id: read_u64(b, 0),
+            next_order_id: read_u64(b, 8),
+            capacity: read_u32(b, 16),
+            count: read_u32(b, 20),
+            market: read_pubkey(b, 24),
+            bump: b[56],
+        })
+    }
+
     /// Decode the `AuctionHistogramHeader`.
     pub fn histogram(&self, pdas: &MarketPdas) -> HistogramState {
         let d = self.account_data(&pdas.histogram);
@@ -2493,7 +2672,9 @@ impl TestContext {
     pub fn orders(&self, pdas: &MarketPdas) -> Vec<OrderRecord> {
         let d = self.account_data(&pdas.order_slab);
         let slab = self.order_slab(pdas);
-        let slots_off = PREFIX + 61; // header data len = 61 (added next_free_hint u32, §2.7)
+        // header data len = 75 (Stage A appended shard_id u16 + resting_count u32 +
+        // folded_auction_id u64 = 14 bytes to the pre-shard 61).
+        let slots_off = PREFIX + 75;
         let mut out = Vec::new();
         for i in 0..slab.capacity as usize {
             let base = slots_off + i * ORDER_LEN;
