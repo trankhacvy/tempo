@@ -5,8 +5,8 @@ use crate::{
     events::OrderCancelledEvent,
     instructions::CancelOrder,
     state::{
-        find_order_by_id_hinted, read_order, write_order, AuctionPhase, Market, Order,
-        OrderSlabHeader, OrderStatus,
+        find_order_by_id_hinted, read_order, write_order, Market, Order, OrderSlabHeader,
+        OrderStatus,
     },
     traits::{AccountDeserialize, EventSerialize, PdaSeeds},
     utils::emit_event,
@@ -33,11 +33,18 @@ pub fn process_cancel_order(
 ) -> ProgramResult {
     let ix = CancelOrder::try_from((instruction_data, accounts))?;
 
-    // --- phase check ---
+    // --- read auction id (always-open, DDR-4) ---
+    // Cancel is accepted in ANY phase, symmetric with the now always-open `submit_order`
+    // (Stage C1): otherwise a trader who submits mid-round could not reclaim that order's
+    // locked margin until the next Collect, a full round later. This is safe in every
+    // phase because the `status == OrderStatus::Resting` guard below refuses to cancel an
+    // order that has already folded (`Accumulated`) — only a still-Resting order (never in
+    // the histogram) can be removed, so cancelling can never desync the histogram/clearing
+    // from the slab. `market.phase()?` still validates the phase byte is a known value.
     let auction_id = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
-        market.require_phase(AuctionPhase::Collect)?;
+        let _ = market.phase()?;
         market.current_auction_id()
     };
 

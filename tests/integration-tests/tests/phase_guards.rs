@@ -56,6 +56,41 @@ fn submit_after_accumulating_arms_next_round() {
 }
 
 #[test]
+fn cancel_is_always_open_symmetric_with_submit() {
+    // Stage C1 follow-up: submit is always-open, so cancel must be too — otherwise a
+    // trader who submits mid-round cannot reclaim that order (and its locked margin)
+    // until the next Collect. Cancelling a still-Resting order is safe in any phase
+    // (it was never folded into the histogram).
+    let mut ctx = TestContext::new();
+    let pdas = ctx.init_market(10, 16, 64);
+
+    let a = ctx.new_funded_signer();
+    let b = ctx.new_funded_signer();
+    ctx.submit_order(&pdas, &a, SIDE_BUY, 30, 10);
+    ctx.submit_order(&pdas, &b, SIDE_SELL, 30, 10);
+
+    // Leave Collect.
+    ctx.process_chunk(&pdas, 0, 64);
+    assert_eq!(ctx.market(&pdas).phase, PHASE_ACCUMULATING);
+
+    // Submit a deferred order mid-round, then cancel it in the SAME (non-Collect) phase.
+    let c = ctx.new_funded_signer();
+    let c_id = ctx.submit_order(&pdas, &c, SIDE_BUY, 30, 5);
+    assert_eq!(ctx.order_slab(&pdas).count, 3);
+
+    ctx.cancel_order(&pdas, &c, c_id); // must succeed outside Collect now
+    assert_eq!(
+        ctx.order_slab(&pdas).count,
+        2,
+        "deferred order was cancelled"
+    );
+    assert!(
+        ctx.orders(&pdas).into_iter().all(|o| o.order_id != c_id),
+        "cancelled order is gone from the slab"
+    );
+}
+
+#[test]
 fn finalize_fails_when_chunk_skipped() {
     let mut ctx = TestContext::new();
     // capacity 8 so orders land in distinct, predictable slots.
