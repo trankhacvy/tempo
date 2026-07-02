@@ -46,6 +46,20 @@ impl<'a> TxSender<'a> {
         ixs: &[Instruction],
         cu_limit: u32,
     ) -> Result<Signature, CommonError> {
+        self.send_signed(&[payer], ixs, cu_limit).await
+    }
+
+    /// Multi-signer variant: `signers[0]` is the fee payer, and every signer signs.
+    /// Used to pack `submit_order` instructions from many DISTINCT traders into one
+    /// transaction (the high-volume batched submitter), so N orders cost one RPC send
+    /// instead of N. Otherwise identical to [`send`](Self::send).
+    pub async fn send_signed(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+        cu_limit: u32,
+    ) -> Result<Signature, CommonError> {
+        let payer = signers[0];
         let mut all = Vec::with_capacity(ixs.len() + 2);
         all.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
         if self.priority_fee_micro_lamports > 0 {
@@ -64,7 +78,7 @@ impl<'a> TxSender<'a> {
             .await?;
 
         let tx =
-            Transaction::new_signed_with_payer(&all, Some(&payer.pubkey()), &[payer], blockhash);
+            Transaction::new_signed_with_payer(&all, Some(&payer.pubkey()), signers, blockhash);
         let sig = tx.signatures[0];
 
         self.broadcast(start_idx, &tx).await;
@@ -103,8 +117,22 @@ impl<'a> TxSender<'a> {
         cu_limit: u32,
         attempts: usize,
     ) -> Result<Signature, CommonError> {
+        self.send_signed_with_conflict_retry(&[payer], ixs, cu_limit, attempts)
+            .await
+    }
+
+    /// Multi-signer [`send_with_conflict_retry`](Self::send_with_conflict_retry):
+    /// `signers[0]` is the fee payer; rebuilds with a fresh blockhash on a
+    /// blockhash/expiry/timeout conflict.
+    pub async fn send_signed_with_conflict_retry(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+        cu_limit: u32,
+        attempts: usize,
+    ) -> Result<Signature, CommonError> {
         for i in 0..attempts.max(1) {
-            match self.send(payer, ixs, cu_limit).await {
+            match self.send_signed(signers, ixs, cu_limit).await {
                 Ok(sig) => return Ok(sig),
                 Err(e) => {
                     if i + 1 >= attempts || !is_conflict(&e) {

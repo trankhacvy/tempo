@@ -234,4 +234,17 @@ impl TempoClient {
             .send_with_conflict_retry(payer, ixs, DEFAULT_CU_LIMIT, 4)
             .await?)
     }
+
+    /// Multi-signer send: `signers[0]` is the fee payer and every signer signs. Packs
+    /// instructions from many distinct signers (e.g. one `submit_order` per trader) into
+    /// one transaction for the high-volume batched submitter.
+    pub async fn send_signed(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+    ) -> Result<Signature, SdkError> {
+        Ok(TxSender::new(&self.pool, self.priority_fee_micro_lamports)
+            .send_signed_with_conflict_retry(signers, ixs, DEFAULT_CU_LIMIT, 4)
+            .await?)
+    }
 }
