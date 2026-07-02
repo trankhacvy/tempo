@@ -2342,11 +2342,20 @@
             },
             {
               "kind": "structFieldTypeNode",
+              "name": "reduceOnly",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
               "name": "padding",
               "type": {
                 "count": {
                   "kind": "fixedCountNode",
-                  "value": 5
+                  "value": 4
                 },
                 "item": {
                   "endian": "le",

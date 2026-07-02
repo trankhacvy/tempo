@@ -5,6 +5,93 @@ later. Newest first.
 
 ---
 
+## DDR-3 — Resting orders vs. the moving tick window (marketable-fill / passive-park)
+
+**Status:** decided 2026-07-02 · to be implemented on `feat/sharded-book` (Stage B fix batch) ·
+fixes the two blockers from the high-effort code review of commit `5c6c63c`.
+
+### Context / the problem
+
+Stage B (DDR-2) lets an unfilled/partial order **rest across rounds carrying a fixed `price`**.
+But the histogram's tick window is **oracle-anchored and recenters every roll** (`start_auction`
+→ `recenter_window`, so `window_floor = oracle − (num_ticks/2)·tick_size`). The two facts
+collide:
+
+1. **Permanent market wedge (blocker).** Once the oracle moves so a resting order's fixed price
+   leaves `[window_floor, window_floor + num_ticks·tick_size)`, next round's `process_chunk`
+   calls `price_to_tick_raw(order.price, …)?`, which **hard-errors** (`InvalidPrice`/`InvalidTick`).
+   The order can never fold → `all_active_orders_accumulated` never returns true → `finalize_clear`
+   is blocked **forever**, market-wide. Any participant can trigger it on purpose with one dust
+   resting order + a normal oracle move → a permissionless denial-of-service on the whole market.
+2. **`settle_fill` re-lock revert.** The DDR-2 margin split releases the filled slice at the
+   *stale* submit-time `worst_price`, but re-locks the leftover position at the *actual* clearing
+   price; after an upward recenter the re-lock can need more than was released and `lock()` reverts
+   → the order sticks `Accumulated` → the roll gate wedges.
+
+### The economic insight
+
+An off-window resting order is not an error — it is a limit order the market has moved relative to,
+and a limit order has a well-defined meaning by side:
+
+- **Marketable** (the market moved *through* it): a **SELL below the window floor** or a **BUY
+  above the window top**. The trader's limit is already satisfied by every in-window price → it
+  **should fill** at the clearing price (strictly better than its limit).
+- **Passive** (the market moved *away* from it): a **SELL above the top** or a **BUY below the
+  floor**. It **should keep resting** until the window slides back over it, or it expires.
+
+### Options considered
+
+- **Auto-expire any off-window order at roll.** Simpler completeness logic, but *wrong*: it throws
+  away marketable orders that were owed a fill and silently kills passive orders that would return
+  one round later; also needs the owner's collateral account at permissionless-crank time to
+  refund margin (the cranker doesn't hold it). Rejected.
+- **Widen / freeze the window.** Doesn't fix it — any larger move still wedges, and it bloats
+  O(ticks) every round. Rejected.
+- **Minimal "skip both, never crash."** Prevents the wedge (fold-skip off-window orders; don't let
+  passive ones block finalize) but leaves *marketable* orders stranded, unfilled, until the market
+  happens to return — a real fairness/correctness bug for urgent exits. Rejected as a stopping
+  point (it is the safe subset of the chosen fix).
+- **Marketable-fill + passive-park (CHOSEN).** Classify each off-window resting order by side:
+  fold marketable ones at the boundary tick so they fill; skip passive ones and exempt them from
+  the completeness gate; expiry is the eventual GC for a passive order the market never revisits.
+
+### Decision: **marketable-fill + passive-park**
+
+### How it stays safe (DDR-1 censorship guarantee holds)
+
+The classification `in-window | marketable | passive` is a **pure, deterministic function of
+`(order.price, order.side, window_floor, tick_size, num_ticks)`** — all on-chain, recomputable by
+anyone. `finalize_clear`'s completeness gate becomes: *every resting order that is in-window OR
+marketable must be folded; only passive-out-of-window orders may remain `Resting`.* A malicious
+crank cannot reclassify an order (the window is fixed by the oracle at roll), so completeness stays
+authoritative and commutative — **no new trust, no Market aggregate counter** (Design Z intact).
+
+### The margin coupling (fixes blocker 2)
+
+Margin only ever changes where the owner's collateral account is present: **passive parked orders
+do not fill → no margin change** (and their reservation, taken against the submit-window worst
+case, still covers them). **Marketable orders fill in `settle_fill`**, where the account *is*
+present, so the re-lock is handled there. To guarantee `settle_fill` **never reverts** (which would
+wedge the roll): the leftover reservation is held at the exact `initial_margin(remaining,
+worst_price)`, and when the resulting position's fresh margin at the clearing price exceeds the
+released amount, the difference is locked from the owner's **free** collateral; if free collateral
+is insufficient, the fill still settles (the trade cleared — conservation forbids un-filling it)
+and the resulting position is left **immediately liquidatable** for the existing risk backstop,
+rather than reverting the crank. Accepted consequence: a resting order the market gapped through
+can open a position slightly under initial margin, cushioned by its reserved margin and resolved by
+liquidation — liveness is never sacrificed for the initial-margin gate.
+
+### Consequences / re-review triggers
+
+- `process_chunk` and the completeness gate now need the window params (small, already on `Market`).
+- Marketable folds land at a boundary tick — a deliberate conservative representation (the order is
+  willing to trade at any in-window price); it fills at the uniform clearing price like any other.
+- Re-review if a future stage lets orders rest with **per-order price bands** or non-oracle windows,
+  or if the "fill-then-liquidate" under-margin path proves exploitable under an adversarial oracle
+  (it should not be — the mover doesn't control the oracle and forfeits reserved margin).
+
+---
+
 ## DDR-2 — Stage B resting orders: the roll gate + the partial-fill margin split
 
 **Status:** decided 2026-07-01 · implemented on `feat/sharded-book` (Stage B) · `OrderSlabHeader`

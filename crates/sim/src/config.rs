@@ -128,10 +128,10 @@ impl ProvisionConfig {
             tick_size: env_parse("TEMPO_SIM_TICK_SIZE", 10_000_000),
             num_ticks: env_parse::<u32>("TEMPO_SIM_NUM_TICKS", 256).clamp(2, 256),
             // Per-shard order cap. Must stay within the on-chain single-`CreateAccount`
-            // ceiling `MAX_ORDERS_PER_AUCTION_CAP` (115 at ORDER_LEN=88); the old default of
-            // 128 is now rejected by `initialize_market`. Default 90 is forward-safe as later
-            // stages grow `Order` and lower that ceiling.
-            cap: env_parse::<u32>("TEMPO_SIM_CAP", 90).clamp(1, 115),
+            // ceiling `MAX_ORDERS_PER_AUCTION_CAP`, now 90 at ORDER_LEN=104 (Stage B). A cap
+            // above 90 is rejected by `initialize_market`, so clamp the ceiling to 90 to fail
+            // fast in config rather than at provisioning.
+            cap: env_parse::<u32>("TEMPO_SIM_CAP", 90).clamp(1, 90),
             maint_bps,
             initial_bps,
             penalty_bps,

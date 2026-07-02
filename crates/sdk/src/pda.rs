@@ -22,6 +22,28 @@ pub fn order_slab(market: &Pubkey, shard_id: u16) -> (Pubkey, u8) {
     )
 }
 
+/// The canonical shard a trader routes ALL its orders to (Stage B / DDR-3 /
+/// Finding 4). The on-chain per-trader order cap (`MAX_ORDERS_PER_TRADER`) is
+/// enforced per shard (submit stays `Market`-read-only for parallel intake, so it
+/// can't scan every shard). Routing each trader deterministically to one shard —
+/// `shard = hash(trader) % num_slab_shards` — makes that per-shard cap act as the
+/// trader's *global* standing-order cap. Reference clients (the sim taker fleet)
+/// use this; a client that spreads one trader across shards would sidestep the cap.
+/// Returns `0` for a single-shard market.
+pub fn shard_for_trader(trader: &Pubkey, num_slab_shards: u16) -> u16 {
+    if num_slab_shards <= 1 {
+        return 0;
+    }
+    // FNV-1a over the pubkey bytes — a stable, dependency-free hash (matches nothing
+    // security-sensitive; it only needs to spread traders evenly across shards).
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in trader.as_ref() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    (h % num_slab_shards as u64) as u16
+}
+
 pub fn clearing(market: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"clearing", market.as_ref()], &TEMPO_PROGRAM_ID)
 }

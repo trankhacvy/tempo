@@ -36,10 +36,29 @@ impl MarketSnapshot {
         })
     }
 
-    /// Completeness mirror of the on-chain `all_active_orders_accumulated`: no slab
-    /// order is still `Resting`.
+    /// Completeness mirror of the on-chain `all_active_orders_accumulated` (DDR-3):
+    /// every resting order that *can* fold this round has been folded. A resting
+    /// order whose fixed price left the recentered window is exempt **iff it is
+    /// passive** (SELL above the top / BUY below the floor) — the window moved away
+    /// from it, so it legitimately can't fold now (on-chain, `process_chunk` skips it
+    /// and finalize's gate exempts it). Without this the keeper would loop in
+    /// ACCUMULATING forever, re-cranking a shard whose only unfolded order is passive
+    /// and can never reach `Accumulated`.
     pub fn all_resting_folded(&self) -> bool {
-        self.slab.iter().all(|o| o.status != STATUS_RESTING)
+        let floor = self.market.window_floor_price;
+        let top = floor.saturating_add((self.market.num_ticks as u64) * self.market.tick_size);
+        self.slab.iter().all(|o| {
+            if o.status != STATUS_RESTING {
+                return true;
+            }
+            // side: 1 = Sell, 0 = Buy (mirrors OrderSide). Passive = the market moved
+            // away from the order's limit, so it can't fill this round.
+            if o.side == 1 {
+                o.price >= top
+            } else {
+                o.price < floor
+            }
+        })
     }
 
     /// Maker quotes that still need a `process_maker_quote` this round.

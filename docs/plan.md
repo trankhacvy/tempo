@@ -603,13 +603,13 @@ start coding until this list is agreed.
 **B2. Instruction: `submit_order`**
 - [x] B2.1 Persist the (now unconditionally computed) `worst_price` onto the order.
 - [x] B2.2 Accept `expires_at_auction` (0 = GTC, absolute auction id) in `data.rs` + `definition.rs` (LEN 20 → 28).
-- [x] B2.3 Per-trader standing cap: `MAX_ORDERS_PER_TRADER` is now enforced per shard (documented as a per-shard standing cap; a global cap is a deferred follow-up — DDR-2).
+- [x] B2.3 Per-trader standing cap: `MAX_ORDERS_PER_TRADER` is enforced per shard; reference clients route each trader to a deterministic shard (`pda::shard_for_trader` = `hash(trader) % num_slab_shards`) so it acts as a global cap (DDR-3 / Finding 4).
 
 **B3. Instruction: `settle_fill` (the core change, §3.2)**
 - [x] B3.1 Compute `fully_filled = (fill == order.remaining)` and `expired = expires_at_auction != 0 && expires_at_auction <= auction_id`.
 - [x] B3.2 Full/expired branch → status `Consumed`, `count -= 1`, release all leftover margin.
 - [x] B3.3 Partial/zero-and-live branch → `remaining -= fill`, status `Resting`, `cum_before = 0`, `resting_count += 1`, **do not** decrement `count`.
-- [x] B3.4 Margin on partial: release `min(reserved, initial_margin(fill, worst_price, initial_bps))`, keep the remainder locked (wedge-safe split — DDR-2; reuses `margin::initial_margin` + `settle_money::release_order_reservation`).
+- [x] B3.4 Margin on partial: hold the leftover at the EXACT `initial_margin(remaining, worst_price, initial_bps)` (clamped ≤ reserved) and release the rest (DDR-3 / Finding 6, supersedes the DDR-2 `min(reserved, im(fill))` split which left the leftover ~1 unit short). Any shortfall covering the filled slice's position lock is absorbed by the no-revert re-lock (B7).
 
 **B4. Roll: `reset_shard` (§3.4 — under Design Z the roll lives in `reset_shard`, not `round.rs`)**
 - [x] B4.1 Replace the blanket slot-zero with a per-slot pass: keep `Resting`, free `Consumed`/`Empty`.
@@ -626,6 +626,15 @@ start coding until this list is agreed.
 - [x] B6.3 Expiry: an order past `expires_at_auction` is Consumed, not re-armed (`expired_resting_order_is_consumed_not_rearmed`).
 - [x] B6.4 DDR-1 trigger: a carried Resting order blocks finalize until re-folded (`carried_resting_order_blocks_finalize_next_round`); roll gate rejects unsettled Accumulated (`roll_gate_rejects_unsettled_then_carries_resting`).
 - [x] B6.5 Full gate green: `fmt` / workspace `clippy -D warnings` / host `test` / `build-sbf` / `integration-test` (42 suites). Note: the `worst_price` snapshot keeps a resting sell margin-stable across a window recenter by construction (§3.3) — a dedicated money-path recenter test (B6.4-margin) is deferred to the money-path suite.
+
+**B7. DDR-3 code-review fixes (resting orders vs. the moving tick window)** — the high-effort review of the Stage-B commit found two blockers + four lesser defects; all fixed and verified (see `docs/design-decisions.md` DDR-3).
+- [x] B7.1 (Finding 1, blocker) Marketable-fill / passive-park: `classify_resting_fold` (pure, in `state/market.rs`, unit-tested) classifies a resting order whose fixed price left the recentered window. `process_chunk` folds in-window/marketable orders (marketable at the boundary tick) and SKIPS passive ones; `all_active_orders_accumulated` exempts only passive orders (window params threaded from `finalize_clear`). No more permissionless wedge; the censorship guarantee holds on a recomputable verdict (no new counter). Keeper mirror updated (`snapshot::all_resting_folded`).
+- [x] B7.2 (Finding 2, blocker) `settle_fill` never reverts: the re-lock uses `UserCollateral::lock_up_to` (locks what's free, never errors); the position's collateral is set to what was actually locked, so a resting order the window gapped through settles (leaving a liquidatable position on a shortfall) instead of wedging the roll.
+- [x] B7.3 (Finding 3) `reduce_only` persisted on `Order` (reused a padding byte → `ORDER_LEN` still 104, cap still 90); `settle_fill` clamps a carried reduce-only order's fill to the reduce headroom, so it can never open new exposure.
+- [x] B7.4 (Finding 4) Deterministic per-trader shard routing — see B2.3.
+- [x] B7.5 (Finding 5) Sim `TEMPO_SIM_CAP` clamp ceiling 115 → 90 (matches the on-chain cap).
+- [x] B7.6 (Finding 6) Leftover reservation held exact — see B3.4.
+- [x] B7.7 Tests: `classify_resting_fold` + `all_active_orders_accumulated` (passive-exempt) + `lock_up_to` unit tests; integration `passive_resting_order_parks_then_folds_when_window_returns`, `marketable_resting_order_folds_after_recenter`, `reduce_only_order_cannot_open_exposure`. Full gate green (program 200 host tests; 100 integration across 42 suites).
 
 ### Stage C1 — Always-open submission (no dead time)
 

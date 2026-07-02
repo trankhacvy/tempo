@@ -12,9 +12,11 @@
 //!   * conservation — a partial fill that rests then completes next round fills EXACTLY
 //!     its original quantity (Σ fills across rounds == original qty).
 
+use solana_sdk::pubkey::Pubkey;
 use tempo_integration_tests::*;
 
 const STATUS_RESTING: u8 = 1;
+const STATUS_ACCUMULATED: u8 = 2;
 const STATUS_CONSUMED: u8 = 3;
 
 /// DDR-1 re-review trigger. A non-crossing taker buy fills nothing, so at settle it is
@@ -238,4 +240,146 @@ fn partial_fill_rests_then_completes_conserving() {
         "fully filled → leaves the book"
     );
     assert_eq!(rec.remaining, 0, "nothing left to fill");
+}
+
+/// DDR-3 (the wedge fix, passive-park half): a resting order whose fixed price leaves the
+/// recentered window because the market moved AWAY from it (a SELL now above the window top)
+/// must PARK — `process_chunk` skips it (no hard error) and finalize's completeness gate
+/// exempts it, so a single out-of-window order can never wedge the whole market. When the
+/// window later slides back over it, it folds normally.
+#[test]
+fn passive_resting_order_parks_then_folds_when_window_returns() {
+    let mut ctx = TestContext::new();
+    let oracle = Pubkey::new_unique();
+    // Window centers on 100_000: floor = 100_000 - (64/2)*10 = 99_680; top = 99_680 + 640 = 100_320.
+    ctx.set_oracle(&oracle, 100_000, -8);
+    let pdas = ctx.init_market_with_oracle(10, 64, 16, oracle);
+
+    // A lone in-window resting SELL at 100_000. No counterparty → zero fill → re-arms Resting.
+    let t = ctx.new_funded_signer();
+    let o = ctx.submit_order(&pdas, &t, SIDE_SELL, 100_000, 5);
+    let d = ctx.phase_deadline_slot(&pdas);
+    ctx.warp_slot(d);
+    ctx.process_chunk(&pdas, 0, 64);
+    ctx.finalize_clear(&pdas);
+    ctx.settle_fill(&pdas, o);
+
+    // Recenter DOWN to 50_000 → window [49_680, 50_320). The SELL at 100_000 is now ABOVE the
+    // top → PASSIVE. (Set the oracle BEFORE the roll: start_auction recenters at roll time.)
+    ctx.set_oracle(&oracle, 50_000, -8);
+    ctx.start_auction(&pdas);
+    let d = ctx.phase_deadline_slot(&pdas);
+    ctx.warp_slot(d);
+
+    // Pre-fix this hard-errored in `price_to_tick_raw`. Now it is skipped: the order stays
+    // Resting and does NOT block finalize.
+    ctx.process_chunk(&pdas, 0, 64);
+    let rec = ctx
+        .orders(&pdas)
+        .into_iter()
+        .find(|r| r.order_id == o)
+        .unwrap();
+    assert_eq!(
+        rec.status, STATUS_RESTING,
+        "passive order parked (not folded)"
+    );
+    assert!(
+        ctx.try_finalize_clear(&pdas).is_ok(),
+        "a passive out-of-window order must NOT wedge finalize (DDR-3)",
+    );
+
+    // Recenter BACK to 100_000 and roll: the parked order is in-window again → it folds.
+    ctx.set_oracle(&oracle, 100_000, -8);
+    ctx.start_auction(&pdas);
+    let d = ctx.phase_deadline_slot(&pdas);
+    ctx.warp_slot(d);
+    ctx.process_chunk(&pdas, 0, 64);
+    let rec = ctx
+        .orders(&pdas)
+        .into_iter()
+        .find(|r| r.order_id == o)
+        .unwrap();
+    assert_eq!(
+        rec.status, STATUS_ACCUMULATED,
+        "once the window returns, the parked order folds normally"
+    );
+    assert!(
+        ctx.try_finalize_clear(&pdas).is_ok(),
+        "and the round finalizes"
+    );
+}
+
+/// DDR-3 (the wedge fix, marketable half): a resting order the market moved THROUGH (a SELL
+/// now below the recentered floor) is MARKETABLE — `process_chunk` folds it at the boundary
+/// tick (it does NOT error), so it clears this round instead of wedging. With no counterparty
+/// it fills 0 and re-arms, but the point is it folds and settles cleanly.
+#[test]
+fn marketable_resting_order_folds_after_recenter() {
+    let mut ctx = TestContext::new();
+    let oracle = Pubkey::new_unique();
+    ctx.set_oracle(&oracle, 100_000, -8); // window [99_680, 100_320)
+    let pdas = ctx.init_market_with_oracle(10, 64, 16, oracle);
+
+    // Lone in-window SELL at the floor (99_680). Zero fill → rests.
+    let t = ctx.new_funded_signer();
+    let o = ctx.submit_order(&pdas, &t, SIDE_SELL, 99_680, 5);
+    let d = ctx.phase_deadline_slot(&pdas);
+    ctx.warp_slot(d);
+    ctx.process_chunk(&pdas, 0, 64);
+    ctx.finalize_clear(&pdas);
+    ctx.settle_fill(&pdas, o);
+
+    // Recenter UP to 200_000 → window [199_680, 200_320). The SELL at 99_680 is now BELOW the
+    // floor → MARKETABLE.
+    ctx.set_oracle(&oracle, 200_000, -8);
+    ctx.start_auction(&pdas);
+    let d = ctx.phase_deadline_slot(&pdas);
+    ctx.warp_slot(d);
+
+    // It must FOLD (status Accumulated), not error.
+    ctx.process_chunk(&pdas, 0, 64);
+    let rec = ctx
+        .orders(&pdas)
+        .into_iter()
+        .find(|r| r.order_id == o)
+        .unwrap();
+    assert_eq!(
+        rec.status, STATUS_ACCUMULATED,
+        "marketable order folds at the boundary tick, not errors"
+    );
+    // finalize + settle proceed with no wedge/revert (no counterparty → fill 0, re-arms).
+    ctx.finalize_clear(&pdas);
+    let (_m, fill) = ctx.settle_fill(&pdas, o);
+    assert_eq!(fill, 0, "no counterparty this round → zero fill, no revert");
+}
+
+/// DDR-3 / Finding 3: a reduce-only order may only shrink a position, never open one. A flat
+/// trader's reduce-only order that would otherwise cross fills NOTHING (the fill is clamped
+/// to the reduce headroom — 0 for a flat position), so it can never open new exposure. This
+/// is the Stage-B risk: pre-Stage-B a reduce-only order was consumed in its submit round, but
+/// a carried resting one could re-arm and open exposure the market gapped it into.
+#[test]
+fn reduce_only_order_cannot_open_exposure() {
+    let mut ctx = TestContext::new();
+    let tick = 10u64;
+    let pdas = ctx.init_market(tick, 16, 64); // genesis window (maker ticks align)
+
+    let mb = ctx.new_funded_signer(); // maker buyer
+    let ts = ctx.new_funded_signer(); // reduce-only taker seller (flat)
+    ctx.init_position(&pdas, &mb);
+    ctx.init_position(&pdas, &ts);
+
+    // Maker buys 10 @ 40; a FLAT reduce-only taker sells 10 @ 40. Absent the clamp the sell
+    // would fill 10 and OPEN a short; with it, the flat position gives 0 reduce headroom.
+    ctx.post_maker_order(&pdas, &mb, SIDE_BUY, 4 * tick, 10);
+    let o = ctx.submit_order_reduce_only(&pdas, &ts, SIDE_SELL, 4 * tick, 10);
+
+    ctx.process_chunk(&pdas, 0, 64);
+    ctx.process_maker_quote(&pdas, &mb.pubkey());
+    ctx.finalize_clear(&pdas);
+    let (_m, fill) = ctx.settle_fill(&pdas, o);
+    assert_eq!(
+        fill, 0,
+        "reduce-only on a flat position fills nothing (cannot open exposure)"
+    );
 }

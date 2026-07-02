@@ -55,6 +55,9 @@ async fn main() -> Result<(), SimError> {
         trader,
         pdas,
         collateral_mint,
+        // The sim provisions a single-shard market (provision.rs), so every trader
+        // routes to shard 0; bump this in lockstep if the provisioner grows shards.
+        num_slab_shards: 1,
         cfg: cfg.trader_config(),
         seed: cfg.seed,
     };

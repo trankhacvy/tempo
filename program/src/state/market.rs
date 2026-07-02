@@ -809,6 +809,65 @@ pub fn price_to_tick_raw(
     Ok(offset as u32)
 }
 
+/// Where a resting order folds relative to the current (recentered) tick window
+/// (DDR-3). A limit order the oracle-anchored window has moved past is **not** an
+/// error — by side it is either *marketable* (the market moved through it, so its
+/// limit is already satisfied by every in-window price → it should fill at a
+/// boundary tick) or *passive* (the market moved away → it keeps resting until the
+/// window slides back over it, or it expires).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestingFold {
+    /// Price is inside `[floor, top)` — fold at its own tick (the normal case).
+    InWindow(u32),
+    /// Off-window but marketable (SELL below floor / BUY above top) — fold at the
+    /// boundary tick so it clears this round at the uniform clearing price.
+    Marketable(u32),
+    /// Off-window and passive (SELL above top / BUY below floor) — do NOT fold:
+    /// leave it `Resting` and exempt it from the completeness gate.
+    Passive,
+}
+
+/// Classify a resting order against the current window (DDR-3, the marketable-fill
+/// / passive-park rule). Pure and deterministic in
+/// `(price, side, floor, tick_size, num_ticks)` — every actor (crank, keeper,
+/// finalize's completeness scan) recomputes the same verdict from on-chain state,
+/// so completeness stays authoritative with no trust and no aggregate counter
+/// (Design Z / DDR-1 intact). Division-free except the single in-window offset
+/// divide that `price_to_tick_raw` already does.
+#[inline(always)]
+pub fn classify_resting_fold(
+    price: u64,
+    side: crate::state::OrderSide,
+    floor: u64,
+    tick_size: u64,
+    num_ticks: u32,
+) -> Result<RestingFold, ProgramError> {
+    use crate::state::OrderSide;
+    if price == 0 || tick_size == 0 || num_ticks == 0 || !price.is_multiple_of(tick_size) {
+        return Err(TempoProgramError::InvalidPrice.into());
+    }
+    if price < floor {
+        // Below the window: a SELL is marketable (willing to sell at the lowest
+        // in-window price → fold at tick 0); a BUY is passive (it wants to pay even
+        // less than the cheapest in-window price → keep resting).
+        return Ok(match side {
+            OrderSide::Sell => RestingFold::Marketable(0),
+            OrderSide::Buy => RestingFold::Passive,
+        });
+    }
+    let offset = (price - floor) / tick_size;
+    if offset >= num_ticks as u64 {
+        // Above the window: a BUY is marketable (willing to pay the highest in-window
+        // price → fold at the top tick); a SELL is passive (it asks more than any
+        // in-window price → keep resting).
+        return Ok(match side {
+            OrderSide::Buy => RestingFold::Marketable(num_ticks - 1),
+            OrderSide::Sell => RestingFold::Passive,
+        });
+    }
+    Ok(RestingFold::InWindow(offset as u32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -978,6 +1037,65 @@ mod tests {
             price_to_tick_raw(650, floor, m.tick_size(), m.num_ticks()),
             Err(TempoProgramError::InvalidTick.into())
         );
+    }
+
+    #[test]
+    fn test_classify_resting_fold() {
+        use crate::state::OrderSide;
+        // Window [100, 100 + 10*64) = [100, 740): floor 100, tick_size 10, 64 ticks.
+        let (floor, ts, nt) = (100u64, 10u64, 64u32);
+
+        // In-window: folds at its own tick regardless of side.
+        assert_eq!(
+            classify_resting_fold(150, OrderSide::Sell, floor, ts, nt).unwrap(),
+            RestingFold::InWindow(5)
+        );
+        assert_eq!(
+            classify_resting_fold(100, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::InWindow(0)
+        );
+        // Top in-window tick is num_ticks-1 = 63 -> price 730 (< 740 top).
+        assert_eq!(
+            classify_resting_fold(730, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::InWindow(63)
+        );
+
+        // Below the floor: SELL is marketable at tick 0, BUY is passive.
+        assert_eq!(
+            classify_resting_fold(90, OrderSide::Sell, floor, ts, nt).unwrap(),
+            RestingFold::Marketable(0)
+        );
+        assert_eq!(
+            classify_resting_fold(90, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::Passive
+        );
+
+        // At/above the top (offset >= num_ticks): BUY marketable at top tick, SELL passive.
+        assert_eq!(
+            classify_resting_fold(740, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::Marketable(63)
+        );
+        assert_eq!(
+            classify_resting_fold(740, OrderSide::Sell, floor, ts, nt).unwrap(),
+            RestingFold::Passive
+        );
+        assert_eq!(
+            classify_resting_fold(10_000, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::Marketable(63)
+        );
+
+        // A non-tick-aligned or zero price is still rejected (not silently folded).
+        assert!(classify_resting_fold(95, OrderSide::Sell, floor, ts, nt).is_err());
+        assert!(classify_resting_fold(0, OrderSide::Buy, floor, ts, nt).is_err());
+
+        // An in-window verdict must agree with `price_to_tick_raw` (the two never drift).
+        for mult in 10..=73u64 {
+            let price = mult * 10;
+            assert_eq!(
+                classify_resting_fold(price, OrderSide::Sell, floor, ts, nt).unwrap(),
+                RestingFold::InWindow(price_to_tick_raw(price, floor, ts, nt).unwrap())
+            );
+        }
     }
 
     #[test]

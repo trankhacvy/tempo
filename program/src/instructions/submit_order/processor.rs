@@ -244,6 +244,11 @@ pub fn process_submit_order(
         // re-margining across rounds, §3.3) and the client-chosen expiry (0 = GTC).
         order.worst_price = worst_price;
         order.expires_at_auction = ix.data.expires_at_auction;
+        // Persist reduce_only so a CARRIED resting order still honors it every round
+        // (DDR-3 / Finding 3): settle_fill clamps the fill to the reduce headroom, so
+        // an order that rested while its position was closed by other flow can never
+        // re-arm and open new (under-reserved) exposure.
+        order.reduce_only = u8::from(ix.data.reduce_only);
         write_order(&mut slab_data, capacity, slot, &order)?;
 
         // bump header counters + advance the allocation cursor past this slot

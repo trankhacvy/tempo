@@ -59,9 +59,10 @@ impl OrderStatus {
 /// A single order slot in the slab.
 ///
 /// # Layout (`#[repr(C)]`, no padding)
-/// 4 × u64 (32) + Address (32) + 3 × u8 (3) + 5 pad + u64 `cum_before` (8) +
+/// 4 × u64 (32) + Address (32) + 4 × u8 (4) + 4 pad + u64 `cum_before` (8) +
 /// u64 `reserved_margin` (8) + u64 `worst_price` (8) + u64 `expires_at_auction`
-/// (8) = 104 (Stage B resting orders).
+/// (8) = 104 (Stage B resting orders). The 4th `u8` is `reduce_only`, carved out
+/// of the former 5-byte pad so `ORDER_LEN` is unchanged (DDR-3 / Finding 3).
 #[derive(Clone, Copy, Debug, PartialEq, CodamaType)]
 #[repr(C)]
 pub struct Order {
@@ -84,8 +85,14 @@ pub struct Order {
     pub is_maker: u8,
     /// `OrderStatus`.
     pub status: u8,
+    /// Reduce-only flag (Stage B / DDR-3 / Finding 3): `1` ⇒ this order may only
+    /// close/shrink the trader's position, never open or flip it. Persisted (not
+    /// just consumed at submit) so a carried resting order honors it every round:
+    /// `settle_fill` clamps the fill to the reduce headroom, dropping any excess
+    /// that would open new (under-reserved) exposure after the position moved.
+    pub reduce_only: u8,
     /// Explicit padding so `cum_before` lands 8-aligned.
-    pub _padding: [u8; 5],
+    pub _padding: [u8; 4],
     /// Fold-time prefix snapshot (known-issues §2.7): the region/tick histogram
     /// bucket value captured immediately *before* this order folded — i.e. the
     /// Σ `remaining` of same-bucket orders folded earlier, in fold order.
@@ -118,10 +125,10 @@ pub struct Order {
     pub expires_at_auction: u64,
 }
 
-assert_no_padding!(Order, 8 * 4 + 32 + 1 + 1 + 1 + 5 + 8 + 8 + 8 + 8);
+assert_no_padding!(Order, 8 * 4 + 32 + 1 + 1 + 1 + 1 + 4 + 8 + 8 + 8 + 8);
 
 /// Byte length of one `Order` slot.
-pub const ORDER_LEN: usize = 8 * 4 + 32 + 3 + 5 + 8 + 8 + 8 + 8;
+pub const ORDER_LEN: usize = 8 * 4 + 32 + 4 + 4 + 8 + 8 + 8 + 8;
 
 impl Order {
     #[inline(always)]
@@ -135,7 +142,8 @@ impl Order {
             side: OrderSide::Buy as u8,
             is_maker: 0,
             status: OrderStatus::Empty as u8,
-            _padding: [0u8; 5],
+            reduce_only: 0,
+            _padding: [0u8; 4],
             cum_before: 0,
             reserved_margin: 0,
             worst_price: 0,
@@ -163,7 +171,9 @@ impl Order {
             side: side as u8,
             is_maker: 0,
             status: OrderStatus::Resting as u8,
-            _padding: [0u8; 5],
+            // Set by `submit_order` from the client's reduce_only flag.
+            reduce_only: 0,
+            _padding: [0u8; 4],
             cum_before: 0,
             // Set by `submit_order` after it computes the worst-case reservation.
             reserved_margin: 0,
@@ -194,7 +204,8 @@ impl Order {
         buf[64] = self.side;
         buf[65] = self.is_maker;
         buf[66] = self.status;
-        // bytes 67..72 are padding, already zero
+        buf[67] = self.reduce_only;
+        // bytes 68..72 are padding, already zero
         buf[72..80].copy_from_slice(&self.cum_before.to_le_bytes());
         buf[80..88].copy_from_slice(&self.reserved_margin.to_le_bytes());
         buf[88..96].copy_from_slice(&self.worst_price.to_le_bytes());
@@ -218,7 +229,8 @@ impl Order {
             side: buf[64],
             is_maker: buf[65],
             status: buf[66],
-            _padding: [0u8; 5],
+            reduce_only: buf[67],
+            _padding: [0u8; 4],
             cum_before: u64::from_le_bytes(buf[72..80].try_into().unwrap()),
             reserved_margin: u64::from_le_bytes(buf[80..88].try_into().unwrap()),
             worst_price: u64::from_le_bytes(buf[88..96].try_into().unwrap()),
@@ -522,16 +534,42 @@ pub fn find_order_by_id_hinted(
     find_order_by_id(data, capacity, order_id)
 }
 
-/// The completeness source of truth (clearing-protocol §4.2): every non-empty
-/// slot has been folded — none is still `Resting`. `finalize_clear` requires this
+/// The completeness source of truth (clearing-protocol §4.2): every resting order
+/// that *can* fold this round has been folded. `finalize_clear` requires this
 /// directly off the slab, so the censorship guarantee never rests on the
 /// hand-maintained order counters alone (known-issues §2.1).
+///
+/// DDR-3: a resting order whose fixed price left the recentered window is exempt
+/// **iff it is passive** (SELL above top / BUY below floor) — the window moved away
+/// from it, so it legitimately cannot fold this round. An in-window OR *marketable*
+/// resting order (the market moved through it) still MUST be folded first, so it
+/// still blocks. The verdict is a pure function of on-chain state
+/// (`classify_resting_fold`), recomputable by anyone, so a hostile cranker cannot
+/// reclassify an order to dodge the gate (the window is fixed by the oracle at roll).
 #[inline(always)]
-pub fn all_active_orders_accumulated(data: &[u8], capacity: u32) -> Result<bool, ProgramError> {
+pub fn all_active_orders_accumulated(
+    data: &[u8],
+    capacity: u32,
+    window_floor: u64,
+    tick_size: u64,
+    num_ticks: u32,
+) -> Result<bool, ProgramError> {
     for i in 0..capacity {
         let order = read_order(data, capacity, i)?;
         if order.status == OrderStatus::Resting as u8 {
-            return Ok(false);
+            let side = OrderSide::from_u8(order.side)?;
+            match crate::state::classify_resting_fold(
+                order.price,
+                side,
+                window_floor,
+                tick_size,
+                num_ticks,
+            )? {
+                // Passive-out-of-window: legitimately unfoldable this round → exempt.
+                crate::state::RestingFold::Passive => continue,
+                // In-window or marketable: must be folded before finalize → blocks.
+                _ => return Ok(false),
+            }
         }
     }
     Ok(true)
@@ -839,10 +877,12 @@ mod tests {
     #[test]
     fn test_all_active_orders_accumulated() {
         let cap = 4;
+        // Window [10, 10 + 10*64) = [10, 650): floor 10, tick_size 10, 64 ticks.
+        let (floor, ts, nt) = (10u64, 10u64, 64u32);
         let mut data = fresh_slab(cap);
         // Empty slab → complete.
-        assert!(all_active_orders_accumulated(&data, cap).unwrap());
-        // A resting order → not complete.
+        assert!(all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+        // A resting in-window order → not complete (must be folded first).
         let mut o = Order::new_resting(
             1,
             Address::new_from_array([2u8; 32]),
@@ -851,15 +891,47 @@ mod tests {
             12,
         );
         write_order(&mut data, cap, 0, &o).unwrap();
-        assert!(!all_active_orders_accumulated(&data, cap).unwrap());
+        assert!(!all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
         // Folded (Accumulated) → complete again.
         o.status = OrderStatus::Accumulated as u8;
         write_order(&mut data, cap, 0, &o).unwrap();
-        assert!(all_active_orders_accumulated(&data, cap).unwrap());
+        assert!(all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
         // Consumed also counts as folded.
         o.status = OrderStatus::Consumed as u8;
         write_order(&mut data, cap, 0, &o).unwrap();
-        assert!(all_active_orders_accumulated(&data, cap).unwrap());
+        assert!(all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+    }
+
+    #[test]
+    fn test_all_active_orders_accumulated_ddr3_offwindow() {
+        let cap = 4;
+        // Window [100, 100 + 10*64) = [100, 740): floor 100, tick_size 10, 64 ticks.
+        let (floor, ts, nt) = (100u64, 10u64, 64u32);
+        let mut data = fresh_slab(cap);
+
+        // A PASSIVE resting order (SELL above the top) is exempt — the window moved
+        // away from it, so it legitimately can't fold this round → finalize allowed.
+        let passive = Order::new_resting(
+            1,
+            Address::new_from_array([2u8; 32]),
+            OrderSide::Sell,
+            2_000, // above the 740 top
+            5,
+        );
+        write_order(&mut data, cap, 0, &passive).unwrap();
+        assert!(all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+
+        // A MARKETABLE resting order (SELL below the floor) still BLOCKS — it must be
+        // folded (it clears this round), so finalize is refused until it is.
+        let marketable = Order::new_resting(
+            2,
+            Address::new_from_array([3u8; 32]),
+            OrderSide::Sell,
+            50, // below the 100 floor → marketable sell
+            5,
+        );
+        write_order(&mut data, cap, 1, &marketable).unwrap();
+        assert!(!all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
     }
 
     #[test]

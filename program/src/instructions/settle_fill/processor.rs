@@ -138,13 +138,29 @@ pub fn process_settle_fill(
             return Err(TempoProgramError::InvalidOrderStatus.into());
         }
 
-        let order_tick =
-            crate::state::price_to_tick_raw(order.price, window_floor, tick_size, num_ticks)?;
-
         // Pick the auction this order belongs to (system-design §1). Slab orders
         // are taker-only (§1.3): a taker sell clears in the bid auction, a taker
         // buy in the ask auction.
         let side = OrderSide::from_u8(order.side)?;
+
+        // DDR-3: recover the SAME tick `process_chunk` folded this order at — its own
+        // tick if in-window, or the boundary tick if it was marketable (its fixed
+        // price left the recentered window). A settled order is `Accumulated` (it WAS
+        // folded), so it can never be Passive here; treat that as an invariant break
+        // rather than silently mis-ticking the fill.
+        let order_tick = match crate::state::classify_resting_fold(
+            order.price,
+            side,
+            window_floor,
+            tick_size,
+            num_ticks,
+        )? {
+            crate::state::RestingFold::InWindow(t) | crate::state::RestingFold::Marketable(t) => t,
+            crate::state::RestingFold::Passive => {
+                return Err(TempoProgramError::InvalidOrderStatus.into())
+            }
+        };
+
         let is_bid_auction = side == OrderSide::Sell;
         let (cross, auction_price) = if is_bid_auction {
             (
@@ -177,13 +193,42 @@ pub fn process_settle_fill(
         // fold-time `cum_before` snapshot (process_chunk, §2.7) so its telescoping
         // slice makes the rationed side sum to exactly `vol_alloc`. The conserving
         // qty is `remaining` (== the folded quantity), not a re-scan of the slab.
-        fill = fill_against_cross(
+        let mut computed_fill = fill_against_cross(
             &cross,
             side == OrderSide::Buy,
             order_tick,
             order.remaining,
             order.cum_before,
         )?;
+
+        // Reduce-only clamp (DDR-3 / Finding 3): a carried reduce-only order may only
+        // shrink the trader's position — never open or flip it. Clamp the fill to the
+        // reduce headroom (the opposite-side position size); any excess is dropped
+        // (standard reduce-only semantics). Without this, a reduce-only order that
+        // rested while its position was closed by other flow (liquidation / funding /
+        // opposite fill) could re-arm and OPEN new, under-reserved exposure next round.
+        if order.reduce_only != 0 && computed_fill > 0 {
+            let pos_acct = ix
+                .accounts
+                .position
+                .ok_or(TempoProgramError::MissingSettleAccounts)?;
+            let pos_data = pos_acct.try_borrow()?;
+            let position = Position::from_bytes(&pos_data)?;
+            if position.owner != order.trader || position.market != market_key {
+                return Err(TempoProgramError::InvalidOrderOwner.into());
+            }
+            position.validate_self(pos_acct, program_id)?;
+            let pos_size = position.size() as i128;
+            let reduces = (pos_size > 0 && side == OrderSide::Sell)
+                || (pos_size < 0 && side == OrderSide::Buy);
+            let headroom = if reduces {
+                u64::try_from(pos_size.unsigned_abs()).unwrap_or(u64::MAX)
+            } else {
+                0
+            };
+            computed_fill = computed_fill.min(headroom);
+        }
+        fill = computed_fill;
 
         order_trader = order.trader;
         order_side = order.side;
@@ -220,18 +265,20 @@ pub fn process_settle_fill(
             // Split the reservation between the filled slice (which becomes a position and
             // is re-margined below) and the resting leftover (which keeps carrying).
             //
-            // Release exactly the filled slice's own worst-case initial margin — priced at
-            // the FIXED `worst_price` snapshot (≥ the actual clearing price), so the release
-            // always fully covers the position's `initial_margin(fill, clearing_price)` lock
-            // below and the settle can NEVER revert on that lock (the "only nets a release"
-            // invariant, missing-features §1.1). The leftover keeps the remainder. Because
-            // `initial_margin` rounds each slice UP, the leftover's carried reservation is at
-            // most ~1 base unit below its standalone worst case — conservative in the safe
-            // direction, never a shortfall on a live position. `min` guards a reduce-only
-            // order that reserved less than the full quantity (never release more than locked).
-            let filled_margin = initial_margin(fill, order.worst_price, initial_bps);
-            release_amount = order.reserved_margin.min(filled_margin);
-            updated.reserved_margin = order.reserved_margin - release_amount;
+            // DDR-3 / Finding 6: hold the leftover reservation at the EXACT worst-case
+            // initial margin for the carried remaining qty (priced at the FIXED
+            // `worst_price` snapshot), and release the rest. This keeps the live resting
+            // leftover exactly margined — the old `reserved − initial_margin(fill)` split
+            // left it up to ~1 base unit short under ceil-rounding. `min` guards a
+            // reduce-only order that reserved less than the full quantity (never keep more
+            // than was locked). The released amount may now be slightly below the filled
+            // slice's own worst-case margin; any shortfall in covering the position lock is
+            // absorbed by the no-revert `lock_up_to` re-lock below (DDR-3), so the settle
+            // still never wedges the round.
+            let leftover_margin = initial_margin(new_remaining, order.worst_price, initial_bps)
+                .min(order.reserved_margin);
+            release_amount = order.reserved_margin - leftover_margin;
+            updated.reserved_margin = leftover_margin;
             updated.status = OrderStatus::Resting as u8;
             // Per-round fold prefix; cleared so next round's process_chunk re-snapshots it.
             updated.cum_before = 0;
@@ -375,7 +422,7 @@ pub fn process_settle_fill(
             // actual balance change so insurance can absorb the opposite
             // (conservation), and any uncovered loss (bad debt) so it is never
             // silently dropped.
-            let (balance_delta, shortfall) = {
+            let (balance_delta, shortfall, effective_collateral) = {
                 let mut uc = *uc_acct;
                 let mut uc_data = uc.try_borrow_mut()?;
                 let user_collateral = UserCollateral::from_bytes_mut(&mut uc_data)?;
@@ -391,6 +438,7 @@ pub fn process_settle_fill(
                 // Re-lock isolated margin to the new size (free<->locked only; no
                 // balance change). Cross positions lock nothing here — their backing
                 // is the combined-equity check in withdraw_cross / liquidate_cross.
+                let mut effective_collateral = target_margin; // cross path: informational only
                 if !is_cross {
                     let current = {
                         let mut pos_acct = *position_acct;
@@ -398,18 +446,32 @@ pub fn process_settle_fill(
                         Position::from_bytes_mut(&mut pos_data)?.collateral()
                     };
                     if target_margin > current {
-                        user_collateral.lock(target_margin - current)?;
-                    } else if current > target_margin {
-                        user_collateral.release(current - target_margin);
+                        // DDR-3: lock what's available — do NOT revert if free balance is
+                        // short. A resting order the recentered window gapped through can
+                        // need more margin than its reservation released, and a matched
+                        // fill can't be un-filled (conservation), so reverting would wedge
+                        // the round. `lock_up_to` caps at free balance; any uncovered
+                        // remainder leaves the position below initial margin for the
+                        // liquidation backstop instead.
+                        let locked = user_collateral.lock_up_to(target_margin - current);
+                        effective_collateral = current.saturating_add(locked);
+                    } else {
+                        if current > target_margin {
+                            user_collateral.release(current - target_margin);
+                        }
+                        effective_collateral = target_margin;
                     }
                 }
-                (balance_delta, shortfall)
+                (balance_delta, shortfall, effective_collateral)
             };
 
             if !is_cross {
+                // Back the position with what was ACTUALLY locked (== target_margin on
+                // the common path; less only when free balance was short, DDR-3), so the
+                // stored collateral never over-reports the real margin to the risk gates.
                 let mut pos_acct = *position_acct;
                 let mut pos_data = pos_acct.try_borrow_mut()?;
-                Position::from_bytes_mut(&mut pos_data)?.set_collateral(target_margin);
+                Position::from_bytes_mut(&mut pos_data)?.set_collateral(effective_collateral);
             }
 
             // Conserve the money path through insurance: whatever entered or left

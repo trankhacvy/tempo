@@ -110,7 +110,17 @@ pub fn process_finalize_clear(
             }
             seen_mask |= bit;
 
-            if !all_active_orders_accumulated(&slab_data, slab.capacity())? {
+            // DDR-3: pass the window params so the scan exempts passive-out-of-window
+            // resting orders (which legitimately can't fold this round) while still
+            // requiring every in-window / marketable order to be folded — the
+            // censorship guarantee holds on a verdict anyone can recompute.
+            if !all_active_orders_accumulated(
+                &slab_data,
+                slab.capacity(),
+                window_floor,
+                tick_size,
+                num_ticks,
+            )? {
                 return Err(TempoProgramError::AuctionNotComplete.into());
             }
         }

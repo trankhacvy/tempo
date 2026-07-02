@@ -171,6 +171,21 @@ impl UserCollateral {
         self.set_locked(self.locked().saturating_sub(amount));
     }
 
+    /// Lock up to `amount` of free balance, returning how much was actually locked
+    /// (`== amount` unless free balance is short). Never fails — used on the
+    /// `settle_fill` re-lock path (DDR-3): a resting order the recentered tick
+    /// window gapped through can need more margin than its reservation released, and
+    /// a matched fill can't be un-filled (conservation), so the settle must not
+    /// revert. Any uncovered remainder leaves the position below initial margin for
+    /// the liquidation backstop rather than wedging the round. The caller sets the
+    /// position's collateral to what was actually locked so it never over-reports.
+    #[inline(always)]
+    pub fn lock_up_to(&mut self, amount: u64) -> u64 {
+        let lockable = amount.min(self.free());
+        self.set_locked(self.locked().saturating_add(lockable));
+        lockable
+    }
+
     /// Apply realized PnL (funding + closed-position cash) to the ledger balance.
     /// Positive credits; negative debits (saturating at zero). Returns the
     /// uncovered loss (bad debt) when a loss exceeds the balance.
@@ -231,6 +246,30 @@ mod tests {
         assert_eq!(de.owner, c.owner);
         assert_eq!(de.collateral_mint, c.collateral_mint);
         assert_eq!(de.balance(), 300);
+    }
+
+    #[test]
+    fn test_lock_up_to_caps_and_never_fails() {
+        // DDR-3: the settle re-lock path uses `lock_up_to`, which locks what's
+        // available and never errors (so a resting order the window gapped through
+        // can always settle instead of wedging the round).
+        let mut c = UserCollateral::new(
+            255,
+            Address::new_from_array([3u8; 32]),
+            Address::new_from_array([7u8; 32]),
+        );
+        c.credit(1_000).unwrap();
+        // Enough free → locks exactly the request.
+        assert_eq!(c.lock_up_to(300), 300);
+        assert_eq!(c.locked(), 300);
+        assert_eq!(c.free(), 700);
+        // More than free → caps at free (700), leaving the remainder uncovered.
+        assert_eq!(c.lock_up_to(1_000), 700);
+        assert_eq!(c.locked(), 1_000);
+        assert_eq!(c.free(), 0);
+        // Nothing free → locks 0, still no panic/error.
+        assert_eq!(c.lock_up_to(500), 0);
+        assert_eq!(c.locked(), 1_000);
     }
 
     #[test]

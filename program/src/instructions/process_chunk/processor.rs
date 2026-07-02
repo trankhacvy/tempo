@@ -115,15 +115,35 @@ pub fn process_process_chunk(
                 continue; // empty, already accumulated, or consumed
             }
 
-            let tick =
-                crate::state::price_to_tick_raw(order.price, window_floor, tick_size, num_ticks)?;
+            // DDR-3 (marketable-fill / passive-park): a resting order whose FIXED price
+            // left the recentered window is not an error. Classify it by side:
+            //   InWindow  → fold at its own tick (the normal case);
+            //   Marketable→ fold at the boundary tick so it clears this round (a SELL
+            //               below the floor / a BUY above the top — the market moved
+            //               through its limit);
+            //   Passive   → SKIP (leave it Resting): the window moved away from it, so
+            //               it can't fold now. It re-folds when the window slides back,
+            //               or its expiry removes it. finalize's completeness gate
+            //               exempts exactly this case, so a passive order never wedges.
+            let side = OrderSide::from_u8(order.side)?;
+            let tick = match crate::state::classify_resting_fold(
+                order.price,
+                side,
+                window_floor,
+                tick_size,
+                num_ticks,
+            )? {
+                crate::state::RestingFold::InWindow(t)
+                | crate::state::RestingFold::Marketable(t) => t,
+                crate::state::RestingFold::Passive => continue,
+            };
 
             // Slab orders are taker-only (§1.3), so they fold only into the two
             // taker regions of the dual auction (system-design §1): a taker sell is
             // the supply side of the bid auction; a taker buy is the demand side of
             // the ask auction. The maker regions (`BidDemand`/`AskSupply`) are fed
             // exclusively by `process_maker_quote` from the `MakerQuote` book.
-            let region = match OrderSide::from_u8(order.side)? {
+            let region = match side {
                 OrderSide::Sell => Region::BidSupply,
                 OrderSide::Buy => Region::AskDemand,
             };

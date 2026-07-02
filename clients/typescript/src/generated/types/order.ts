@@ -33,6 +33,7 @@ export type Order = {
   side: number;
   isMaker: number;
   status: number;
+  reduceOnly: number;
   padding: Array<number>;
   cumBefore: bigint;
   reservedMargin: bigint;
@@ -49,6 +50,7 @@ export type OrderArgs = {
   side: number;
   isMaker: number;
   status: number;
+  reduceOnly: number;
   padding: Array<number>;
   cumBefore: number | bigint;
   reservedMargin: number | bigint;
@@ -66,7 +68,8 @@ export function getOrderEncoder(): FixedSizeEncoder<OrderArgs> {
     ["side", getU8Encoder()],
     ["isMaker", getU8Encoder()],
     ["status", getU8Encoder()],
-    ["padding", getArrayEncoder(getU8Encoder(), { size: 5 })],
+    ["reduceOnly", getU8Encoder()],
+    ["padding", getArrayEncoder(getU8Encoder(), { size: 4 })],
     ["cumBefore", getU64Encoder()],
     ["reservedMargin", getU64Encoder()],
     ["worstPrice", getU64Encoder()],
@@ -84,7 +87,8 @@ export function getOrderDecoder(): FixedSizeDecoder<Order> {
     ["side", getU8Decoder()],
     ["isMaker", getU8Decoder()],
     ["status", getU8Decoder()],
-    ["padding", getArrayDecoder(getU8Decoder(), { size: 5 })],
+    ["reduceOnly", getU8Decoder()],
+    ["padding", getArrayDecoder(getU8Decoder(), { size: 4 })],
     ["cumBefore", getU64Decoder()],
     ["reservedMargin", getU64Decoder()],
     ["worstPrice", getU64Decoder()],
