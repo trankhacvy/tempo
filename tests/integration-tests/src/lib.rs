@@ -137,11 +137,12 @@ pub const SOL_USD_FEED_ID: [u8; 32] = [
     198, 199, 188, 15, 76, 250, 200, 194, 128, 181, 109,
 ];
 
-/// `OrderSlabHeader` slot byte length (order.rs `ORDER_LEN`): 4×u64 + Address +
-/// 3×u8 + 5 pad + u64 `cum_before` (known-issues §2.7) + u64 `reserved_margin`
-/// (missing-features §1.1) + u64 `worst_price` + u64 `expires_at_auction`
-/// (Stage B resting orders).
-const ORDER_LEN: usize = 104;
+/// `Order` slot byte length (order.rs `ORDER_LEN`). Fields: 4×u64, Address, 4×u8,
+/// 4 pad, u64 `cum_before` (known-issues §2.7), u64 `reserved_margin`
+/// (missing-features §1.1), u64 `worst_price`, u64 `expires_at_auction` (Stage B),
+/// u64 `arm_auction_id` (Stage C1 always-open, DDR-4). Appended fields keep the
+/// offsets 0..66 this decoder reads stable.
+const ORDER_LEN: usize = 112;
 
 /// Account data prefix: 1 byte discriminator + 1 byte version.
 const PREFIX: usize = 2;

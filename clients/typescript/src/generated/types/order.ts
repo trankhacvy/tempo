@@ -39,6 +39,7 @@ export type Order = {
   reservedMargin: bigint;
   worstPrice: bigint;
   expiresAtAuction: bigint;
+  armAuctionId: bigint;
 };
 
 export type OrderArgs = {
@@ -56,6 +57,7 @@ export type OrderArgs = {
   reservedMargin: number | bigint;
   worstPrice: number | bigint;
   expiresAtAuction: number | bigint;
+  armAuctionId: number | bigint;
 };
 
 export function getOrderEncoder(): FixedSizeEncoder<OrderArgs> {
@@ -74,6 +76,7 @@ export function getOrderEncoder(): FixedSizeEncoder<OrderArgs> {
     ["reservedMargin", getU64Encoder()],
     ["worstPrice", getU64Encoder()],
     ["expiresAtAuction", getU64Encoder()],
+    ["armAuctionId", getU64Encoder()],
   ]);
 }
 
@@ -93,6 +96,7 @@ export function getOrderDecoder(): FixedSizeDecoder<Order> {
     ["reservedMargin", getU64Decoder()],
     ["worstPrice", getU64Decoder()],
     ["expiresAtAuction", getU64Decoder()],
+    ["armAuctionId", getU64Decoder()],
   ]);
 }
 

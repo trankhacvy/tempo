@@ -61,8 +61,9 @@ impl OrderStatus {
 /// # Layout (`#[repr(C)]`, no padding)
 /// 4 × u64 (32) + Address (32) + 4 × u8 (4) + 4 pad + u64 `cum_before` (8) +
 /// u64 `reserved_margin` (8) + u64 `worst_price` (8) + u64 `expires_at_auction`
-/// (8) = 104 (Stage B resting orders). The 4th `u8` is `reduce_only`, carved out
-/// of the former 5-byte pad so `ORDER_LEN` is unchanged (DDR-3 / Finding 3).
+/// (8) + u64 `arm_auction_id` (8) = 112. The 4th `u8` is `reduce_only`, carved out
+/// of the former 5-byte pad (DDR-3 / Finding 3); `arm_auction_id` (Stage C1
+/// always-open submission, DDR-4) grew `ORDER_LEN` 104 → 112.
 #[derive(Clone, Copy, Debug, PartialEq, CodamaType)]
 #[repr(C)]
 pub struct Order {
@@ -123,12 +124,24 @@ pub struct Order {
     /// re-armed. Bounds how long an order may occupy a slab slot (anti-spam) so a
     /// standing book can't be squatted for free.
     pub expires_at_auction: u64,
+    // --- always-open submission (v6, Stage C1 / DDR-4) ---
+    /// The first auction round in which this order may fold (`process_chunk`) —
+    /// eligibility is `arm_auction_id <= market.current_auction_id`. `submit_order`
+    /// sets it to the current id when the market is in `Collect`, else `current + 1`
+    /// (a mid-round submit is deferred to the next round so it can't join a batch
+    /// that is already accumulating). Because it is set once and the current id only
+    /// grows, a carried/resting order is always eligible from its arm round on, so
+    /// the roll never has to re-arm it (DDR-4). A future-armed order (`arm >
+    /// current`) is skipped by `process_chunk` AND exempt from the completeness gate,
+    /// so it never blocks the current round's finalize. Derived on-chain from the
+    /// phase — the client sends nothing, so it cannot be forged.
+    pub arm_auction_id: u64,
 }
 
-assert_no_padding!(Order, 8 * 4 + 32 + 1 + 1 + 1 + 1 + 4 + 8 + 8 + 8 + 8);
+assert_no_padding!(Order, 8 * 4 + 32 + 1 + 1 + 1 + 1 + 4 + 8 + 8 + 8 + 8 + 8);
 
 /// Byte length of one `Order` slot.
-pub const ORDER_LEN: usize = 8 * 4 + 32 + 4 + 4 + 8 + 8 + 8 + 8;
+pub const ORDER_LEN: usize = 8 * 4 + 32 + 4 + 4 + 8 + 8 + 8 + 8 + 8;
 
 impl Order {
     #[inline(always)]
@@ -148,6 +161,7 @@ impl Order {
             reserved_margin: 0,
             worst_price: 0,
             expires_at_auction: 0,
+            arm_auction_id: 0,
         }
     }
 
@@ -180,6 +194,8 @@ impl Order {
             // Set by `submit_order` (worst-case price snapshot + client-chosen expiry).
             worst_price: 0,
             expires_at_auction: 0,
+            // Set by `submit_order` from the phase (current id in Collect, else current + 1).
+            arm_auction_id: 0,
         }
     }
 
@@ -210,6 +226,7 @@ impl Order {
         buf[80..88].copy_from_slice(&self.reserved_margin.to_le_bytes());
         buf[88..96].copy_from_slice(&self.worst_price.to_le_bytes());
         buf[96..104].copy_from_slice(&self.expires_at_auction.to_le_bytes());
+        buf[104..112].copy_from_slice(&self.arm_auction_id.to_le_bytes());
         buf
     }
 
@@ -235,6 +252,7 @@ impl Order {
             reserved_margin: u64::from_le_bytes(buf[80..88].try_into().unwrap()),
             worst_price: u64::from_le_bytes(buf[88..96].try_into().unwrap()),
             expires_at_auction: u64::from_le_bytes(buf[96..104].try_into().unwrap()),
+            arm_auction_id: u64::from_le_bytes(buf[104..112].try_into().unwrap()),
         })
     }
 }
@@ -314,6 +332,12 @@ impl Discriminator for OrderSlabHeader {
 }
 
 impl Versioned for OrderSlabHeader {
+    // v6 (Stage C1 always-open submission, DDR-4): `Order` grew `arm_auction_id`
+    // (ORDER_LEN 104 → 112) so an order submitted mid-round can be tagged for the
+    // next round and skipped by the current round's fold/completeness gate. The slot
+    // region size changed, so a pre-v6 slab is incompatible and must be re-provisioned
+    // (dev-phase: free); the version bump fails a stale slab loudly.
+    //
     // v5 (Stage B resting orders): `Order` grew `worst_price` + `expires_at_auction`
     // (ORDER_LEN 88 → 104) so unfilled/partial orders can carry across rounds with a
     // stable margin snapshot and an expiry bound. The slot region size changed, so a
@@ -333,7 +357,7 @@ impl Versioned for OrderSlabHeader {
     //
     // v2: appended `next_free_hint` (O(1) alloc cursor) AND widened `Order` to carry
     // the fold-time `cum_before` snapshot (ORDER_LEN 72 → 80) — both known-issues §2.7.
-    const VERSION: u8 = 5;
+    const VERSION: u8 = 6;
 }
 
 impl AccountSize for OrderSlabHeader {
@@ -546,10 +570,19 @@ pub fn find_order_by_id_hinted(
 /// still blocks. The verdict is a pure function of on-chain state
 /// (`classify_resting_fold`), recomputable by anyone, so a hostile cranker cannot
 /// reclassify an order to dodge the gate (the window is fixed by the oracle at roll).
+///
+/// DDR-4 (always-open submission): a resting order armed for a LATER round
+/// (`arm_auction_id > current_auction_id`) is likewise exempt — it was submitted
+/// mid-round and is not eligible to fold until the next round, so it must not block
+/// the current round's finalize. `arm_auction_id` is derived on-chain at submit from
+/// the phase, so this too cannot be forged. The predicate here is exactly the fold
+/// predicate in `process_chunk` (fold iff `arm <= current` AND not passive), so an
+/// order blocks the gate iff it was foldable-this-round and hasn't been folded.
 #[inline(always)]
 pub fn all_active_orders_accumulated(
     data: &[u8],
     capacity: u32,
+    current_auction_id: u64,
     window_floor: u64,
     tick_size: u64,
     num_ticks: u32,
@@ -557,6 +590,10 @@ pub fn all_active_orders_accumulated(
     for i in 0..capacity {
         let order = read_order(data, capacity, i)?;
         if order.status == OrderStatus::Resting as u8 {
+            // Armed for a later round (DDR-4): not eligible this round → exempt.
+            if order.arm_auction_id > current_auction_id {
+                continue;
+            }
             let side = OrderSide::from_u8(order.side)?;
             match crate::state::classify_resting_fold(
                 order.price,
@@ -686,7 +723,7 @@ mod tests {
 
     #[test]
     fn test_order_roundtrip_bytes() {
-        assert_eq!(ORDER_LEN, 104); // Stage B: grew 88 → 104 (worst_price + expires).
+        assert_eq!(ORDER_LEN, 112); // Stage C1: grew 104 → 112 (arm_auction_id, DDR-4).
         let mut o = Order::new_resting(
             7,
             Address::new_from_array([5u8; 32]),
@@ -694,10 +731,11 @@ mod tests {
             100,
             40,
         );
-        // Stage B resting fields must roundtrip too.
+        // Stage B resting + Stage C1 always-open fields must roundtrip too.
         o.reserved_margin = 12_345;
         o.worst_price = 200;
         o.expires_at_auction = 42;
+        o.arm_auction_id = 9;
         let bytes = o.to_bytes();
         assert_eq!(bytes.len(), ORDER_LEN);
         let de = Order::from_bytes(&bytes).unwrap();
@@ -708,6 +746,7 @@ mod tests {
         assert_eq!(de.reserved_margin, 12_345);
         assert_eq!(de.worst_price, 200);
         assert_eq!(de.expires_at_auction, 42);
+        assert_eq!(de.arm_auction_id, 9);
         // Slab orders are taker-only (§1.3): is_maker is always 0.
         assert_eq!(de.is_maker, 0);
     }
@@ -766,7 +805,7 @@ mod tests {
         let bytes = h.to_bytes();
         assert_eq!(bytes[0], OrderSlabHeader::DISCRIMINATOR);
         assert_eq!(bytes[1], OrderSlabHeader::VERSION);
-        assert_eq!(bytes[1], 5); // v5 (Stage B resting orders)
+        assert_eq!(bytes[1], 6); // v6 (Stage C1 always-open submission, DDR-4)
         let de = OrderSlabHeader::from_bytes(&bytes).unwrap();
         assert_eq!(de.auction_id(), 3);
         assert_eq!(de.capacity(), 8);
@@ -881,7 +920,7 @@ mod tests {
         let (floor, ts, nt) = (10u64, 10u64, 64u32);
         let mut data = fresh_slab(cap);
         // Empty slab → complete.
-        assert!(all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+        assert!(all_active_orders_accumulated(&data, cap, 5, floor, ts, nt).unwrap());
         // A resting in-window order → not complete (must be folded first).
         let mut o = Order::new_resting(
             1,
@@ -891,15 +930,15 @@ mod tests {
             12,
         );
         write_order(&mut data, cap, 0, &o).unwrap();
-        assert!(!all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+        assert!(!all_active_orders_accumulated(&data, cap, 5, floor, ts, nt).unwrap());
         // Folded (Accumulated) → complete again.
         o.status = OrderStatus::Accumulated as u8;
         write_order(&mut data, cap, 0, &o).unwrap();
-        assert!(all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+        assert!(all_active_orders_accumulated(&data, cap, 5, floor, ts, nt).unwrap());
         // Consumed also counts as folded.
         o.status = OrderStatus::Consumed as u8;
         write_order(&mut data, cap, 0, &o).unwrap();
-        assert!(all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+        assert!(all_active_orders_accumulated(&data, cap, 5, floor, ts, nt).unwrap());
     }
 
     #[test]
@@ -919,7 +958,7 @@ mod tests {
             5,
         );
         write_order(&mut data, cap, 0, &passive).unwrap();
-        assert!(all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+        assert!(all_active_orders_accumulated(&data, cap, 5, floor, ts, nt).unwrap());
 
         // A MARKETABLE resting order (SELL below the floor) still BLOCKS — it must be
         // folded (it clears this round), so finalize is refused until it is.
@@ -931,7 +970,33 @@ mod tests {
             5,
         );
         write_order(&mut data, cap, 1, &marketable).unwrap();
-        assert!(!all_active_orders_accumulated(&data, cap, floor, ts, nt).unwrap());
+        assert!(!all_active_orders_accumulated(&data, cap, 5, floor, ts, nt).unwrap());
+    }
+
+    #[test]
+    fn test_all_active_orders_accumulated_ddr4_future_armed_exempt() {
+        let cap = 4;
+        let (floor, ts, nt) = (10u64, 10u64, 64u32);
+        let mut data = fresh_slab(cap);
+
+        // An in-window resting order armed for the NEXT round (arm > current) is exempt:
+        // it was submitted mid-round and can't fold until next round, so it must not
+        // block THIS round's finalize (DDR-4 always-open submission).
+        let mut future = Order::new_resting(
+            1,
+            Address::new_from_array([2u8; 32]),
+            OrderSide::Buy,
+            30, // in-window
+            12,
+        );
+        future.arm_auction_id = 6; // current round is 5 below → not yet eligible
+        write_order(&mut data, cap, 0, &future).unwrap();
+        assert!(all_active_orders_accumulated(&data, cap, 5, floor, ts, nt).unwrap());
+
+        // Once the round rolls to its arm id (6), the SAME order now blocks (it is
+        // eligible and still unfolded) — proving the exemption is arm-relative, not
+        // permanent.
+        assert!(!all_active_orders_accumulated(&data, cap, 6, floor, ts, nt).unwrap());
     }
 
     #[test]

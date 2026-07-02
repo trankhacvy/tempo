@@ -638,13 +638,13 @@ start coding until this list is agreed.
 
 ### Stage C1 — Always-open submission (no dead time)
 
-- [ ] C1.1 `Order`: add `arm_auction_id: u64` (bump `ORDER_LEN` + slab VERSION again).
-- [ ] C1.2 `submit_order`: remove `require_phase(Collect)`; set `arm_auction_id = current` if in Collect else `current + 1`.
-- [ ] C1.3 `process_chunk`: fold an order only if `arm_auction_id == current_auction_id`.
-- [ ] C1.4 Completeness: add a per-shard `next_round_count`; promote it to `resting_count` at roll; keep `shards_pending` correct for the current round only.
-- [ ] C1.5 `start_auction`: on roll, promote `next_round_count` and re-arm carried orders.
-- [ ] C1.6 `crates/keeper`: schedule the next Collect to open immediately (cadence change).
-- [ ] C1.7 Tests: submit during Accumulate/Discover/Settle lands in the next round; current round unaffected.
+- [x] C1.1 `Order`: add `arm_auction_id: u64` (ORDER_LEN 104→112, slab VERSION 5→6).
+- [x] C1.2 `submit_order`: remove `require_phase(Collect)`; set `arm_auction_id = current` if in Collect else `current + 1`.
+- [x] C1.3 `process_chunk`: fold an order only if `arm_auction_id <= current_auction_id` (see DDR-4 for the `<=`-vs-`==` choice) — and, unchanged, only if not passive (DDR-3).
+- [x] C1.4 Completeness: **superseded by DDR-4.** No `next_round_count`/`shards_pending` counter (Design Z forbids aggregate counters). Instead `all_active_orders_accumulated` gained a `current_auction_id` arg and exempts `arm_auction_id > current` — the same predicate as the fold, so completeness stays the authoritative counter-free slab scan.
+- [x] C1.5 `start_auction`: **no change needed (DDR-4).** With `arm <= current` eligibility a carried order's original arm is always `<=` future rounds, so the roll never re-arms; `reset_shard` keeps `Resting` survivors as before.
+- [ ] C1.6 `crates/keeper`: schedule the next Collect to open immediately — **deferred** (scheduling optimization, not correctness; C1 doesn't pipeline processing). The keeper's `all_resting_folded` mirror WAS updated to exempt `arm > current` so it can't loop on a deferred order.
+- [x] C1.7 Tests: `phase_guards::submit_after_accumulating_arms_next_round` (submit mid-round succeeds, doesn't fold or block finalize, stays Resting) + `order.rs` unit tests for the arm-exempt completeness rule.
 
 ### Stage C2 — Per-round histograms (stretch; only if benchmark demands)
 

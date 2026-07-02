@@ -5,6 +5,74 @@ later. Newest first.
 
 ---
 
+## DDR-4 — Stage C1 always-open submission: `arm_auction_id` with `<=` eligibility (counter-free)
+
+**Status:** decided 2026-07-02 · implemented on `feat/sharded-book` (Stage C1) · `Order` `ORDER_LEN`
+104→112, `OrderSlabHeader` VERSION 5→6. Deviates from the written plan (`docs/plan.md` §4.1 / C1.4),
+which predates Design Z — recorded here so the deviation is deliberate and reviewable.
+
+### Context / the problem
+
+Today `submit_order` requires phase `Collect`, so between collection windows users cannot place
+orders (dead time — the grant concern). Stage C1 makes submit **always open**: an order submitted
+mid-round is accepted and tagged for the **next** round, not the current one.
+
+The written plan (C1.4) proposed a per-shard `next_round_count` counter promoted to `resting_count`
+at roll, and talked about `Market.shards_pending`. But **Design Z (DDR-1) removed all aggregate
+counters** precisely because mirror counters drift and wedge the market (the PERF-1 / cancel-wedge
+lesson). Reintroducing a counter here would repeat that mistake.
+
+### Decision: an absolute `arm_auction_id` on the order, with `arm <= current` eligibility
+
+- `Order` gains `arm_auction_id: u64` = the first round in which the order may fold. `submit_order`
+  sets it to `current_auction_id` when the market is in `Collect`, else `current_auction_id + 1`
+  (deferred to the next round). The client passes nothing new — it is derived on-chain from the
+  phase, so it cannot be forged.
+- **Eligibility is `arm_auction_id <= current_auction_id`** (not `==`). This is the key choice: a
+  carried order's original `arm` (set once at submit) is always `<=` every later round, so
+  **nothing has to re-arm it at roll**. Only a mid-round submit is deferred (`current + 1`); every
+  other order is immediately and permanently eligible from its arm round on.
+- The fold predicate (`process_chunk`) and the completeness gate
+  (`all_active_orders_accumulated`) share ONE rule: an order participates this round iff
+  `status == Resting && arm_auction_id <= current && classify_resting_fold != Passive`. A
+  future-armed order (`arm > current`) is skipped by fold AND exempt from the gate, so it never
+  blocks the current round's finalize; a passive order stays exempt exactly as in DDR-3.
+
+### Why this is safe (and needs no counter, no roll change, no settle change)
+
+- **No aggregate state** → no drift, no wedge class (Design Z intact). Completeness stays the
+  authoritative per-shard slab scan; it just gains the `arm <= current` clause.
+- **Roll unchanged:** `reset_shard` keeps `Resting` survivors as-is; their `arm` (already
+  `<= current < new_current`) makes them eligible next round automatically.
+- **Settle unchanged:** a partial re-arm copies the whole order, preserving `arm`; still `<=`
+  every future round.
+- **Concurrency:** a mid-round submit only write-locks its own shard (Design Z), contending with
+  that shard's crank per Solana's account lock — never with `Market`. The new order is `Resting`
+  with `arm > current`, so an in-flight `process_chunk`/`settle_fill` on that shard skips it.
+- **Window/margin:** submit still validates the price against the *current* window and snapshots
+  `worst_price` from the current window top. For a next-round order this is conservative; DDR-3's
+  classifier + the `lock_up_to` (never-revert, leave-liquidatable) settle path already handle a
+  resting order whose window later moves. A next-round order must therefore be in the *current*
+  window at submit — an accepted UX limitation, not a safety gap.
+
+### Scope: C1 only (not C2)
+
+This is C1 (remove submit dead-time). It does **not** pipeline processing — there is still one
+histogram and the round machine is unchanged, so two rounds never fold at once. C2 (per-round
+double-buffered histograms for true accumulate/settle overlap) is deferred until a benchmark shows
+C1 + Stage-A parallel settle is insufficient (plan §4.2). The keeper cadence change (C1.6, open the
+next `Collect` sooner) is a scheduling optimization, not correctness, and is also deferred.
+
+### Re-review triggers
+
+- Building C2 (double-buffer) — revisit how `arm_auction_id` interacts with two live rounds.
+- If always-open submit contending on a shard's write-lock during heavy cranking is measured to
+  hurt throughput, consider a submit-only staging shard.
+- If the "next-round order must be in the current window" limitation becomes a real UX problem,
+  reconsider validating deferred orders against a predicted next-round window.
+
+---
+
 ## DDR-3 — Resting orders vs. the moving tick window (marketable-fill / passive-park)
 
 **Status:** decided 2026-07-02 · to be implemented on `feat/sharded-book` (Stage B fix batch) ·

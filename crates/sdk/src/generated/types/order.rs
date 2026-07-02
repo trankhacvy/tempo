@@ -25,4 +25,5 @@ pub struct Order {
     pub reserved_margin: u64,
     pub worst_price: u64,
     pub expires_at_auction: u64,
+    pub arm_auction_id: u64,
 }

@@ -376,9 +376,10 @@ pub const STATUS_CONSUMED: u8 = 3;
 
 /// One decoded slab slot. Slab on-disk layout (`state/order.rs`, v5 Stage B):
 /// `[disc(1)][version(1)][OrderSlabHeader(75)][Order; capacity]` ⇒ slots start at
-/// offset 77, each `Order` is `ORDER_LEN = 104` bytes. Within a slot:
+/// offset 77, each `Order` is `ORDER_LEN = 112` bytes. Within a slot:
 /// `price@0 qty@8 remaining@16 order_id@24 trader@32..64 side@64 is_maker@65
-/// status@66 cum_before@72 reserved_margin@80 worst_price@88 expires_at_auction@96`.
+/// status@66 cum_before@72 reserved_margin@80 worst_price@88 expires_at_auction@96
+/// arm_auction_id@104`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SlabOrder {
     /// Array index of this slot — this IS the `slot_hint` passed to `settle_fill`.
@@ -394,6 +395,9 @@ pub struct SlabOrder {
     pub remaining: u64,
     /// Auto-expiry auction id (Stage B; 0 = good-till-cancelled).
     pub expires_at_auction: u64,
+    /// First round this order may fold (Stage C1 / DDR-4 always-open submission):
+    /// eligible iff `arm_auction_id <= market.current_auction_id`.
+    pub arm_auction_id: u64,
 }
 
 /// Offset of the first order slot in the slab account data (2-byte prefix +
@@ -434,6 +438,7 @@ pub fn decode_slab_orders(data: &[u8]) -> Result<Vec<SlabOrder>, SdkError> {
                 side: data[off + 64],
                 status,
                 expires_at_auction: u64_at(data, off + 96),
+                arm_auction_id: u64_at(data, off + 104),
             });
         }
         off += ORDER_LEN;

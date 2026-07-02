@@ -132,6 +132,7 @@ mod tests {
             quantity: 5,
             remaining: 5,
             expires_at_auction: 0,
+            arm_auction_id: 0,
         }
     }
 

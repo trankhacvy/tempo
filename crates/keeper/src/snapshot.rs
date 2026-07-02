@@ -64,8 +64,16 @@ impl MarketSnapshot {
         let floor = self.market.window_floor_price;
         let tick_size = self.market.tick_size;
         let num_ticks = self.market.num_ticks;
+        let current = self.market.current_auction_id;
         self.slab.iter().all(|o| {
             if o.status != STATUS_RESTING {
+                return true;
+            }
+            // DDR-4 (always-open submission): an order armed for a later round was
+            // submitted mid-round and can't fold until then, so it does NOT block this
+            // round's completeness (mirrors the on-chain gate's `arm > current` exemption).
+            // Without this the keeper would loop in ACCUMULATING forever on a deferred order.
+            if o.arm_auction_id > current {
                 return true;
             }
             // side: 1 = Sell, 0 = Buy (mirrors OrderSide). A passive order can't fold

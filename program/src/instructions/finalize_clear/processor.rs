@@ -114,9 +114,13 @@ pub fn process_finalize_clear(
             // resting orders (which legitimately can't fold this round) while still
             // requiring every in-window / marketable order to be folded — the
             // censorship guarantee holds on a verdict anyone can recompute.
+            // DDR-4: `auction_id` (the round being finalized) also exempts orders armed
+            // for a later round (`arm_auction_id > auction_id`), which were submitted
+            // mid-round and are not eligible to fold until the next round.
             if !all_active_orders_accumulated(
                 &slab_data,
                 slab.capacity(),
+                auction_id,
                 window_floor,
                 tick_size,
                 num_ticks,

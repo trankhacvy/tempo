@@ -48,6 +48,7 @@ pub fn process_submit_order(
     let (
         capacity,
         auction_id,
+        is_collect,
         maintenance_bps,
         initial_bps,
         window_top_price,
@@ -56,7 +57,14 @@ pub fn process_submit_order(
     ) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
-        market.require_phase(AuctionPhase::Collect)?;
+        // Always-open submission (Stage C1 / DDR-4): submit is accepted in ANY round
+        // phase, not just Collect. `market.phase()?` still validates the phase byte is a
+        // known value; a submit during Accumulating/Discovered/Settling is tagged for the
+        // NEXT round (`arm_auction_id = current + 1`) so it can't join a batch that is
+        // already accumulating. The price is still validated against the CURRENT window
+        // (below) — conservative for a deferred order; DDR-3's classifier + the
+        // never-revert settle path handle a resting order whose window later moves.
+        let is_collect = market.phase()? == AuctionPhase::Collect;
         market.validate_price(ix.data.price)?;
         // ensure the price falls in the histogram window
         market.price_to_tick(ix.data.price)?;
@@ -67,12 +75,25 @@ pub fn process_submit_order(
         (
             market.orders_per_auction_cap(),
             market.current_auction_id(),
+            is_collect,
             market.maintenance_margin_bps(),
             market.initial_margin_bps(),
             window_top_price,
             market.max_position_notional(),
             market.num_slab_shards(),
         )
+    };
+
+    // Stage C1 / DDR-4: the first round this order may fold. In Collect it joins the
+    // current batch; otherwise it is deferred to the next round. Eligibility is later
+    // checked as `arm_auction_id <= current_auction_id`, so a carried order stays
+    // eligible without any roll-time re-arm.
+    let arm_auction_id = if is_collect {
+        auction_id
+    } else {
+        auction_id
+            .checked_add(1)
+            .ok_or(TempoProgramError::MathOverflow)?
     };
 
     // The requested shard must be within the market's shard set (Stage A sharding).
@@ -263,6 +284,8 @@ pub fn process_submit_order(
         // exposure the market gapped it into. It applies its full computed fill this
         // round with no settle-time clamp.
         order.reduce_only = u8::from(ix.data.reduce_only);
+        // Always-open submission (Stage C1 / DDR-4): tag the round this order first folds.
+        order.arm_auction_id = arm_auction_id;
         write_order(&mut slab_data, capacity, slot, &order)?;
 
         // bump header counters + advance the allocation cursor past this slot

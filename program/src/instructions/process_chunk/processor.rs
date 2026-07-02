@@ -115,6 +115,16 @@ pub fn process_process_chunk(
                 continue; // empty, already accumulated, or consumed
             }
 
+            // Stage C1 / DDR-4 (always-open submission): an order submitted mid-round is
+            // armed for a LATER round (`arm_auction_id > current`). It rests in the slab but
+            // is not eligible to fold into THIS round's histogram — skip it. It becomes
+            // foldable once `arm_auction_id <= current_auction_id` (the roll bumps the current
+            // id, never the order's arm). The completeness gate exempts exactly this case, so a
+            // future-armed order never blocks the current round's finalize.
+            if order.arm_auction_id > auction_id {
+                continue;
+            }
+
             // DDR-3 (marketable-fill / passive-park): a resting order whose FIXED price
             // left the recentered window is not an error. Classify it by side:
             //   InWindow  → fold at its own tick (the normal case);

@@ -148,6 +148,9 @@ pub enum TempoProgramError {
     /// 45 - Shard id is out of range for this market
     #[error("Shard id is out of range for this market")]
     ShardOutOfRange = 0x2D,
+    /// 46 - Order expiry is already reached at submit time
+    #[error("Order expiry is already reached at submit time")]
+    OrderAlreadyExpired = 0x2E,
 }
 
 impl From<TempoProgramError> for solana_program_error::ProgramError {

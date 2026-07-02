@@ -15,11 +15,11 @@ use crate::{
 pub const MAX_NUM_TICKS: u32 = 256;
 /// Upper bound on `orders_per_auction_cap` (one OrderSlab shard's capacity). Each
 /// shard is created by `init_shard` via a single CPI `CreateAccount`, which Solana
-/// caps at 10_240 bytes (`MAX_PERMITTED_DATA_INCREASE`). At Stage B's `ORDER_LEN = 104`
-/// the single-`CreateAccount` ceiling is `(10_240 − OrderSlabHeader::LEN(77)) / 104 = 97`,
-/// but we fix the cap at **90**: that is sized for the FINAL `Order` size (`ORDER_LEN`
-/// grows 104 → ~112 in Stage C1), so shards never need re-provisioning between stages —
-/// `77 + 90 · 112 = 10_157 ≤ 10_240` still fits one `CreateAccount`. The `const _` assert
+/// caps at 10_240 bytes (`MAX_PERMITTED_DATA_INCREASE`). At the current Stage-C1
+/// `ORDER_LEN = 112` the single-`CreateAccount` ceiling is `(10_240 −
+/// OrderSlabHeader::LEN(77)) / 112 = 90`, and we fix the cap at exactly **90**: sized for
+/// this final `Order` size so shards never needed re-provisioning between Stage B (104) and
+/// Stage C1 (112) — `77 + 90 · 112 = 10_157 ≤ 10_240` fits one `CreateAccount`. The `const _` assert
 /// below fails the build if a future `ORDER_LEN` growth breaches the limit at the CURRENT
 /// size, forcing this constant down in lockstep instead of drifting silently.
 pub const MAX_ORDERS_PER_AUCTION_CAP: u32 = 90;
