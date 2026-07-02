@@ -142,6 +142,7 @@ pub fn provision(cfg: &ProvisionConfig) -> Result<SimArtifact, SimError> {
                 seed: *seed,
             })
             .collect(),
+        num_slab_shards: cfg.num_slab_shards,
     };
     artifact.save(&cfg.artifact_path)?;
     tracing::info!(path = %cfg.artifact_path, market = %market, "provisioner: artifact written");
@@ -217,11 +218,11 @@ fn ensure_market(
         tracing::info!(market = %pdas.market, "provisioner: market already exists, skipping");
         return Ok(());
     }
-    // Stage A sharding: the sim uses ONE shard so it runs end-to-end with the current
-    // shard-0-only keeper (multi-shard fan-out — folding/settling/resetting every shard —
-    // is the remaining keeper work, docs/plan.md A12.3). A single shard exercises all the
-    // new sharded code paths; raise this once the keeper fans out.
-    let num_slab_shards: u16 = 1;
+    // Stage A sharding: create `cfg.num_slab_shards` shards (each an OrderSlab account via
+    // init_shard below). The keeper now fans out across every shard (snapshot loads all
+    // shards, settle targets each order's shard, roll resets all shards), and traders route
+    // by `shard_for_trader`, so a multi-shard market runs end-to-end.
+    let num_slab_shards: u16 = cfg.num_slab_shards;
     let (_, market_bump) = pda::market(&market_seed.pubkey());
     let (_, histogram_bump) = pda::histogram(&pdas.market);
     // `order_slab_bump` is retained in InitializeMarket args for wire stability but

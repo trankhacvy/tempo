@@ -30,10 +30,26 @@ pub struct MarketSnapshot {
 }
 
 impl MarketSnapshot {
-    /// Read the market, slab, clearing result, and maker quotes for one tick.
+    /// Read the market, ALL shard slabs, clearing result, and maker quotes for one tick.
+    ///
+    /// Stage A multi-shard: the slab is `num_slab_shards` independent accounts. We load
+    /// every shard and stamp each decoded order with its `shard_id`, so `all_resting_folded`
+    /// (completeness), `accumulated_orders` (settle), and `expired_resting_orders` (reap) see
+    /// the WHOLE book, and `settle_fill` can target the order's own shard. The shard count is
+    /// read from the market itself (fetched first), so no caller needs to know it.
     pub async fn load(client: &TempoClient, pdas: &MarketPdas) -> Result<Self, SdkError> {
         let market = client.fetch_market(&pdas.market).await?;
-        let slab = decode_slab_orders(&client.fetch_account_data(&pdas.order_slab).await?)?;
+        let mut slab: Vec<SlabOrder> = Vec::new();
+        for shard_id in 0..market.num_slab_shards {
+            let data = client
+                .fetch_account_data(&pdas.slab_shard(shard_id))
+                .await?;
+            let mut orders = decode_slab_orders(&data)?;
+            for o in &mut orders {
+                o.shard_id = shard_id;
+            }
+            slab.extend(orders);
+        }
         let clearing = match client.fetch_account_data_opt(&pdas.clearing).await? {
             Some(data) => ClearingResultView::decode(&data).ok(),
             None => None,
@@ -88,10 +104,10 @@ impl MarketSnapshot {
     /// keeper reaps each via the permissionless `cancel_order` as an operational duty;
     /// the released margin always returns to the owner's ledger.
     ///
-    /// NOTE: this only sees shard 0 (the snapshot loads one shard). The keeper reaps
-    /// EVERY shard via `actions::reap`, which loads each shard's slab and applies the
-    /// same rule through the shared `is_reapable` filter (DDR-3 Correction-2 item 5) —
-    /// this method remains for the single-shard fingerprint/tests.
+    /// The snapshot now loads ALL shards (each order stamped with its `shard_id`), so this
+    /// sees the whole book. `actions::reap` still does its own independent per-shard load and
+    /// fires the cancels (it needs each order's shard id to build the tx, and stays correct
+    /// even without a snapshot); this method backs the fingerprint/tests.
     pub fn expired_resting_orders(&self) -> Vec<SlabOrder> {
         let round = self.market.current_auction_id;
         self.slab

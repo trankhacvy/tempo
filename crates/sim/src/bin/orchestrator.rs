@@ -216,8 +216,9 @@ async fn main() -> Result<(), SimError> {
             trader,
             pdas,
             collateral_mint,
-            // Single-shard market (provision.rs) → every trader routes to shard 0.
-            num_slab_shards: 1,
+            // Route each trader to its canonical shard (Stage A): shard_for_trader %
+            // num_slab_shards, matching the market the provisioner created.
+            num_slab_shards: art.num_slab_shards,
             cfg: trader_cfg,
             seed: t.seed,
         };

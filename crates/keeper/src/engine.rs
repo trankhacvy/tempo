@@ -133,6 +133,7 @@ mod tests {
             remaining: 5,
             expires_at_auction: 0,
             arm_auction_id: 0,
+            shard_id: 0,
         }
     }
 

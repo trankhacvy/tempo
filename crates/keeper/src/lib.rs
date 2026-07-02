@@ -106,7 +106,7 @@ async fn tick(ctx: &KeeperCtx) -> Result<TickReport, KeeperError> {
         }
         Plan::Discover => actions::discover(ctx, snapshot.market.num_slab_shards).await,
         Plan::Settle { orders, quotes } => actions::settle(ctx, orders, quotes).await,
-        Plan::Roll { oracle } => actions::roll(ctx, oracle).await,
+        Plan::Roll { oracle } => actions::roll(ctx, oracle, snapshot.market.num_slab_shards).await,
     }
 
     Ok(TickReport {

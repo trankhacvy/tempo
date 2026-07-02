@@ -82,6 +82,11 @@ pub struct ProvisionConfig {
     pub tick_size: u64,
     pub num_ticks: u32,
     pub cap: u32,
+    /// Number of slab shards (Stage A). Each shard is one `OrderSlab` account created by
+    /// `init_shard`; traders route to `shard_for_trader(trader) % num_slab_shards` and the
+    /// keeper fans out across all shards. Clamped to keep `finalize_clear`'s all-shards
+    /// account list within the per-tx limit (DDR-1).
+    pub num_slab_shards: u16,
     pub maint_bps: u16,
     pub initial_bps: u16,
     pub penalty_bps: u16,
@@ -132,6 +137,9 @@ impl ProvisionConfig {
             // above 90 is rejected by `initialize_market`, so clamp the ceiling to 90 to fail
             // fast in config rather than at provisioning.
             cap: env_parse::<u32>("TEMPO_SIM_CAP", 90).clamp(1, 90),
+            // Clamp to 16: finalize_clear passes ALL shards, so K + fixed accounts must fit
+            // one tx's account list (DDR-1 ~40-shard ceiling); 16 is a safe devnet default.
+            num_slab_shards: env_parse::<u16>("TEMPO_SIM_NUM_SHARDS", 1).clamp(1, 16),
             maint_bps,
             initial_bps,
             penalty_bps,
@@ -167,6 +175,7 @@ mod tests {
             tick_size: 10,
             num_ticks: 64,
             cap: 64,
+            num_slab_shards: 1,
             maint_bps: 0,
             initial_bps: 0,
             penalty_bps: 0,

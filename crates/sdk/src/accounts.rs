@@ -398,6 +398,11 @@ pub struct SlabOrder {
     /// First round this order may fold (Stage C1 / DDR-4 always-open submission):
     /// eligible iff `arm_auction_id <= market.current_auction_id`.
     pub arm_auction_id: u64,
+    /// The shard this order lives in. NOT part of the on-disk `Order` layout —
+    /// `decode_slab_orders` defaults it to 0; a multi-shard reader (the keeper snapshot)
+    /// stamps the real shard id after decoding each shard's slab, so `settle_fill` /
+    /// `cancel_order` can target the correct shard account.
+    pub shard_id: u16,
 }
 
 /// Offset of the first order slot in the slab account data (2-byte prefix +
@@ -439,6 +444,8 @@ pub fn decode_slab_orders(data: &[u8]) -> Result<Vec<SlabOrder>, SdkError> {
                 status,
                 expires_at_auction: u64_at(data, off + 96),
                 arm_auction_id: u64_at(data, off + 104),
+                // Not on-disk; the multi-shard snapshot reader stamps the real shard id.
+                shard_id: 0,
             });
         }
         off += ORDER_LEN;

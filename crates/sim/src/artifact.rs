@@ -34,6 +34,15 @@ pub struct SimArtifact {
     pub liquidator: AgentEntry,
     pub market_makers: Vec<AgentEntry>,
     pub traders: Vec<TraderEntry>,
+    /// Number of slab shards the market was provisioned with (Stage A). Traders route
+    /// deterministically to one shard by `shard_for_trader(trader, num_slab_shards)`, and
+    /// the keeper fans out across all shards. Defaults to 1 for pre-sharding artifacts.
+    #[serde(default = "default_num_slab_shards")]
+    pub num_slab_shards: u16,
+}
+
+fn default_num_slab_shards() -> u16 {
+    1
 }
 
 impl SimArtifact {
@@ -79,11 +88,17 @@ mod tests {
                 persona: "noise".into(),
                 seed: 7,
             }],
+            num_slab_shards: 8,
         };
         let json = serde_json::to_string(&a).unwrap();
         let b: SimArtifact = serde_json::from_str(&json).unwrap();
         assert_eq!(b.market, "M");
         assert_eq!(b.collateral_mint.as_deref(), Some("C"));
         assert_eq!(b.traders[0].seed, 7);
+        assert_eq!(b.num_slab_shards, 8);
+        // Pre-sharding artifacts (no field) default to 1 shard.
+        let legacy = json.replace(",\"num_slab_shards\":8", "");
+        let c: SimArtifact = serde_json::from_str(&legacy).unwrap();
+        assert_eq!(c.num_slab_shards, 1);
     }
 }

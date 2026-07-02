@@ -93,10 +93,17 @@ pub async fn settle(ctx: &KeeperCtx, orders: Vec<SlabOrder>, quotes: Vec<Pubkey>
     stream::iter(orders)
         .for_each_concurrent(ctx.settle_concurrency, |order| async move {
             let money = settle_money(ctx, &order.trader);
-            // TODO(Stage A fan-out): shard 0 only (snapshot reads shard 0). A full keeper
-            // carries each order's shard_id (from the OrderSubmitted event) here. See
-            // docs/plan.md A12.3.
-            let ix = ix::settle_fill(&ctx.pdas, cranker, 0, order.order_id, order.slot, &money);
+            // Stage A multi-shard: settle each order against its OWN shard. The snapshot
+            // stamps `shard_id` on every order as it loads each shard's slab, so a
+            // multi-shard market settles correctly (was hardcoded to shard 0).
+            let ix = ix::settle_fill(
+                &ctx.pdas,
+                cranker,
+                order.shard_id,
+                order.order_id,
+                order.slot,
+                &money,
+            );
             send_one(ctx, &[ix], "settle_fill").await;
         })
         .await;
@@ -182,17 +189,17 @@ pub async fn reap(ctx: &KeeperCtx, round: u64, num_slab_shards: u16) {
         .await;
 }
 
-/// ROLL: drain+re-arm each shard, then open the next round (only reached when the slab
+/// ROLL: drain+re-arm EVERY shard, then open the next round (only reached when the slab
 /// is empty + quotes settled). Stage A: `start_auction` gates on every shard being reset
-/// (`shards_ready == num_slab_shards`), so `reset_shard` must run first.
-///
-/// TODO(Stage A fan-out): this resets shard 0 only. A full keeper resets every shard
-/// `[0, num_slab_shards)` (one tx each) — see docs/plan.md A12.3. With `num_slab_shards
-/// == 1` (the sim default) this is complete.
-pub async fn roll(ctx: &KeeperCtx, oracle: Pubkey) {
+/// (`shards_ready == num_slab_shards`), so every `reset_shard` must run before it. Resetting
+/// an already-reset shard is a benign idempotent no-op (a dropped reset simply retries next
+/// tick), so re-emitting all shards each roll is safe.
+pub async fn roll(ctx: &KeeperCtx, oracle: Pubkey, num_slab_shards: u16) {
     let cranker = ctx.cranker.pubkey();
-    let reset = ix::reset_shard(&ctx.pdas, cranker, 0);
-    send_one(ctx, &[reset], "reset_shard").await;
+    for shard_id in 0..num_slab_shards {
+        let reset = ix::reset_shard(&ctx.pdas, cranker, shard_id);
+        send_one(ctx, &[reset], "reset_shard").await;
+    }
     let ix = ix::start_auction(&ctx.pdas, cranker, oracle);
     send_one(ctx, &[ix], "start_auction").await;
 }

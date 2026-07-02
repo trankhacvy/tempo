@@ -93,6 +93,7 @@ fn live_state(with_clearing: bool) -> LiveState {
         remaining: 5,
         expires_at_auction: 0,
         arm_auction_id: 0,
+        shard_id: 0,
     };
     let quote_key = Pubkey::new_unique();
     let quote = MakerQuoteView {
