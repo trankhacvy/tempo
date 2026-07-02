@@ -99,6 +99,16 @@ pub fn provision(cfg: &ProvisionConfig) -> Result<SimArtifact, SimError> {
         }
         Some(vta)
     } else {
+        // Phase A (clearing-only): no vault/collateral/mint, but settle_fill still
+        // needs a Position account to record a crossing order's non-zero fill (the C1
+        // rule). Give every agent a money-free position; without it settle reverts
+        // "Invalid account owner" and the round wedges in Settling.
+        for (kp, _) in &mm {
+            ensure_position(&rpc, &master, kp, &pdas)?;
+        }
+        for (kp, _, _, _) in &traders {
+            ensure_position(&rpc, &master, kp, &pdas)?;
+        }
         None
     };
 
@@ -341,6 +351,21 @@ fn setup_money_agent(
         spl::send(rpc, &[owner], &[dep])?;
     }
 
+    ensure_position(rpc, master, owner, pdas)?;
+    Ok(())
+}
+
+/// Create the owner's `Position` PDA if it does not exist. Required in BOTH phases:
+/// `settle_fill` needs the position to record a non-zero fill's size (the C1 rule),
+/// so even a Phase-A clearing-only market (no vault/collateral) must give each agent a
+/// money-free position — otherwise settle reverts with "Invalid account owner" on the
+/// System-owned (uninitialized) position account and the round never rolls.
+fn ensure_position(
+    rpc: &RpcClient,
+    master: &Keypair,
+    owner: &Keypair,
+    pdas: &MarketPdas,
+) -> Result<(), SimError> {
     let (position, _) = pda::position(&pdas.market, &owner.pubkey());
     if !account_exists(rpc, &position) {
         let init = ix::init_position(pdas, master.pubkey(), owner.pubkey());
