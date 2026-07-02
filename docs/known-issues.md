@@ -699,6 +699,32 @@ bottleneck, implement C2 per plan §4.2 + DDR-4's re-review trigger.
 
 ---
 
+### 2.16 Keeper attaches an uninitialized position on a zero-fill settle → round wedges — [bug]
+
+> **Status: ⬜ to fix.** Found by the devnet flood run (a saturated 4-shard market). The
+> keeper's `settle` always attaches the owner's `Position` account
+> (`actions.rs::settle_money`, "position is always supplied"). For an order whose owner
+> has **no** position but whose fill is **zero** (the program permits consuming a
+> zero-fill order *without* a position), the keeper still passes the uninitialized
+> (System-owned) position PDA, and `settle_fill` reverts **`Invalid account owner`** on
+> the account check *before* it reaches the zero-fill path. Every such settle fails, so
+> the shard never drains of `Accumulated` orders, the roll gate never passes, and the
+> market wedges in `Settling` (`auction_id` frozen).
+
+Surfaces whenever a settling order's owner lacks a position — e.g. the `tempo-sim-flood`
+load generator (throwaway ephemeral traders) or any zero-fill order on a market where
+positions weren't provisioned. Provisioned traders (the orchestrator personas) are
+unaffected, which is why the earlier multi-shard run rolled fine.
+
+**Fix:** the keeper must not pass a position account that doesn't exist for a zero-fill
+order. Cheapest correct approach: before the settle fan-out, batch-fetch the order
+owners' position PDAs (one `getMultipleAccounts`) and attach `position` only for owners
+that actually have one; an owner with no position + a zero fill settles position-free
+(program-permitted), while a real (non-zero) fill for a position-less owner correctly
+fails `MissingSettleAccounts` (that trader must provision a position). No per-order RPC.
+
+---
+
 ## 4. Off-chain service issues (off-chain crates — new findings)
 
 These issues were found in the off-chain Rust crates (`crates/keeper`, `crates/mm-bot`,

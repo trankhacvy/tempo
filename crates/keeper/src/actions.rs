@@ -68,14 +68,17 @@ pub async fn discover(ctx: &KeeperCtx, num_slab_shards: u16) {
     send_one(ctx, &[ix], "finalize_clear").await;
 }
 
-/// The optional money-path accounts for one order's owner. `position` is always
-/// supplied (the program requires it for a non-zero fill); collateral/vault only
-/// when the market has a declared money path.
-fn settle_money(ctx: &KeeperCtx, trader: &Pubkey) -> SettleMoney {
-    let position = Some(pda::position(&ctx.pdas.market, trader).0);
+/// The optional money-path accounts for one order's owner. `position` is attached only
+/// when it EXISTS on-chain (`has_position`): the program requires it for a NON-zero fill,
+/// but permits consuming a ZERO-fill order WITHOUT one — and attaching an uninitialized
+/// (System-owned) position PDA reverts `settle_fill` with "Invalid account owner" on the
+/// account check, wedging the round (known-issues §2.16). collateral/vault ride only on a
+/// declared money market.
+fn settle_money(ctx: &KeeperCtx, trader: &Pubkey, has_position: bool) -> SettleMoney {
+    let position = has_position.then(|| pda::position(&ctx.pdas.market, trader).0);
     let (user_collateral, vault) = match ctx.collateral_mint {
-        Some(mint) => (Some(pda::user_collateral(trader, &mint).0), ctx.vault),
-        None => (None, None),
+        Some(mint) if has_position => (Some(pda::user_collateral(trader, &mint).0), ctx.vault),
+        _ => (None, None),
     };
     SettleMoney {
         position,
@@ -92,7 +95,19 @@ pub async fn settle(ctx: &KeeperCtx, orders: Vec<SlabOrder>, quotes: Vec<Pubkey>
     let started = std::time::Instant::now();
     stream::iter(orders)
         .for_each_concurrent(ctx.settle_concurrency, |order| async move {
-            let money = settle_money(ctx, &order.trader);
+            // Attach the owner's position only if it actually exists on-chain (known-issues
+            // §2.16): a zero-fill order whose owner has no position settles position-free,
+            // and passing an uninitialized position PDA would revert "Invalid account owner"
+            // and wedge the round. One getAccount per order, bounded by settle_concurrency.
+            let position_pda = pda::position(&ctx.pdas.market, &order.trader).0;
+            let has_position = ctx
+                .client
+                .fetch_account_data_opt(&position_pda)
+                .await
+                .ok()
+                .flatten()
+                .is_some();
+            let money = settle_money(ctx, &order.trader, has_position);
             // Stage A multi-shard: settle each order against its OWN shard. The snapshot
             // stamps `shard_id` on every order as it loads each shard's slab, so a
             // multi-shard market settles correctly (was hardcoded to shard 0).
