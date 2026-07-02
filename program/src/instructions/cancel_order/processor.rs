@@ -18,9 +18,9 @@ use crate::{
 /// `OrderSlabHeader.count`). The market is read-only here (PERF-1, known-issues
 /// §2.1): `cancel_order` never write-locks `Market`.
 ///
-/// Authorization (DDR-3 correction #2): the order's **owner** may always cancel;
-/// **anyone** may reap an **expired** order (`expires_at_auction <=
-/// current_auction_id`). A passive resting order is never folded, so `settle_fill`
+/// Authorization (DDR-3 correction #2 + Correction-2 item 4): the order's **owner**
+/// may always cancel; **anyone** may reap an order only *after its last active round*
+/// (strict `expires_at_auction < current_auction_id`). A passive resting order is never folded, so `settle_fill`
 /// (the only other place expiry is handled) never runs on it — without a
 /// permissionless reaper its `reserved_margin` would stay locked forever if the
 /// window never returns. In BOTH paths the released margin returns to the
@@ -67,11 +67,15 @@ pub fn process_cancel_order(
             return Err(TempoProgramError::InvalidOrderStatus.into());
         }
 
-        // DDR-3 correction #2: the owner may always cancel; anyone may reap an EXPIRED
-        // order (permissionless GC of a passive order's locked margin). The reaper never
-        // benefits — the reservation always returns to `order.trader` below.
-        let expired = order.expires_at_auction != 0 && order.expires_at_auction <= auction_id;
-        if !expired && order.trader != signer {
+        // DDR-3 correction #2 + Correction-2 item 4: the owner may always cancel; anyone
+        // may reap an EXPIRED order (permissionless GC of a passive order's locked margin).
+        // The permissionless reap boundary is STRICT `<` — an order is reapable by a
+        // non-owner only AFTER its last active round. Using `<=` would let anyone strip an
+        // order during the very round it is still entitled to fold and fill (a denial-of-fill
+        // grief). `settle_fill` keeps its own `<=` consume-after-fill boundary UNCHANGED. The
+        // reaper never benefits — the reservation always returns to `order.trader` below.
+        let reapable = order.expires_at_auction != 0 && order.expires_at_auction < auction_id;
+        if !reapable && order.trader != signer {
             return Err(TempoProgramError::InvalidOrderOwner.into());
         }
 

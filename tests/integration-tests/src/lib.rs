@@ -764,8 +764,9 @@ impl TestContext {
         order_id
     }
 
-    /// Submit a reduce-only (taker) order (missing-features §1.1/§2.2): only the
-    /// portion that would open new exposure reserves margin. Returns the order id.
+    /// Submit a reduce-only (taker) order. DDR-3 Correction-2 #3: reduce-only reserves
+    /// the SAME full worst-case initial margin as a normal order (no discount); its only
+    /// remaining effect is to force `Consumed` at settle. Returns the order id.
     pub fn submit_order_reduce_only(
         &mut self,
         pdas: &MarketPdas,
@@ -793,6 +794,46 @@ impl TestContext {
         qty: u64,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, false, 0, 0);
+        self.send(ix, &[trader])
+    }
+
+    /// Try submitting a reduce-only (taker) order, returning the raw result (for
+    /// negative tests). Reduce-only reserves FULL worst-case margin (DDR-3
+    /// Correction-2 #3), so this can be rejected for want of free collateral just
+    /// like a normal order.
+    pub fn try_submit_order_reduce_only(
+        &mut self,
+        pdas: &MarketPdas,
+        trader: &Keypair,
+        side: u8,
+        price: u64,
+        qty: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let ix = self.submit_order_ix(pdas, &trader.pubkey(), side, price, qty, true, 0, 0);
+        self.send(ix, &[trader])
+    }
+
+    /// Try submitting a (taker) order with an explicit expiry, returning the raw
+    /// result (for negative tests — e.g. an already-expired expiry is rejected).
+    pub fn try_submit_order_expiring(
+        &mut self,
+        pdas: &MarketPdas,
+        trader: &Keypair,
+        side: u8,
+        price: u64,
+        qty: u64,
+        expires_at_auction: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let ix = self.submit_order_ix(
+            pdas,
+            &trader.pubkey(),
+            side,
+            price,
+            qty,
+            false,
+            0,
+            expires_at_auction,
+        );
         self.send(ix, &[trader])
     }
 
@@ -924,6 +965,41 @@ impl TestContext {
             data,
         };
         self.send(ix, &[trader]).expect("cancel_order")
+    }
+
+    /// Permissionless reap (DDR-3 correction #2): a non-owner `reaper` cancels an
+    /// expired order owned by `owner`, returning the raw result (for negative tests).
+    /// The OWNER's collateral ledger is passed (the program requires released margin
+    /// to return to `order.trader`, never the reaper). `slot_hint` sentinel = scan.
+    pub fn try_reap_order(
+        &mut self,
+        pdas: &MarketPdas,
+        reaper: &Keypair,
+        owner: &Pubkey,
+        order_id: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let mut data = Vec::with_capacity(1 + 8 + 4);
+        data.push(IX_CANCEL_ORDER);
+        data.extend_from_slice(&order_id.to_le_bytes());
+        data.extend_from_slice(&u32::MAX.to_le_bytes());
+        let mut accounts = vec![
+            AccountMeta::new_readonly(reaper.pubkey(), true),
+            AccountMeta::new_readonly(pdas.market, false),
+            AccountMeta::new(pdas.order_slab, false),
+            AccountMeta::new_readonly(self.event_authority, false),
+            AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+        ];
+        // The OWNER's collateral ledger (not the reaper's) — margin returns to the owner.
+        let collateral = self.collateral_pda(owner).0;
+        if self.account_exists(&collateral) {
+            accounts.push(AccountMeta::new(collateral, false));
+        }
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        };
+        self.send(ix, &[reaper])
     }
 
     // -- instruction: ProcessChunk ------------------------------------------

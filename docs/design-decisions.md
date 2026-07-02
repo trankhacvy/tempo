@@ -117,6 +117,31 @@ Also: the keeper's passive-classification mirror must not hand-reimplement `clas
 (overflow risk on `num_ticks * tick_size`, and drift from the on-chain rule). The classifier is
 mirrored into `tempo-math` (golden-guarded, overflow-safe) and shared.
 
+### Correction 2 (2026-07-02, review of the correction batch `812f6e7`)
+
+The review of the first correction batch found the reap and the reduce-only change were each still
+incomplete. Resolved in the follow-up batch:
+
+3. **Reduce-only orders reserve FULL initial margin (no discount).** Reduce-only cannot be perfectly
+   honored in a batch auction: the fill quantity is fixed at fold, but "only reduce" depends on the
+   position at settle, which `liquidate`/`funding`/other fills can change mid-round (`liquidate` has
+   no phase gate). Clamping the fill at settle to enforce shrink-only breaks conservation (that was
+   correction #1's whole point). So the position *may* open against the trader's intent — and the
+   only safe way to allow that is to make it **collateralized**. Reduce-only therefore reserves the
+   **full** worst-case initial margin at submit (the `opening_qty = qty − headroom` discount is
+   removed); it stays force-`Consumed` (never rests). Accepted trade-off: reduce-only loses its
+   capital-efficiency edge and may open a small collateralized position the trader closes next
+   round, rather than ever carrying an under-margined one. (Chosen over dropping reduce-only
+   entirely; see the AskUserQuestion decision 2026-07-02.)
+4. **Expiry-reap boundary is strict `<`, plus a submit guard.** The reaper allowed cancel at
+   `expires_at_auction <= current_auction_id`, which lets anyone strip an order during the *same*
+   round it is still entitled to fold and fill (a denial-of-fill grief). The reaper now requires
+   `expires_at_auction < current_auction_id` — reapable only *after* its last active round — while
+   `settle_fill` keeps `<=` for its own consume-after-fill. `submit_order` also rejects an
+   already-expired order (`expires_at_auction != 0 && <= current_auction_id`).
+5. **The keeper reaps ALL shards.** The first reap read only shard 0, so expired orders on shards
+   1..N leaked margin forever on any multi-shard market — it must scan every shard.
+
 ---
 
 ## DDR-2 — Stage B resting orders: the roll gate + the partial-fill margin split

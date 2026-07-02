@@ -5,8 +5,10 @@
 //!      settlement);
 //!   2. `cancel_order` releases the reservation;
 //!   3. a settled fill nets the reservation down to the actual locked margin;
-//!   4. `reduce_only` lets a fully-margined position close (reserves ~0), while a
-//!      non-reduce sell at the same moment is rejected;
+//!   4. `reduce_only` reserves the SAME full worst-case initial margin as a normal
+//!      order — NO discount (DDR-3 Correction-2 item 3): clamping the fill at settle to
+//!      enforce shrink-only breaks conservation, so a reduce-only order may open a
+//!      collateralized position against intent and must be fully margined at submit;
 //!   5. the per-position `max_position_notional` cap is enforced at submit.
 
 use solana_sdk::pubkey::Pubkey;
@@ -118,11 +120,15 @@ fn max_position_notional_caps_order() {
     assert_eq!(ctx.order_slab(&pdas).count, 1, "the within-cap order rests");
 }
 
-/// §1.1/§2.2: a fully-margined long can submit a reduce-only sell to close (it
-/// reserves ~0 of new exposure), even though a normal sell at the same moment would
-/// be rejected for want of free collateral.
+/// §1.1 (DDR-3 Correction-2 item 3): a reduce-only order reserves the SAME full
+/// worst-case initial margin as a normal order — NO discount. Reduce-only cannot be
+/// perfectly honored in a batch auction (the fill is fixed at fold; the position at
+/// settle can move), and clamping the fill at settle to enforce shrink-only breaks
+/// conservation, so the order may open a collateralized position against intent and
+/// must be fully margined at submit. Hence a fully-margined trader with zero free
+/// collateral is rejected for a reduce-only sell exactly as it is for a normal sell.
 #[test]
-fn reduce_only_lets_a_maxed_position_close() {
+fn reduce_only_reserves_full_margin_no_discount() {
     let (mut ctx, pdas, mint, vault_ta) = money_market(64);
 
     // The trader opens a long via a taker buy that exactly consumes its deposit as
@@ -157,11 +163,27 @@ fn reduce_only_lets_a_maxed_position_close() {
             .is_err(),
         "a non-reduce close is blocked when fully margined"
     );
-    // The reduce-only sell reserves ~0 (pure reduce) and is accepted.
-    ctx.submit_order_reduce_only(&pdas, &trader, SIDE_SELL, 30, 10);
+    // A REDUCE-ONLY sell now reserves the SAME full worst-case margin (no discount),
+    // so it is ALSO rejected when there is no free collateral (DDR-3 Correction-2 #3).
+    assert!(
+        ctx.try_submit_order_reduce_only(&pdas, &trader, SIDE_SELL, 30, 10)
+            .is_err(),
+        "a reduce-only close reserves FULL margin now, so it is also blocked when fully margined"
+    );
     assert_eq!(
         ctx.order_slab(&pdas).count,
-        1,
-        "the reduce-only close rests despite zero free collateral"
+        0,
+        "neither close rested — both rejected at submit for want of free collateral"
+    );
+
+    // With free collateral, a reduce-only order rests and locks the FULL worst-case
+    // reservation (sell reserves against the window top price, not a discounted qty).
+    let funded = funded_trader(&mut ctx, &pdas, &mint, &vault_ta, 1000);
+    let before = ctx.user_collateral(&funded.pubkey()).locked;
+    ctx.submit_order_reduce_only(&pdas, &funded, SIDE_SELL, 30, 10);
+    let after = ctx.user_collateral(&funded.pubkey()).locked;
+    assert!(
+        after > before,
+        "a reduce-only order locks its full worst-case initial margin (no ~0 discount)"
     );
 }

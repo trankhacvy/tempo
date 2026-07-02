@@ -80,6 +80,16 @@ pub fn process_submit_order(
         return Err(TempoProgramError::ShardOutOfRange.into());
     }
 
+    // Reject an already-expired order (DDR-3 Correction-2 item 4): an order whose
+    // `expires_at_auction` is already reached at submit time can never fold or fill
+    // this round or any later one, so it would only rest as dead margin the reaper
+    // must collect. `0` means GTC (never expires). Uses the same `<=` boundary as
+    // `settle_fill`'s consume-after-fill check (the permissionless reaper uses strict
+    // `<`, but an order submitted AT its expiry auction is never entitled to fold).
+    if ix.data.expires_at_auction != 0 && ix.data.expires_at_auction <= auction_id {
+        return Err(TempoProgramError::OrderAlreadyExpired.into());
+    }
+
     // --- validate order slab PDA matches this market + anti-spam + reduce headroom ---
     let already_same_side = {
         let slab_data = ix.accounts.order_slab.try_borrow()?;
@@ -158,18 +168,21 @@ pub fn process_submit_order(
             position.size() as i128
         };
 
-        // Reduce-aware opening quantity: the portion of this order that would OPEN
-        // new exposure. A reduce-only order against an opposite position reserves
-        // only what flips past the (already-claimed) reduce headroom.
+        // Reduce-only reserves the FULL worst-case initial margin (DDR-3 Correction-2 item 3):
+        // NO discount. Reduce-only cannot be perfectly honored in a batch auction — the fill
+        // quantity is fixed at fold but the position at settle can move (liquidate/funding/other
+        // fills), so the order may open against intent. Clamping the fill at settle to enforce
+        // shrink-only breaks conservation (Correction #1), so the only safe path is to let it
+        // open a COLLATERALIZED position. Hence a reduce-only order reserves the same full
+        // worst-case margin as any normal order; the persisted `reduce_only` byte's sole
+        // remaining job is to force `Consumed` at settle (never re-arm `Resting`).
         let abs_pos = pos_size.unsigned_abs();
         let qty = ix.data.quantity as u128;
-        let is_reducing = (pos_size > 0 && !is_buy) || (pos_size < 0 && is_buy);
-        let opening_qty: u64 = if ix.data.reduce_only && is_reducing {
-            let headroom = abs_pos.saturating_sub(already_same_side as u128);
-            u64::try_from(qty.saturating_sub(headroom)).unwrap_or(ix.data.quantity)
-        } else {
-            ix.data.quantity
-        };
+        // `already_same_side` (reduce headroom anti-spam accounting) is still scanned above so
+        // resting reduces can't collectively flip the position, but it no longer discounts the
+        // reserved margin.
+        let _ = already_same_side;
+        let opening_qty: u64 = ix.data.quantity;
 
         // Per-position notional cap (missing-features §1.2): bound the order's
         // worst-case NEW exposure only. A same-side order grows `|pos|` by `qty`; an

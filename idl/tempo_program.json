@@ -2682,6 +2682,12 @@
         "kind": "errorNode",
         "message": "Shard id is out of range for this market",
         "name": "shardOutOfRange"
+      },
+      {
+        "code": 46,
+        "kind": "errorNode",
+        "message": "Order expiry is already reached at submit time",
+        "name": "orderAlreadyExpired"
       }
     ],
     "events": [],

@@ -9,6 +9,17 @@ use tempo_sdk::accounts::{
 };
 use tempo_sdk::{MarketPdas, SdkError, TempoClient};
 
+/// The shared "is this resting order reapable by a permissionless (non-owner) crank
+/// THIS round?" rule (DDR-3 Correction-2 item 4). The on-chain `cancel_order` reap
+/// boundary is STRICT `<` — an order is reapable by a non-owner only AFTER its last
+/// active round — so the keeper (a non-owner reaper) must match it exactly, or it
+/// would fire `cancel_order` txs the program rejects for an order still in its active
+/// round. `0` = good-till-cancelled (never reapable). Applied per shard in
+/// `actions::reap` and in `expired_resting_orders`.
+pub fn is_reapable(o: &SlabOrder, round: u64) -> bool {
+    o.status == STATUS_RESTING && o.expires_at_auction != 0 && o.expires_at_auction < round
+}
+
 /// Everything the keeper reads from chain in one tick. Plain data — `decide` is a
 /// pure function over it, so the whole state machine is unit-testable with no RPC.
 pub struct MarketSnapshot {
@@ -68,15 +79,16 @@ impl MarketSnapshot {
     /// handled) never runs on it and its `reserved_margin` would be locked forever. The
     /// keeper reaps each via the permissionless `cancel_order` as an operational duty;
     /// the released margin always returns to the owner's ledger.
+    ///
+    /// NOTE: this only sees shard 0 (the snapshot loads one shard). The keeper reaps
+    /// EVERY shard via `actions::reap`, which loads each shard's slab and applies the
+    /// same rule through the shared `is_reapable` filter (DDR-3 Correction-2 item 5) —
+    /// this method remains for the single-shard fingerprint/tests.
     pub fn expired_resting_orders(&self) -> Vec<SlabOrder> {
         let round = self.market.current_auction_id;
         self.slab
             .iter()
-            .filter(|o| {
-                o.status == STATUS_RESTING
-                    && o.expires_at_auction != 0
-                    && o.expires_at_auction <= round
-            })
+            .filter(|o| is_reapable(o, round))
             .copied()
             .collect()
     }

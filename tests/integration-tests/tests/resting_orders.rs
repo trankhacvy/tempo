@@ -384,14 +384,156 @@ fn reduce_only_partial_fill_is_consumed_not_rearmed() {
 
     // The reduce-only order is Consumed on a partial fill, NOT re-armed Resting — so its
     // leftover 8 can never carry into the next round and open new exposure.
-    let rec = ctx.orders(&pdas).into_iter().find(|r| r.order_id == o);
-    assert!(
-        rec.map(|r| r.status).unwrap_or(STATUS_CONSUMED) == STATUS_CONSUMED,
+    let rec = ctx
+        .orders(&pdas)
+        .into_iter()
+        .find(|r| r.order_id == o)
+        .expect("reduce-only order slot must still be present (not emptied)");
+    assert_eq!(
+        rec.status, STATUS_CONSUMED,
         "reduce-only order is Consumed on partial fill, not re-armed Resting"
     );
     assert_eq!(
         ctx.order_slab(&pdas).count,
         0,
         "reduce-only leftover left the book (count decremented)"
+    );
+}
+
+/// DDR-3 Correction-2 item 4: the permissionless reap boundary is STRICT `<`. During the
+/// order's active round (`expires_at_auction == current_auction_id`) a NON-OWNER may NOT
+/// cancel it (that would be a denial-of-fill grief — the order is still entitled to fold and
+/// fill this round). Only AFTER its last active round (`expires_at_auction < current`) can a
+/// non-owner reap it, and the released margin returns to the OWNER's ledger, never the reaper.
+/// A parked passive order is used so it survives rolls unfolded (settle never runs on it),
+/// exercising both boundaries in one flow.
+#[test]
+fn permissionless_reap_boundary_is_strict_less_than() {
+    let mut ctx = TestContext::new();
+    ctx.market_maint_bps = 500; // money-path market so a reservation is locked
+    let oracle = Pubkey::new_unique();
+    // Window centers on 100_000: floor 99_680, top 100_320 (tick 10, 64 ticks).
+    ctx.set_oracle(&oracle, 100_000, -8);
+    let pdas = ctx.init_market_with_oracle(10, 64, 16, oracle);
+
+    // Vault + a funded owner with a position and collateral.
+    let mint = ctx.create_mint();
+    let (vault_authority, _) = ctx.vault_authority_pda();
+    let vault_ta = ctx.create_token_account(&mint, &vault_authority);
+    let admin = ctx.new_funded_signer();
+    ctx.init_vault(&admin, &mint, &vault_ta);
+
+    let owner = ctx.new_funded_signer();
+    ctx.init_collateral(&owner);
+    let owner_ta = ctx.create_token_account(&mint, &owner.pubkey());
+    ctx.mint_to(&mint, &owner_ta, 1_000_000);
+    ctx.deposit(&owner, &vault_ta, &owner_ta, 1_000_000);
+    ctx.init_position(&pdas, &owner);
+
+    let id0 = ctx.market(&pdas).current_auction_id;
+
+    // A resting SELL @ 100_000 (in-window) expiring at id0+1. It reserves worst-case margin.
+    let o = ctx.submit_order_expiring(&pdas, &owner, SIDE_SELL, 100_000, 5, id0 + 1);
+    let locked_at_submit = ctx.user_collateral(&owner.pubkey()).locked;
+    assert!(
+        locked_at_submit > 0,
+        "the resting sell locks worst-case margin"
+    );
+
+    // Round id0: fold + settle → zero fill → re-armed Resting (expiry id0+1 > id0).
+    let d = ctx.phase_deadline_slot(&pdas);
+    ctx.warp_slot(d);
+    ctx.process_chunk(&pdas, 0, 64);
+    ctx.finalize_clear(&pdas);
+    ctx.settle_fill(&pdas, o);
+
+    // Recenter DOWN so the SELL is now ABOVE the window top → PASSIVE (never folds again, so
+    // settle never Consumes it — it survives rolls as a parked Resting order).
+    ctx.set_oracle(&oracle, 50_000, -8);
+    ctx.start_auction(&pdas);
+    assert_eq!(ctx.market(&pdas).current_auction_id, id0 + 1);
+
+    // (a) Round id0+1: current == expiry (id0+1). Strict `<` ⇒ NOT reapable by a non-owner.
+    let reaper = ctx.new_funded_signer();
+    assert!(
+        ctx.try_reap_order(&pdas, &reaper, &owner.pubkey(), o)
+            .is_err(),
+        "a non-owner may NOT reap during the order's active round (expires_at == current)"
+    );
+    // The margin is still locked (nothing was released by the rejected reap).
+    assert_eq!(
+        ctx.user_collateral(&owner.pubkey()).locked,
+        locked_at_submit,
+        "rejected reap released nothing"
+    );
+
+    // Park + roll again (passive order stays Resting): id0+1 → id0+2.
+    let d = ctx.phase_deadline_slot(&pdas);
+    ctx.warp_slot(d);
+    ctx.process_chunk(&pdas, 0, 64);
+    ctx.finalize_clear(&pdas); // passive exempt, so this succeeds
+    ctx.start_auction(&pdas);
+    assert_eq!(ctx.market(&pdas).current_auction_id, id0 + 2);
+
+    // (b) Round id0+2: expiry (id0+1) < current (id0+2) ⇒ reapable. A NON-OWNER reap succeeds
+    // and the released margin returns to the OWNER's ledger (not the reaper).
+    assert!(
+        ctx.try_reap_order(&pdas, &reaper, &owner.pubkey(), o)
+            .is_ok(),
+        "a non-owner may reap after the order's last active round (expires_at < current)"
+    );
+    assert_eq!(
+        ctx.user_collateral(&owner.pubkey()).locked,
+        0,
+        "reaped order's margin returned to the OWNER, not the reaper"
+    );
+    assert_eq!(
+        ctx.order_slab(&pdas).count,
+        0,
+        "the reaped order left the book"
+    );
+}
+
+/// DDR-3 Correction-2 item 4 (submit guard): `submit_order` rejects an order whose
+/// `expires_at_auction` is already reached at submit time (`!= 0 && <= current_auction_id`) —
+/// it could never fold or fill, so it must not rest as dead margin the reaper has to collect.
+#[test]
+fn submit_of_already_expired_order_is_rejected() {
+    let mut ctx = TestContext::new();
+    let pdas = ctx.init_market(10, 64, 16);
+    // Roll two full (empty) rounds so current_auction_id >= 2 (genesis is 0, and expiry 0
+    // means GTC — so both `expiry == current` AND `expiry < current` need a current id of
+    // at least 2 to be distinguishable from a GTC 0).
+    for _ in 0..2 {
+        ctx.process_chunk(&pdas, 0, 64);
+        ctx.finalize_clear(&pdas);
+        ctx.start_auction(&pdas);
+    }
+    let cur = ctx.market(&pdas).current_auction_id;
+    assert!(
+        cur >= 2,
+        "rolled past genesis so nonzero expiries are testable"
+    );
+
+    let t = ctx.new_funded_signer();
+    // expiry == current_auction_id ⇒ already reached ⇒ rejected.
+    assert!(
+        ctx.try_submit_order_expiring(&pdas, &t, SIDE_BUY, 40, 5, cur)
+            .is_err(),
+        "an order expiring at the current auction id is rejected at submit"
+    );
+    // expiry < current_auction_id ⇒ also rejected.
+    assert!(
+        ctx.try_submit_order_expiring(&pdas, &t, SIDE_BUY, 40, 5, cur - 1)
+            .is_err(),
+        "an order expiring before the current auction id is rejected at submit"
+    );
+    // A future expiry (or GTC = 0) is accepted.
+    let ok = ctx.try_submit_order_expiring(&pdas, &t, SIDE_BUY, 40, 5, cur + 1);
+    assert!(ok.is_ok(), "a future expiry is accepted");
+    assert_eq!(
+        ctx.order_slab(&pdas).count,
+        1,
+        "only the valid order rested"
     );
 }
