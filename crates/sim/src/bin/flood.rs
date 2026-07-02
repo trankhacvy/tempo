@@ -29,6 +29,7 @@ use solana_sdk::signature::{Keypair, Signer};
 use tempo_common::telemetry::init_tracing;
 use tempo_common::{env_parse, load_keypair_file, RpcPool};
 use tempo_math::tick::tick_to_price;
+use tempo_sdk::accounts::decode_slab_orders;
 use tempo_sdk::ix::{self, SubmitMoney};
 use tempo_sdk::{pda, MarketPdas, TempoClient};
 
@@ -61,6 +62,12 @@ async fn main() -> Result<(), SimError> {
     let batch: usize = env_parse::<usize>("TEMPO_SIM_FLOOD_BATCH", 6).max(1);
     let seconds: u64 = env_parse("TEMPO_SIM_FLOOD_SECONDS", 60);
     let concurrency: usize = env_parse::<usize>("TEMPO_SIM_FLOOD_CONCURRENCY", 8).max(1);
+    // Fire-and-forget: broadcast without waiting for confirmation. Lifts the ~1-tx-per-
+    // confirmation-round-trip ceiling; landing is verified from on-chain slab counts below.
+    let no_confirm = matches!(
+        std::env::var("TEMPO_SIM_FLOOD_NO_CONFIRM").as_deref(),
+        Ok("1") | Ok("true")
+    );
 
     // Ephemeral signers — they never pay (master is the fee payer) and hold no positions,
     // so they need no SOL and no setup; they exist only to be distinct order owners.
@@ -134,7 +141,12 @@ async fn main() -> Result<(), SimError> {
                     signers.extend(group_kps.iter().map(|a| a.as_ref()));
 
                     txs.fetch_add(1, Ordering::Relaxed);
-                    match client.send_signed(&signers, &ixs).await {
+                    let sent = if no_confirm {
+                        client.send_signed_no_confirm(&signers, &ixs).await.map(|_| ())
+                    } else {
+                        client.send_signed(&signers, &ixs).await.map(|_| ())
+                    };
+                    match sent {
                         Ok(_) => {
                             ok.fetch_add(group_kps.len() as u64, Ordering::Relaxed);
                         }
@@ -163,6 +175,20 @@ async fn main() -> Result<(), SimError> {
         );
     }
 
+    // Verify actual landing from chain: count non-empty slots across every shard. In
+    // fire-and-forget mode `total_ok` is only "broadcast-accepted", so this on-chain tally
+    // is the real "orders resting in the book" number (orders the keeper hasn't cleared).
+    let mut on_chain_orders: u64 = 0;
+    let mut per_shard: Vec<usize> = Vec::with_capacity(shards as usize);
+    for shard_id in 0..shards {
+        let n = match client.fetch_account_data(&pdas.slab_shard(shard_id)).await {
+            Ok(data) => decode_slab_orders(&data).map(|v| v.len()).unwrap_or(0),
+            Err(_) => 0,
+        };
+        per_shard.push(n);
+        on_chain_orders += n as u64;
+    }
+
     let elapsed = start.elapsed().as_secs_f64().max(0.001);
     let o = ok.load(Ordering::Relaxed);
     let f = failed.load(Ordering::Relaxed);
@@ -171,6 +197,9 @@ async fn main() -> Result<(), SimError> {
         total_ok = o,
         total_failed = f,
         total_txs = t,
+        on_chain_orders,
+        per_shard = ?per_shard,
+        no_confirm,
         elapsed_s = format!("{:.1}", elapsed),
         orders_per_sec = format!("{:.0}", o as f64 / elapsed),
         txs_per_sec = format!("{:.0}", t as f64 / elapsed),
