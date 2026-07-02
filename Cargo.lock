@@ -7064,6 +7064,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "solana-sdk",
  "tempo-common",
+ "tempo-math",
  "tempo-sdk",
  "thiserror 2.0.18",
  "tokio",

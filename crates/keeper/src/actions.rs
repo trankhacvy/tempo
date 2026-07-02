@@ -122,6 +122,32 @@ pub async fn settle(ctx: &KeeperCtx, orders: Vec<SlabOrder>, quotes: Vec<Pubkey>
     }
 }
 
+/// REAP (DDR-3 correction #2): permissionlessly `cancel_order` each expired resting
+/// order so a passive order's slot + reserved margin isn't squatted forever (a passive
+/// order is never folded, so settle never runs on it). The released margin always
+/// returns to the ORDER OWNER's ledger — the program enforces this, so the keeper is a
+/// neutral GC. `cancel_order` is only valid in the Collect phase.
+pub async fn reap(ctx: &KeeperCtx, orders: Vec<SlabOrder>) {
+    let cranker = ctx.cranker.pubkey();
+    for order in orders {
+        // The OWNER's collateral ledger (money-path markets only); the program checks
+        // it belongs to order.trader, so a reaper can't substitute its own.
+        let user_collateral = ctx
+            .collateral_mint
+            .map(|mint| pda::user_collateral(&order.trader, &mint).0);
+        // TODO(Stage A fan-out): shard 0 only (snapshot reads shard 0), matching settle.
+        let ix = ix::cancel_order(
+            &ctx.pdas,
+            cranker,
+            0,
+            order.order_id,
+            order.slot,
+            user_collateral,
+        );
+        send_one(ctx, &[ix], "cancel_order").await;
+    }
+}
+
 /// ROLL: drain+re-arm each shard, then open the next round (only reached when the slab
 /// is empty + quotes settled). Stage A: `start_auction` gates on every shard being reset
 /// (`shards_ready == num_slab_shards`), so `reset_shard` must run first.

@@ -11,16 +11,20 @@ use crate::{
 /// Accounts for the CancelOrder instruction.
 ///
 /// # Account Layout
-/// 0. `[signer]` trader
+/// 0. `[signer]` trader — the caller: the order OWNER, or (for an expired order) ANY
+///    reaper (DDR-3 correction #2). This is the signer only; the released margin
+///    always goes to the order's stored owner, never this signer.
 /// 1. `[]` market — read-only (Design Z: cancel writes no shared account)
 /// 2. `[writable]` order_slab
 /// 3. `[]` event_authority - Event authority PDA
 /// 4. `[]` tempo_program - Current program
-/// 5. `[writable]` user_collateral *(optional)* - the trader's collateral ledger
+/// 5. `[writable]` user_collateral *(optional)* - the ORDER OWNER's collateral ledger
 ///
 /// The trailing `user_collateral` is REQUIRED whenever the cancelled order carries
 /// a non-zero `reserved_margin` (a money-path market): cancelling releases that
-/// worst-case reservation back to free balance (missing-features §1.1).
+/// worst-case reservation back to the owner's free balance (missing-features §1.1).
+/// The program validates it belongs to `order.trader`, so a reaper cannot substitute
+/// its own ledger.
 pub struct CancelOrderAccounts<'a> {
     pub trader: &'a AccountView,
     pub market: &'a AccountView,

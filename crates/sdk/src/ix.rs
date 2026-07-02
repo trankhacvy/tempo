@@ -225,6 +225,33 @@ pub fn submit_order(
     })
 }
 
+/// CANCEL (`cancel_order`): remove a resting order (Collect phase only). The order
+/// OWNER may always cancel; ANYONE may reap an EXPIRED order (DDR-3 correction #2).
+/// `signer` is the caller. On a money-path market pass the ORDER OWNER's
+/// `user_collateral` so the reserved margin is released to the owner — the program
+/// validates it belongs to `order.trader`, so a reaper cannot redirect margin to itself.
+pub fn cancel_order(
+    pdas: &MarketPdas,
+    signer: Pubkey,
+    shard_id: u16,
+    order_id: u64,
+    slot_hint: u32,
+    user_collateral: Option<Pubkey>,
+) -> Instruction {
+    CancelOrder {
+        trader: signer,
+        market: pdas.market,
+        order_slab: pdas.slab_shard(shard_id),
+        event_authority: pdas.event_authority,
+        tempo_program: TEMPO_PROGRAM_ID,
+        user_collateral,
+    }
+    .instruction(CancelOrderInstructionArgs {
+        order_id,
+        slot_hint,
+    })
+}
+
 /// Roll to the next round (`start_auction`). `oracle` is the market's bound oracle
 /// (re-snaps the tick window); pass `MarketView::oracle`.
 pub fn start_auction(pdas: &MarketPdas, cranker: Pubkey, oracle: Pubkey) -> Instruction {

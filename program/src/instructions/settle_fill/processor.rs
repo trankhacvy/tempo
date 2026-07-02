@@ -193,42 +193,21 @@ pub fn process_settle_fill(
         // fold-time `cum_before` snapshot (process_chunk, §2.7) so its telescoping
         // slice makes the rationed side sum to exactly `vol_alloc`. The conserving
         // qty is `remaining` (== the folded quantity), not a re-scan of the slab.
-        let mut computed_fill = fill_against_cross(
+        // DDR-3 correction #1: a reduce-only order applies its FULL computed fill —
+        // there is NO settle-time clamp. Fill quantity is fixed at FOLD time
+        // (process_chunk folded the full `remaining`, so finalize's `matched_volume`
+        // and the opposite side settle against it in full); dropping volume here would
+        // leave net unbacked open interest that insurance must fund → break
+        // `vault_token ≥ Σ balances + insurance`. A reduce-only order is instead forced
+        // `Consumed` below (never re-armed), which removes the cross-round
+        // "leftover opens new exposure" hazard entirely.
+        fill = fill_against_cross(
             &cross,
             side == OrderSide::Buy,
             order_tick,
             order.remaining,
             order.cum_before,
         )?;
-
-        // Reduce-only clamp (DDR-3 / Finding 3): a carried reduce-only order may only
-        // shrink the trader's position — never open or flip it. Clamp the fill to the
-        // reduce headroom (the opposite-side position size); any excess is dropped
-        // (standard reduce-only semantics). Without this, a reduce-only order that
-        // rested while its position was closed by other flow (liquidation / funding /
-        // opposite fill) could re-arm and OPEN new, under-reserved exposure next round.
-        if order.reduce_only != 0 && computed_fill > 0 {
-            let pos_acct = ix
-                .accounts
-                .position
-                .ok_or(TempoProgramError::MissingSettleAccounts)?;
-            let pos_data = pos_acct.try_borrow()?;
-            let position = Position::from_bytes(&pos_data)?;
-            if position.owner != order.trader || position.market != market_key {
-                return Err(TempoProgramError::InvalidOrderOwner.into());
-            }
-            position.validate_self(pos_acct, program_id)?;
-            let pos_size = position.size() as i128;
-            let reduces = (pos_size > 0 && side == OrderSide::Sell)
-                || (pos_size < 0 && side == OrderSide::Buy);
-            let headroom = if reduces {
-                u64::try_from(pos_size.unsigned_abs()).unwrap_or(u64::MAX)
-            } else {
-                0
-            };
-            computed_fill = computed_fill.min(headroom);
-        }
-        fill = computed_fill;
 
         order_trader = order.trader;
         order_side = order.side;
@@ -249,11 +228,16 @@ pub fn process_settle_fill(
         //     is released — the leftover keeps its reservation locked.
         let fully_filled = fill == order.remaining;
         let expired = order.expires_at_auction != 0 && order.expires_at_auction <= auction_id;
+        // DDR-3 correction #1: a reduce-only order NEVER rests — it is `Consumed` this
+        // round regardless of how much filled, so a carried leftover can never re-arm
+        // and open new (under-reserved) exposure. This is the persisted `reduce_only`
+        // byte's ONLY remaining job (the settle-time clamp was removed).
+        let reduce_only = order.reduce_only != 0;
 
         let mut updated = order;
         updated.remaining = new_remaining;
 
-        if fully_filled || expired {
+        if fully_filled || expired || reduce_only {
             updated.status = OrderStatus::Consumed as u8;
             updated.reserved_margin = 0;
             release_amount = order.reserved_margin;

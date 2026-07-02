@@ -14,9 +14,18 @@ use crate::{
 
 /// Processes the CancelOrder instruction (Collect phase only).
 ///
-/// Removes a resting order owned by the signing trader, freeing its slot (which
-/// decrements the authoritative `OrderSlabHeader.count`). The market is read-only
-/// here (PERF-1, known-issues §2.1): `cancel_order` never write-locks `Market`.
+/// Removes a resting order, freeing its slot (which decrements the authoritative
+/// `OrderSlabHeader.count`). The market is read-only here (PERF-1, known-issues
+/// §2.1): `cancel_order` never write-locks `Market`.
+///
+/// Authorization (DDR-3 correction #2): the order's **owner** may always cancel;
+/// **anyone** may reap an **expired** order (`expires_at_auction <=
+/// current_auction_id`). A passive resting order is never folded, so `settle_fill`
+/// (the only other place expiry is handled) never runs on it — without a
+/// permissionless reaper its `reserved_margin` would stay locked forever if the
+/// window never returns. In BOTH paths the released margin returns to the
+/// **owner's** ledger (`order.trader`), never the signer — a reaper cannot redirect
+/// margin to itself.
 pub fn process_cancel_order(
     program_id: &Address,
     accounts: &[AccountView],
@@ -33,10 +42,10 @@ pub fn process_cancel_order(
     };
 
     let market_key = *ix.accounts.market.address();
-    let trader = *ix.accounts.trader.address();
+    let signer = *ix.accounts.trader.address();
 
-    // --- locate + remove order from slab; capture its reservation ---
-    let reserved_margin = {
+    // --- locate + remove order from slab; capture its reservation + owner ---
+    let (reserved_margin, order_owner) = {
         let mut slab_account = *ix.accounts.order_slab;
         let mut slab_data = slab_account.try_borrow_mut()?;
 
@@ -53,12 +62,17 @@ pub fn process_cancel_order(
             find_order_by_id_hinted(&slab_data, capacity, ix.data.order_id, ix.data.slot_hint)?;
         let order = read_order(&slab_data, capacity, slot)?;
 
-        // must be the owner and still resting (not yet accumulated/consumed)
-        if order.trader != trader {
-            return Err(TempoProgramError::InvalidOrderOwner.into());
-        }
+        // must still be resting (not yet accumulated/consumed)
         if order.status != OrderStatus::Resting as u8 {
             return Err(TempoProgramError::InvalidOrderStatus.into());
+        }
+
+        // DDR-3 correction #2: the owner may always cancel; anyone may reap an EXPIRED
+        // order (permissionless GC of a passive order's locked margin). The reaper never
+        // benefits — the reservation always returns to `order.trader` below.
+        let expired = order.expires_at_auction != 0 && order.expires_at_auction <= auction_id;
+        if !expired && order.trader != signer {
+            return Err(TempoProgramError::InvalidOrderOwner.into());
         }
 
         // free the slot
@@ -82,10 +96,15 @@ pub fn process_cancel_order(
             .ok_or(TempoProgramError::MathOverflow)?;
         header.set_resting_count(new_rc);
 
-        order.reserved_margin
+        (order.reserved_margin, order.trader)
     };
 
     // --- release the worst-case margin reserved at submit (missing-features §1.1) ---
+    //
+    // Always release to the ORDER OWNER (`order_owner`), never the signer — a reaper
+    // of an expired order must not be able to redirect margin to itself
+    // (DDR-3 correction #2). `release_order_reservation` also validates the passed
+    // `user_collateral` belongs to `order_owner`.
     if reserved_margin > 0 {
         let uc_acct = ix
             .accounts
@@ -94,15 +113,16 @@ pub fn process_cancel_order(
         crate::settle_money::release_order_reservation(
             uc_acct,
             program_id,
-            &trader,
+            &order_owner,
             reserved_margin,
         )?;
     }
 
-    // Emit event via CPI.
+    // Emit event via CPI. The `trader` is the order's OWNER, not the (possibly
+    // reaping) signer.
     let event = OrderCancelledEvent {
         market: market_key,
-        trader: *ix.accounts.trader.address(),
+        trader: order_owner,
         order_id: ix.data.order_id,
         auction_id,
     };

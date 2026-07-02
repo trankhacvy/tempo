@@ -90,6 +90,33 @@ liquidation — liveness is never sacrificed for the initial-margin gate.
   or if the "fill-then-liquidate" under-margin path proves exploitable under an adversarial oracle
   (it should not be — the mover doesn't control the oracle and forfeits reserved margin).
 
+### Correction (2026-07-02, post-fix code review)
+
+The high-effort review of the first DDR-3 implementation (`0ca52d2`) found two mistakes in it.
+Both are corrected in the follow-up fix batch:
+
+1. **Reduce-only orders do NOT rest.** The first cut persisted `reduce_only` and *clamped the fill*
+   at `settle_fill`. That is wrong for a batch auction: fill quantity is fixed at **fold time**
+   (`process_chunk` folds the full `remaining`, so `finalize`'s `matched_volume` and the opposite
+   side settle against it in full). Dropping volume at settle leaves net unbacked open interest that
+   the insurance pool must fund → breaks `vault_token ≥ Σ balances + insurance`. Correct rule: a
+   reduce-only order is **always `Consumed` at settle, never re-armed `Resting`** — no settle-time
+   clamp. This restores the pre-Stage-B single-round reduce-only semantics (submit-time
+   `opening_qty` margin reservation) and removes the cross-round position-drift hazard entirely
+   (and, incidentally, the double-PDA-derivation the clamp block caused). The persisted
+   `reduce_only` byte is kept solely so `settle_fill` knows to force-`Consumed`.
+2. **Expiry needs a permissionless reaper.** "Expiry is the eventual GC" is false for a **passive**
+   order: it is never folded, so `settle_fill` (the only place expiry was checked) never runs on it,
+   and its `reserved_margin` would stay locked forever if the window never returns. Correct rule:
+   **`cancel_order` is permissionless when the order is expired** (`expires_at_auction <=
+   current_auction_id`) — the released margin always returns to the *owner's* ledger (no theft), and
+   the keeper reaps expired passive orders as an operational duty. Expiry is therefore reaped, not
+   automatic.
+
+Also: the keeper's passive-classification mirror must not hand-reimplement `classify_resting_fold`
+(overflow risk on `num_ticks * tick_size`, and drift from the on-chain rule). The classifier is
+mirrored into `tempo-math` (golden-guarded, overflow-safe) and shared.
+
 ---
 
 ## DDR-2 — Stage B resting orders: the roll gate + the partial-fill margin split

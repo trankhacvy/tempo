@@ -353,33 +353,45 @@ fn marketable_resting_order_folds_after_recenter() {
     assert_eq!(fill, 0, "no counterparty this round → zero fill, no revert");
 }
 
-/// DDR-3 / Finding 3: a reduce-only order may only shrink a position, never open one. A flat
-/// trader's reduce-only order that would otherwise cross fills NOTHING (the fill is clamped
-/// to the reduce headroom — 0 for a flat position), so it can never open new exposure. This
-/// is the Stage-B risk: pre-Stage-B a reduce-only order was consumed in its submit round, but
-/// a carried resting one could re-arm and open exposure the market gapped it into.
+/// DDR-3 correction #1: a reduce-only order NEVER rests. Fill quantity is fixed at fold
+/// time, so clamping it at settle would drop already-matched volume and break conservation
+/// (`vault_token ≥ Σ balances + insurance`). Instead a reduce-only order applies its FULL
+/// computed fill and is forced `Consumed` this round — even on a partial fill — so a carried
+/// leftover can never re-arm and open new exposure the market gapped it into.
 #[test]
-fn reduce_only_order_cannot_open_exposure() {
+fn reduce_only_partial_fill_is_consumed_not_rearmed() {
     let mut ctx = TestContext::new();
     let tick = 10u64;
     let pdas = ctx.init_market(tick, 16, 64); // genesis window (maker ticks align)
 
-    let mb = ctx.new_funded_signer(); // maker buyer
-    let ts = ctx.new_funded_signer(); // reduce-only taker seller (flat)
+    let mb = ctx.new_funded_signer(); // maker buyer (bid demand, partial counterparty)
+    let ts = ctx.new_funded_signer(); // reduce-only taker seller (bid supply, slab)
     ctx.init_position(&pdas, &mb);
-    ctx.init_position(&pdas, &ts);
 
-    // Maker buys 10 @ 40; a FLAT reduce-only taker sells 10 @ 40. Absent the clamp the sell
-    // would fill 10 and OPEN a short; with it, the flat position gives 0 reduce headroom.
-    ctx.post_maker_order(&pdas, &mb, SIDE_BUY, 4 * tick, 10);
-    let o = ctx.submit_order_reduce_only(&pdas, &ts, SIDE_SELL, 4 * tick, 10);
+    // Maker buys 12 @ 40; reduce-only taker sells 20 @ 40 → cross 12, taker partially fills.
+    // A plain resting order would re-arm the leftover 8; a reduce-only one is Consumed instead.
+    ctx.post_maker_order(&pdas, &mb, SIDE_BUY, 4 * tick, 12);
+    let o = ctx.submit_order_reduce_only(&pdas, &ts, SIDE_SELL, 4 * tick, 20);
 
     ctx.process_chunk(&pdas, 0, 64);
     ctx.process_maker_quote(&pdas, &mb.pubkey());
     ctx.finalize_clear(&pdas);
     let (_m, fill) = ctx.settle_fill(&pdas, o);
     assert_eq!(
-        fill, 0,
-        "reduce-only on a flat position fills nothing (cannot open exposure)"
+        fill, 12,
+        "reduce-only applies its full computed fill (no clamp)"
+    );
+
+    // The reduce-only order is Consumed on a partial fill, NOT re-armed Resting — so its
+    // leftover 8 can never carry into the next round and open new exposure.
+    let rec = ctx.orders(&pdas).into_iter().find(|r| r.order_id == o);
+    assert!(
+        rec.map(|r| r.status).unwrap_or(STATUS_CONSUMED) == STATUS_CONSUMED,
+        "reduce-only order is Consumed on partial fill, not re-armed Resting"
+    );
+    assert_eq!(
+        ctx.order_slab(&pdas).count,
+        0,
+        "reduce-only leftover left the book (count decremented)"
     );
 }

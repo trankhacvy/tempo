@@ -44,21 +44,41 @@ impl MarketSnapshot {
     /// and finalize's gate exempts it). Without this the keeper would loop in
     /// ACCUMULATING forever, re-cranking a shard whose only unfolded order is passive
     /// and can never reach `Accumulated`.
+    ///
+    /// FIX C (DDR-3): the passive test is the SHARED, overflow-safe
+    /// `tempo_math::resting::is_passive` mirror of the program's `classify_resting_fold`
+    /// — never a hand copy (the old inline `num_ticks * tick_size` could overflow and
+    /// drift from the on-chain rule).
     pub fn all_resting_folded(&self) -> bool {
         let floor = self.market.window_floor_price;
-        let top = floor.saturating_add((self.market.num_ticks as u64) * self.market.tick_size);
+        let tick_size = self.market.tick_size;
+        let num_ticks = self.market.num_ticks;
         self.slab.iter().all(|o| {
             if o.status != STATUS_RESTING {
                 return true;
             }
-            // side: 1 = Sell, 0 = Buy (mirrors OrderSide). Passive = the market moved
-            // away from the order's limit, so it can't fill this round.
-            if o.side == 1 {
-                o.price >= top
-            } else {
-                o.price < floor
-            }
+            // side: 1 = Sell, 0 = Buy (mirrors OrderSide). A passive order can't fold
+            // this round, so it does NOT block completeness; anything else must fold.
+            tempo_math::resting::is_passive(o.price, o.side == 1, floor, tick_size, num_ticks)
         })
+    }
+
+    /// Resting orders whose expiry has passed (DDR-3 correction #2). A passive expired
+    /// order is never folded, so `settle_fill` (the only place expiry is otherwise
+    /// handled) never runs on it and its `reserved_margin` would be locked forever. The
+    /// keeper reaps each via the permissionless `cancel_order` as an operational duty;
+    /// the released margin always returns to the owner's ledger.
+    pub fn expired_resting_orders(&self) -> Vec<SlabOrder> {
+        let round = self.market.current_auction_id;
+        self.slab
+            .iter()
+            .filter(|o| {
+                o.status == STATUS_RESTING
+                    && o.expires_at_auction != 0
+                    && o.expires_at_auction <= round
+            })
+            .copied()
+            .collect()
     }
 
     /// Maker quotes that still need a `process_maker_quote` this round.

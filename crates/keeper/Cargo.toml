@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 tempo-common = { path = "../common" }
+tempo-math = { path = "../tempo-math" }
 tempo-sdk = { path = "../sdk" }
 solana-sdk = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
