@@ -160,6 +160,14 @@ pub struct Market {
     /// (missing-features §1.2). `0` = disabled. A per-position risk bound that the
     /// leverage limit does not give (a whale at low leverage).
     pub max_position_notional_le: [u8; 16],
+    // --- sharding (VERSION 10; appended, offsets stable) ---
+    /// Number of `OrderSlab` shards for this market (set at init). Orders are routed
+    /// across shards `[0, num_slab_shards)` so submit/settle run in parallel.
+    pub num_slab_shards_le: [u8; 2],
+    /// Shards reset (drained + zeroed) for the next round — the roll aggregate
+    /// `start_auction` gates on. Each `reset_shard` increments it once; reset to 0 at
+    /// roll (see clearing-protocol §4, freeze model).
+    pub shards_ready_le: [u8; 2],
 }
 
 assert_no_padding!(
@@ -190,6 +198,8 @@ assert_no_padding!(
         + 8
         + 2
         + 16
+        + 2
+        + 2
 );
 
 impl Discriminator for Market {
@@ -197,6 +207,12 @@ impl Discriminator for Market {
 }
 
 impl Versioned for Market {
+    // v10 (sharding): appended `num_slab_shards` + the `shards_pending` (completeness)
+    // and `shards_ready` (roll) aggregates. A market now has `num_slab_shards` slabs;
+    // the single-slab layout is gone, so a pre-v10 market must be re-provisioned (the
+    // version bump fails it loudly). An append is prefix-compatible for readers, but the
+    // account is sized by `DATA_LEN`, so a shorter pre-v10 account fails the size check.
+    //
     // v9 (PERF-1): removed the redundant `accumulated_order_count` /
     // `active_order_count` mirror fields so `submit_order`/`cancel_order` no longer
     // write-lock `Market` (known-issues §2.1). The authoritative live-order count is
@@ -222,7 +238,13 @@ impl Versioned for Market {
     // (known-issues §3). A prefix change is NOT append-compatible, so that bump
     // made any pre-v6 account fail the zero-copy version check loudly instead of
     // decoding off-by-one — old accounts must be re-provisioned, not migrated.
-    const VERSION: u8 = 9;
+    // v11 (sharding, Design Z / DDR-1): removed the `shards_pending` completeness counter.
+    // Completeness is now proven authoritatively by `finalize_clear` scanning every shard it
+    // is passed (`all_active_orders_accumulated` per shard), so `submit_order`/`cancel_order`
+    // no longer write `Market` (restoring parallel intake) and there is no aggregate to drift.
+    // Removing a prefix field is NOT append-compatible → a pre-v11 market must be re-provisioned
+    // (the version bump fails it loudly). `shards_ready` (the roll aggregate) is retained.
+    const VERSION: u8 = 11;
 }
 
 impl AccountSize for Market {
@@ -251,7 +273,9 @@ impl AccountSize for Market {
         + 8
         + 8
         + 2
-        + 16;
+        + 16
+        + 2
+        + 2;
 }
 
 impl AccountDeserialize for Market {}
@@ -297,6 +321,8 @@ impl AccountSerialize for Market {
         data.extend_from_slice(&self.window_floor_price_le);
         data.extend_from_slice(&self.initial_margin_bps_le);
         data.extend_from_slice(&self.max_position_notional_le);
+        data.extend_from_slice(&self.num_slab_shards_le);
+        data.extend_from_slice(&self.shards_ready_le);
         data
     }
 }
@@ -453,6 +479,13 @@ impl Market {
         max_position_notional_le,
         u128
     );
+    le_field!(
+        num_slab_shards,
+        set_num_slab_shards,
+        num_slab_shards_le,
+        u16
+    );
+    le_field!(shards_ready, set_shards_ready, shards_ready_le, u16);
 
     #[inline(always)]
     pub fn max_price_move_bps_per_slot(&self) -> u16 {
@@ -611,6 +644,7 @@ impl Market {
         soft_stale_slots: u64,
         initial_margin_bps: u16,
         max_position_notional: u128,
+        num_slab_shards: u16,
     ) -> Self {
         Self {
             current_auction_id_le: 0u64.to_le_bytes(),
@@ -653,6 +687,8 @@ impl Market {
             window_floor_price_le: tick_size.to_le_bytes(),
             initial_margin_bps_le: initial_margin_bps.to_le_bytes(),
             max_position_notional_le: max_position_notional.to_le_bytes(),
+            num_slab_shards_le: num_slab_shards.to_le_bytes(),
+            shards_ready_le: 0u16.to_le_bytes(),
         }
     }
 
@@ -773,6 +809,65 @@ pub fn price_to_tick_raw(
     Ok(offset as u32)
 }
 
+/// Where a resting order folds relative to the current (recentered) tick window
+/// (DDR-3). A limit order the oracle-anchored window has moved past is **not** an
+/// error — by side it is either *marketable* (the market moved through it, so its
+/// limit is already satisfied by every in-window price → it should fill at a
+/// boundary tick) or *passive* (the market moved away → it keeps resting until the
+/// window slides back over it, or it expires).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestingFold {
+    /// Price is inside `[floor, top)` — fold at its own tick (the normal case).
+    InWindow(u32),
+    /// Off-window but marketable (SELL below floor / BUY above top) — fold at the
+    /// boundary tick so it clears this round at the uniform clearing price.
+    Marketable(u32),
+    /// Off-window and passive (SELL above top / BUY below floor) — do NOT fold:
+    /// leave it `Resting` and exempt it from the completeness gate.
+    Passive,
+}
+
+/// Classify a resting order against the current window (DDR-3, the marketable-fill
+/// / passive-park rule). Pure and deterministic in
+/// `(price, side, floor, tick_size, num_ticks)` — every actor (crank, keeper,
+/// finalize's completeness scan) recomputes the same verdict from on-chain state,
+/// so completeness stays authoritative with no trust and no aggregate counter
+/// (Design Z / DDR-1 intact). Division-free except the single in-window offset
+/// divide that `price_to_tick_raw` already does.
+#[inline(always)]
+pub fn classify_resting_fold(
+    price: u64,
+    side: crate::state::OrderSide,
+    floor: u64,
+    tick_size: u64,
+    num_ticks: u32,
+) -> Result<RestingFold, ProgramError> {
+    use crate::state::OrderSide;
+    if price == 0 || tick_size == 0 || num_ticks == 0 || !price.is_multiple_of(tick_size) {
+        return Err(TempoProgramError::InvalidPrice.into());
+    }
+    if price < floor {
+        // Below the window: a SELL is marketable (willing to sell at the lowest
+        // in-window price → fold at tick 0); a BUY is passive (it wants to pay even
+        // less than the cheapest in-window price → keep resting).
+        return Ok(match side {
+            OrderSide::Sell => RestingFold::Marketable(0),
+            OrderSide::Buy => RestingFold::Passive,
+        });
+    }
+    let offset = (price - floor) / tick_size;
+    if offset >= num_ticks as u64 {
+        // Above the window: a BUY is marketable (willing to pay the highest in-window
+        // price → fold at the top tick); a SELL is passive (it asks more than any
+        // in-window price → keep resting).
+        return Ok(match side {
+            OrderSide::Buy => RestingFold::Marketable(num_ticks - 1),
+            OrderSide::Sell => RestingFold::Passive,
+        });
+    }
+    Ok(RestingFold::InWindow(offset as u32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -803,6 +898,7 @@ mod tests {
             30,
             600,
             0,
+            16, // num_slab_shards
         )
     }
 
@@ -812,6 +908,9 @@ mod tests {
         assert_eq!(m.current_auction_id(), 0);
         assert_eq!(m.phase, AuctionPhase::Collect as u8);
         assert_eq!(m.tick_size(), 10);
+        assert_eq!(m.num_slab_shards(), 16);
+        // Completeness aggregate starts at 0 — only shards with unfolded orders are counted.
+        assert_eq!(m.shards_ready(), 0);
         assert_eq!(m.num_ticks(), 64);
         assert_eq!(m.orders_per_auction_cap(), 256);
     }
@@ -938,6 +1037,65 @@ mod tests {
             price_to_tick_raw(650, floor, m.tick_size(), m.num_ticks()),
             Err(TempoProgramError::InvalidTick.into())
         );
+    }
+
+    #[test]
+    fn test_classify_resting_fold() {
+        use crate::state::OrderSide;
+        // Window [100, 100 + 10*64) = [100, 740): floor 100, tick_size 10, 64 ticks.
+        let (floor, ts, nt) = (100u64, 10u64, 64u32);
+
+        // In-window: folds at its own tick regardless of side.
+        assert_eq!(
+            classify_resting_fold(150, OrderSide::Sell, floor, ts, nt).unwrap(),
+            RestingFold::InWindow(5)
+        );
+        assert_eq!(
+            classify_resting_fold(100, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::InWindow(0)
+        );
+        // Top in-window tick is num_ticks-1 = 63 -> price 730 (< 740 top).
+        assert_eq!(
+            classify_resting_fold(730, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::InWindow(63)
+        );
+
+        // Below the floor: SELL is marketable at tick 0, BUY is passive.
+        assert_eq!(
+            classify_resting_fold(90, OrderSide::Sell, floor, ts, nt).unwrap(),
+            RestingFold::Marketable(0)
+        );
+        assert_eq!(
+            classify_resting_fold(90, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::Passive
+        );
+
+        // At/above the top (offset >= num_ticks): BUY marketable at top tick, SELL passive.
+        assert_eq!(
+            classify_resting_fold(740, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::Marketable(63)
+        );
+        assert_eq!(
+            classify_resting_fold(740, OrderSide::Sell, floor, ts, nt).unwrap(),
+            RestingFold::Passive
+        );
+        assert_eq!(
+            classify_resting_fold(10_000, OrderSide::Buy, floor, ts, nt).unwrap(),
+            RestingFold::Marketable(63)
+        );
+
+        // A non-tick-aligned or zero price is still rejected (not silently folded).
+        assert!(classify_resting_fold(95, OrderSide::Sell, floor, ts, nt).is_err());
+        assert!(classify_resting_fold(0, OrderSide::Buy, floor, ts, nt).is_err());
+
+        // An in-window verdict must agree with `price_to_tick_raw` (the two never drift).
+        for mult in 10..=73u64 {
+            let price = mult * 10;
+            assert_eq!(
+                classify_resting_fold(price, OrderSide::Sell, floor, ts, nt).unwrap(),
+                RestingFold::InWindow(price_to_tick_raw(price, floor, ts, nt).unwrap())
+            );
+        }
     }
 
     #[test]

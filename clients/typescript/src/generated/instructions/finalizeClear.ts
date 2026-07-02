@@ -37,11 +37,7 @@ import {
   getResolvedInstructionAccountAsProgramDerivedAddress,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import {
-  findAuctionHistogramHeaderPda,
-  findClearingResultPda,
-  findOrderSlabHeaderPda,
-} from "../pdas";
+import { findAuctionHistogramHeaderPda, findClearingResultPda } from "../pdas";
 import { TEMPO_PROGRAM_PROGRAM_ADDRESS } from "../programs";
 
 export const FINALIZE_CLEAR_DISCRIMINATOR = 4;
@@ -55,7 +51,6 @@ export type FinalizeClearInstruction<
   TAccountCranker extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountHistogram extends string | AccountMeta<string> = string,
-  TAccountOrderSlab extends string | AccountMeta<string> = string,
   TAccountClearingResult extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
@@ -79,9 +74,6 @@ export type FinalizeClearInstruction<
       TAccountHistogram extends string
         ? ReadonlyAccount<TAccountHistogram>
         : TAccountHistogram,
-      TAccountOrderSlab extends string
-        ? ReadonlyAccount<TAccountOrderSlab>
-        : TAccountOrderSlab,
       TAccountClearingResult extends string
         ? WritableAccount<TAccountClearingResult>
         : TAccountClearingResult,
@@ -150,7 +142,6 @@ export type FinalizeClearAsyncInput<
   TAccountCranker extends string = string,
   TAccountMarket extends string = string,
   TAccountHistogram extends string = string,
-  TAccountOrderSlab extends string = string,
   TAccountClearingResult extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
@@ -164,8 +155,6 @@ export type FinalizeClearAsyncInput<
   market: Address<TAccountMarket>;
   /** AuctionHistogram to scan */
   histogram?: Address<TAccountHistogram>;
-  /** OrderSlab scanned for the completeness gate */
-  orderSlab?: Address<TAccountOrderSlab>;
   /** ClearingResult PDA to be created/written */
   clearingResult?: ProgramDerivedAddress<TAccountClearingResult>;
   /** System program */
@@ -185,7 +174,6 @@ export async function getFinalizeClearInstructionAsync<
   TAccountCranker extends string,
   TAccountMarket extends string,
   TAccountHistogram extends string,
-  TAccountOrderSlab extends string,
   TAccountClearingResult extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
@@ -198,7 +186,6 @@ export async function getFinalizeClearInstructionAsync<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountClearingResult,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -213,7 +200,6 @@ export async function getFinalizeClearInstructionAsync<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountClearingResult,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -231,7 +217,6 @@ export async function getFinalizeClearInstructionAsync<
     cranker: { value: input.cranker ?? null, isWritable: true },
     market: { value: input.market ?? null, isWritable: true },
     histogram: { value: input.histogram ?? null, isWritable: false },
-    orderSlab: { value: input.orderSlab ?? null, isWritable: false },
     clearingResult: { value: input.clearingResult ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
@@ -253,14 +238,6 @@ export async function getFinalizeClearInstructionAsync<
   // Resolve default values.
   if (!accounts.histogram.value) {
     accounts.histogram.value = await findAuctionHistogramHeaderPda({
-      market: getAddressFromResolvedInstructionAccount(
-        "market",
-        accounts.market.value,
-      ),
-    });
-  }
-  if (!accounts.orderSlab.value) {
-    accounts.orderSlab.value = await findOrderSlabHeaderPda({
       market: getAddressFromResolvedInstructionAccount(
         "market",
         accounts.market.value,
@@ -292,7 +269,6 @@ export async function getFinalizeClearInstructionAsync<
       getAccountMeta("cranker", accounts.cranker),
       getAccountMeta("market", accounts.market),
       getAccountMeta("histogram", accounts.histogram),
-      getAccountMeta("orderSlab", accounts.orderSlab),
       getAccountMeta("clearingResult", accounts.clearingResult),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -309,7 +285,6 @@ export async function getFinalizeClearInstructionAsync<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountClearingResult,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -323,7 +298,6 @@ export type FinalizeClearInput<
   TAccountCranker extends string = string,
   TAccountMarket extends string = string,
   TAccountHistogram extends string = string,
-  TAccountOrderSlab extends string = string,
   TAccountClearingResult extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
@@ -337,8 +311,6 @@ export type FinalizeClearInput<
   market: Address<TAccountMarket>;
   /** AuctionHistogram to scan */
   histogram: Address<TAccountHistogram>;
-  /** OrderSlab scanned for the completeness gate */
-  orderSlab: Address<TAccountOrderSlab>;
   /** ClearingResult PDA to be created/written */
   clearingResult: ProgramDerivedAddress<TAccountClearingResult>;
   /** System program */
@@ -358,7 +330,6 @@ export function getFinalizeClearInstruction<
   TAccountCranker extends string,
   TAccountMarket extends string,
   TAccountHistogram extends string,
-  TAccountOrderSlab extends string,
   TAccountClearingResult extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
@@ -371,7 +342,6 @@ export function getFinalizeClearInstruction<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountClearingResult,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -385,7 +355,6 @@ export function getFinalizeClearInstruction<
   TAccountCranker,
   TAccountMarket,
   TAccountHistogram,
-  TAccountOrderSlab,
   TAccountClearingResult,
   TAccountSystemProgram,
   TAccountEventAuthority,
@@ -402,7 +371,6 @@ export function getFinalizeClearInstruction<
     cranker: { value: input.cranker ?? null, isWritable: true },
     market: { value: input.market ?? null, isWritable: true },
     histogram: { value: input.histogram ?? null, isWritable: false },
-    orderSlab: { value: input.orderSlab ?? null, isWritable: false },
     clearingResult: { value: input.clearingResult ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
@@ -439,7 +407,6 @@ export function getFinalizeClearInstruction<
       getAccountMeta("cranker", accounts.cranker),
       getAccountMeta("market", accounts.market),
       getAccountMeta("histogram", accounts.histogram),
-      getAccountMeta("orderSlab", accounts.orderSlab),
       getAccountMeta("clearingResult", accounts.clearingResult),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -456,7 +423,6 @@ export function getFinalizeClearInstruction<
     TAccountCranker,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountClearingResult,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -478,20 +444,18 @@ export type ParsedFinalizeClearInstruction<
     market: TAccountMetas[1];
     /** AuctionHistogram to scan */
     histogram: TAccountMetas[2];
-    /** OrderSlab scanned for the completeness gate */
-    orderSlab: TAccountMetas[3];
     /** ClearingResult PDA to be created/written */
-    clearingResult: TAccountMetas[4];
+    clearingResult: TAccountMetas[3];
     /** System program */
-    systemProgram: TAccountMetas[5];
+    systemProgram: TAccountMetas[4];
     /** Event authority PDA for CPI event emission */
-    eventAuthority: TAccountMetas[6];
+    eventAuthority: TAccountMetas[5];
     /** Tempo program, for self-CPI event emission */
-    tempoProgram: TAccountMetas[7];
+    tempoProgram: TAccountMetas[6];
     /** (Optional) cranker's collateral ledger to receive the crank fee */
-    crankerCollateral?: TAccountMetas[8] | undefined;
+    crankerCollateral?: TAccountMetas[7] | undefined;
     /** (Optional) fee/insurance pool the crank fee is drawn from */
-    vault?: TAccountMetas[9] | undefined;
+    vault?: TAccountMetas[8] | undefined;
   };
   data: FinalizeClearInstructionData;
 };
@@ -504,12 +468,12 @@ export function parseFinalizeClearInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedFinalizeClearInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 8) {
+  if (instruction.accounts.length < 7) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 8,
+        expectedAccountMetas: 7,
       },
     );
   }
@@ -519,7 +483,7 @@ export function parseFinalizeClearInstruction<
     accountIndex += 1;
     return accountMeta;
   };
-  let optionalAccountsRemaining = instruction.accounts.length - 8;
+  let optionalAccountsRemaining = instruction.accounts.length - 7;
   const getNextOptionalAccount = () => {
     if (optionalAccountsRemaining === 0) return undefined;
     optionalAccountsRemaining -= 1;
@@ -531,7 +495,6 @@ export function parseFinalizeClearInstruction<
       cranker: getNextAccount(),
       market: getNextAccount(),
       histogram: getNextAccount(),
-      orderSlab: getNextAccount(),
       clearingResult: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),

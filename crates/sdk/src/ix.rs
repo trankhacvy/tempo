@@ -66,13 +66,14 @@ pub fn push_cross_legs(metas: &mut Vec<AccountMeta>, legs: &[CrossLeg], live_wri
 pub fn process_chunk(
     pdas: &MarketPdas,
     cranker: Pubkey,
+    shard_id: u16,
     start_index: u32,
     max_count: u32,
 ) -> Instruction {
     ProcessChunk {
         cranker,
         market: pdas.market,
-        order_slab: pdas.order_slab,
+        order_slab: pdas.slab_shard(shard_id),
         histogram: pdas.histogram,
         event_authority: pdas.event_authority,
         tempo_program: TEMPO_PROGRAM_ID,
@@ -94,33 +95,52 @@ pub struct SettleMoney {
     pub integrator_collateral: Option<Pubkey>,
 }
 
-/// DISCOVER (`finalize_clear`): the completeness-gated single-pass cross. Pass
-/// `crank_fee_accounts = Some((cranker_collateral, vault))` to collect the crank
-/// fee, or `None` for a clearing-only market.
+/// DISCOVER (`finalize_clear`): the completeness-gated single-pass cross. Design Z
+/// (DDR-1): pass ALL of the market's slab shards in `shards` (read-only) — finalize scans
+/// every one for completeness, so `shards.len()` must equal `Market.num_slab_shards`. The two
+/// crank-fee slots hold fixed positions (program-id sentinels when `crank_fee_accounts` is
+/// `None`) so the shard region starts at a deterministic offset. Built manually because Codama
+/// cannot model the trailing shard list.
 pub fn finalize_clear(
     pdas: &MarketPdas,
     cranker: Pubkey,
     crank_fee_accounts: Option<(Pubkey, Pubkey)>,
+    shards: &[Pubkey],
 ) -> Instruction {
-    let (cranker_collateral, vault) = match crank_fee_accounts {
-        Some((c, v)) => (Some(c), Some(v)),
-        None => (None, None),
-    };
-    FinalizeClear {
-        cranker,
-        market: pdas.market,
-        histogram: pdas.histogram,
-        order_slab: pdas.order_slab,
-        clearing_result: pdas.clearing,
-        system_program: SYSTEM_PROGRAM_ID,
-        event_authority: pdas.event_authority,
-        tempo_program: TEMPO_PROGRAM_ID,
-        cranker_collateral,
-        vault,
+    let mut accounts = vec![
+        AccountMeta::new(cranker, true),
+        AccountMeta::new(pdas.market, false),
+        AccountMeta::new_readonly(pdas.histogram, false),
+        AccountMeta::new(pdas.clearing, false),
+        AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+        AccountMeta::new_readonly(pdas.event_authority, false),
+        AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+    ];
+    // Crank-fee optional slots at fixed positions 7/8 (program-id sentinel = "omitted").
+    match crank_fee_accounts {
+        Some((cc, v)) => {
+            accounts.push(AccountMeta::new(cc, false));
+            accounts.push(AccountMeta::new(v, false));
+        }
+        None => {
+            accounts.push(AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false));
+            accounts.push(AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false));
+        }
     }
-    .instruction(FinalizeClearInstructionArgs {
-        clearing_bump: pdas.clearing_bump,
-    })
+    // All slab shards, read-only.
+    for shard in shards {
+        accounts.push(AccountMeta::new_readonly(*shard, false));
+    }
+    Instruction {
+        program_id: TEMPO_PROGRAM_ID,
+        accounts,
+        data: alloc_finalize_data(pdas.clearing_bump),
+    }
+}
+
+/// `finalize_clear` instruction data: `[discriminator, clearing_bump]`.
+fn alloc_finalize_data(clearing_bump: u8) -> Vec<u8> {
+    vec![FINALIZE_CLEAR_DISCRIMINATOR, clearing_bump]
 }
 
 /// SETTLE (`settle_fill`): one order pulls its own fill. `slot_hint` is the slab
@@ -128,6 +148,7 @@ pub fn finalize_clear(
 pub fn settle_fill(
     pdas: &MarketPdas,
     cranker: Pubkey,
+    shard_id: u16,
     order_id: u64,
     slot_hint: u32,
     money: &SettleMoney,
@@ -135,7 +156,7 @@ pub fn settle_fill(
     SettleFill {
         cranker,
         market: pdas.market,
-        order_slab: pdas.order_slab,
+        order_slab: pdas.slab_shard(shard_id),
         clearing_result: pdas.clearing,
         event_authority: pdas.event_authority,
         tempo_program: TEMPO_PROGRAM_ID,
@@ -173,6 +194,7 @@ impl SubmitMoney {
 /// SUBMIT (`submit_order`): a taker resting order. `price` must be tick-aligned and
 /// in-window; `quantity != 0`. Pass `SubmitMoney::default()` for a clearing-only
 /// market, or `SubmitMoney::for_trader(..)` on a money-path market.
+#[allow(clippy::too_many_arguments)]
 pub fn submit_order(
     pdas: &MarketPdas,
     trader: Pubkey,
@@ -180,12 +202,14 @@ pub fn submit_order(
     price: u64,
     quantity: u64,
     reduce_only: bool,
+    shard_id: u16,
+    expires_at_auction: u64,
     money: &SubmitMoney,
 ) -> Instruction {
     SubmitOrder {
         trader,
         market: pdas.market,
-        order_slab: pdas.order_slab,
+        order_slab: pdas.slab_shard(shard_id),
         event_authority: pdas.event_authority,
         tempo_program: TEMPO_PROGRAM_ID,
         position: money.position,
@@ -196,6 +220,35 @@ pub fn submit_order(
         price,
         quantity,
         reduce_only,
+        shard_id,
+        expires_at_auction,
+    })
+}
+
+/// CANCEL (`cancel_order`): remove a resting order (Collect phase only). The order
+/// OWNER may always cancel; ANYONE may reap an EXPIRED order (DDR-3 correction #2).
+/// `signer` is the caller. On a money-path market pass the ORDER OWNER's
+/// `user_collateral` so the reserved margin is released to the owner — the program
+/// validates it belongs to `order.trader`, so a reaper cannot redirect margin to itself.
+pub fn cancel_order(
+    pdas: &MarketPdas,
+    signer: Pubkey,
+    shard_id: u16,
+    order_id: u64,
+    slot_hint: u32,
+    user_collateral: Option<Pubkey>,
+) -> Instruction {
+    CancelOrder {
+        trader: signer,
+        market: pdas.market,
+        order_slab: pdas.slab_shard(shard_id),
+        event_authority: pdas.event_authority,
+        tempo_program: TEMPO_PROGRAM_ID,
+        user_collateral,
+    }
+    .instruction(CancelOrderInstructionArgs {
+        order_id,
+        slot_hint,
     })
 }
 
@@ -206,8 +259,31 @@ pub fn start_auction(pdas: &MarketPdas, cranker: Pubkey, oracle: Pubkey) -> Inst
         cranker,
         market: pdas.market,
         histogram: pdas.histogram,
-        order_slab: pdas.order_slab,
         oracle,
+    }
+    .instruction()
+}
+
+/// Create one OrderSlab shard (`init_shard`, Stage A sharding). Call once per shard
+/// (`[0, num_slab_shards)`) after `initialize_market`, before trading.
+pub fn init_shard(pdas: &MarketPdas, payer: Pubkey, shard_id: u16) -> Instruction {
+    let (shard, bump) = crate::pda::order_slab(&pdas.market, shard_id);
+    InitShard {
+        payer,
+        market: pdas.market,
+        order_slab: shard,
+        system_program: SYSTEM_PROGRAM_ID,
+    }
+    .instruction(InitShardInstructionArgs { shard_id, bump })
+}
+
+/// Drain + re-arm one shard for the next round (`reset_shard`, Stage A sharding).
+/// Call once per shard after settlement; `start_auction` rolls once all are ready.
+pub fn reset_shard(pdas: &MarketPdas, cranker: Pubkey, shard_id: u16) -> Instruction {
+    ResetShard {
+        cranker,
+        market: pdas.market,
+        order_slab: pdas.slab_shard(shard_id),
     }
     .instruction()
 }
@@ -505,7 +581,7 @@ mod tests {
     fn test_process_chunk_targets_program() {
         let market = Pubkey::new_unique();
         let pdas = MarketPdas::derive(market);
-        let ix = process_chunk(&pdas, Pubkey::new_unique(), 0, 16);
+        let ix = process_chunk(&pdas, Pubkey::new_unique(), 0, 0, 16);
         assert_eq!(ix.program_id, TEMPO_PROGRAM_ID);
         assert_eq!(ix.data[0], PROCESS_CHUNK_DISCRIMINATOR);
         assert_eq!(ix.accounts.len(), 6);
@@ -515,19 +591,28 @@ mod tests {
     fn test_finalize_clear_wrapper() {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let cranker = Pubkey::new_unique();
-        // No crank-fee accounts → 8 accounts; the bump arg is the clearing bump.
-        let bare = finalize_clear(&pdas, cranker, None);
+        // Design Z: 7 fixed + 2 crank-fee slots (sentinels when omitted) + K shards.
+        let shards = [pdas.slab_shard(0), pdas.slab_shard(1), pdas.slab_shard(2)];
+        // No crank-fee accounts → 7 + 2 sentinels + 3 shards = 12.
+        let bare = finalize_clear(&pdas, cranker, None, &shards);
         assert_eq!(bare.program_id, TEMPO_PROGRAM_ID);
         assert_eq!(bare.data[0], FINALIZE_CLEAR_DISCRIMINATOR);
         assert_eq!(bare.data[1], pdas.clearing_bump);
-        assert_eq!(bare.accounts.len(), 8);
-        // With the crank-fee pair → 10 accounts.
+        assert_eq!(bare.accounts.len(), 12);
+        // Omitted crank-fee slots are the program-id sentinel (parser treats as "not provided").
+        assert_eq!(bare.accounts[7].pubkey, TEMPO_PROGRAM_ID);
+        assert_eq!(bare.accounts[8].pubkey, TEMPO_PROGRAM_ID);
+        // Shards are read-only.
+        assert!(!bare.accounts[9].is_writable);
+        // With the crank-fee pair → 7 + 2 + 3 = 12 (real fee accounts in slots 7/8).
         let fee = finalize_clear(
             &pdas,
             cranker,
             Some((Pubkey::new_unique(), Pubkey::new_unique())),
+            &shards,
         );
-        assert_eq!(fee.accounts.len(), 10);
+        assert_eq!(fee.accounts.len(), 12);
+        assert_ne!(fee.accounts[7].pubkey, TEMPO_PROGRAM_ID);
     }
 
     #[test]
@@ -535,7 +620,7 @@ mod tests {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let cranker = Pubkey::new_unique();
         // Bare clearing-only settle → 6 accounts.
-        let bare = settle_fill(&pdas, cranker, 7, 3, &SettleMoney::default());
+        let bare = settle_fill(&pdas, cranker, 7, 3, 0, &SettleMoney::default());
         assert_eq!(bare.data[0], SETTLE_FILL_DISCRIMINATOR);
         assert_eq!(bare.accounts.len(), 6);
         // Full money path → 6 + position + collateral + vault + integrator = 10.
@@ -544,6 +629,7 @@ mod tests {
             cranker,
             7,
             3,
+            0,
             &SettleMoney {
                 position: Some(Pubkey::new_unique()),
                 user_collateral: Some(Pubkey::new_unique()),
@@ -559,7 +645,17 @@ mod tests {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let trader = Pubkey::new_unique();
         // Clearing-only (no money path) → 5 accounts.
-        let bare = submit_order(&pdas, trader, 0, 100, 5, false, &SubmitMoney::default());
+        let bare = submit_order(
+            &pdas,
+            trader,
+            0,
+            100,
+            5,
+            false,
+            0,
+            0,
+            &SubmitMoney::default(),
+        );
         assert_eq!(bare.program_id, TEMPO_PROGRAM_ID);
         assert_eq!(bare.data[0], SUBMIT_ORDER_DISCRIMINATOR);
         assert_eq!(bare.accounts.len(), 5);
@@ -572,6 +668,8 @@ mod tests {
             200,
             7,
             true,
+            0,
+            0,
             &SubmitMoney::for_trader(&pdas, trader, mint),
         );
         assert_eq!(full.accounts.len(), 7);
@@ -585,9 +683,11 @@ mod tests {
         let mq = Pubkey::new_unique();
         let pos = Pubkey::new_unique();
 
+        // Stage A: start_auction dropped the order_slab account (shards are drained by
+        // reset_shard first; the roll gates on shards_ready) → 4 accounts.
         let sa = start_auction(&pdas, cranker, oracle);
         assert_eq!(sa.data[0], START_AUCTION_DISCRIMINATOR);
-        assert_eq!(sa.accounts.len(), 5);
+        assert_eq!(sa.accounts.len(), 4);
 
         let uf = update_funding(&pdas, cranker, oracle);
         assert_eq!(uf.data[0], UPDATE_FUNDING_DISCRIMINATOR);

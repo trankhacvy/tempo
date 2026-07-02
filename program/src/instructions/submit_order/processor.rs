@@ -48,14 +48,23 @@ pub fn process_submit_order(
     let (
         capacity,
         auction_id,
+        is_collect,
         maintenance_bps,
         initial_bps,
         window_top_price,
         max_position_notional,
+        num_slab_shards,
     ) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
-        market.require_phase(AuctionPhase::Collect)?;
+        // Always-open submission (Stage C1 / DDR-4): submit is accepted in ANY round
+        // phase, not just Collect. `market.phase()?` still validates the phase byte is a
+        // known value; a submit during Accumulating/Discovered/Settling is tagged for the
+        // NEXT round (`arm_auction_id = current + 1`) so it can't join a batch that is
+        // already accumulating. The price is still validated against the CURRENT window
+        // (below) — conservative for a deferred order; DDR-3's classifier + the
+        // never-revert settle path handle a resting order whose window later moves.
+        let is_collect = market.phase()? == AuctionPhase::Collect;
         market.validate_price(ix.data.price)?;
         // ensure the price falls in the histogram window
         market.price_to_tick(ix.data.price)?;
@@ -66,18 +75,53 @@ pub fn process_submit_order(
         (
             market.orders_per_auction_cap(),
             market.current_auction_id(),
+            is_collect,
             market.maintenance_margin_bps(),
             market.initial_margin_bps(),
             window_top_price,
             market.max_position_notional(),
+            market.num_slab_shards(),
         )
     };
+
+    // Stage C1 / DDR-4: the first round this order may fold. In Collect it joins the
+    // current batch; otherwise it is deferred to the next round. Eligibility is later
+    // checked as `arm_auction_id <= current_auction_id`, so a carried order stays
+    // eligible without any roll-time re-arm.
+    let arm_auction_id = if is_collect {
+        auction_id
+    } else {
+        auction_id
+            .checked_add(1)
+            .ok_or(TempoProgramError::MathOverflow)?
+    };
+
+    // The requested shard must be within the market's shard set (Stage A sharding).
+    if ix.data.shard_id >= num_slab_shards {
+        return Err(TempoProgramError::ShardOutOfRange.into());
+    }
+
+    // Reject an already-expired order (DDR-3 Correction-2 item 4): an order whose
+    // `expires_at_auction` is already reached at submit time can never fold or fill
+    // this round or any later one, so it would only rest as dead margin the reaper
+    // must collect. `0` means GTC (never expires). Uses the same `<=` boundary as
+    // `settle_fill`'s consume-after-fill check (the permissionless reaper uses strict
+    // `<`, but an order submitted AT its expiry auction is never entitled to fold).
+    if ix.data.expires_at_auction != 0 && ix.data.expires_at_auction <= auction_id {
+        return Err(TempoProgramError::OrderAlreadyExpired.into());
+    }
 
     // --- validate order slab PDA matches this market + anti-spam + reduce headroom ---
     let already_same_side = {
         let slab_data = ix.accounts.order_slab.try_borrow()?;
         let slab = OrderSlabHeader::from_bytes(&slab_data)?;
         if slab.market != market_key {
+            return Err(TempoProgramError::AccountMarketMismatch.into());
+        }
+        // The supplied slab account is the canonical PDA for its own stored shard_id
+        // (validate_pda ties the address to the seeds, which include shard_id); require
+        // that stored shard matches the requested one so data and account agree.
+        if slab.shard_id() != ix.data.shard_id {
             return Err(TempoProgramError::AccountMarketMismatch.into());
         }
         slab.validate_pda(ix.accounts.order_slab, program_id, slab.bump)?;
@@ -94,10 +138,29 @@ pub fn process_submit_order(
             ix.data.side,
             ix.data.reduce_only,
         )?;
+        // NOTE (Stage B): `MAX_ORDERS_PER_TRADER` is enforced PER SHARD — `trader_resting_stats`
+        // scans only the requested shard. With resting orders a trader's standing orders can
+        // span shards, so this is a per-shard standing cap, not a global one. That is acceptable
+        // when the client routes a trader to a consistent shard (e.g. `hash(trader) % shards`);
+        // a truly global cap would need an all-shard scan (a follow-up), which would re-serialize
+        // submit on every shard and is deliberately avoided (Design Z / DDR-1).
         if resting_count >= MAX_ORDERS_PER_TRADER {
             return Err(TempoProgramError::TraderOrderCapReached.into());
         }
         same_side_qty
+    };
+
+    // Worst-case execution price for this order, snapshotted now (Stage B, §3.3): a buy
+    // clears at ≤ its limit price; a sell at ≤ the window top. Persisted on the order so a
+    // resting order re-margins against this FIXED price every round — its collateral
+    // requirement can't drift as the oracle-anchored window moves. Computed for every market
+    // (not just money-path) so the stored snapshot is always meaningful; on a no-money-path
+    // market it is simply never used (reserved_margin stays 0).
+    let is_buy = OrderSide::from_u8(ix.data.side)? == OrderSide::Buy;
+    let worst_price = if is_buy {
+        ix.data.price
+    } else {
+        window_top_price
     };
 
     // --- reserve worst-case initial margin (money-path markets only) ---
@@ -126,27 +189,21 @@ pub fn process_submit_order(
             position.size() as i128
         };
 
-        let is_buy = OrderSide::from_u8(ix.data.side)? == OrderSide::Buy;
-        // Worst-case execution price for this order: a buy clears at ≤ its limit; a
-        // sell clears at ≤ the window top.
-        let worst_price = if is_buy {
-            ix.data.price
-        } else {
-            window_top_price
-        };
-
-        // Reduce-aware opening quantity: the portion of this order that would OPEN
-        // new exposure. A reduce-only order against an opposite position reserves
-        // only what flips past the (already-claimed) reduce headroom.
+        // Reduce-only reserves the FULL worst-case initial margin (DDR-3 Correction-2 item 3):
+        // NO discount. Reduce-only cannot be perfectly honored in a batch auction — the fill
+        // quantity is fixed at fold but the position at settle can move (liquidate/funding/other
+        // fills), so the order may open against intent. Clamping the fill at settle to enforce
+        // shrink-only breaks conservation (Correction #1), so the only safe path is to let it
+        // open a COLLATERALIZED position. Hence a reduce-only order reserves the same full
+        // worst-case margin as any normal order; the persisted `reduce_only` byte's sole
+        // remaining job is to force `Consumed` at settle (never re-arm `Resting`).
         let abs_pos = pos_size.unsigned_abs();
         let qty = ix.data.quantity as u128;
-        let is_reducing = (pos_size > 0 && !is_buy) || (pos_size < 0 && is_buy);
-        let opening_qty: u64 = if ix.data.reduce_only && is_reducing {
-            let headroom = abs_pos.saturating_sub(already_same_side as u128);
-            u64::try_from(qty.saturating_sub(headroom)).unwrap_or(ix.data.quantity)
-        } else {
-            ix.data.quantity
-        };
+        // `already_same_side` (reduce headroom anti-spam accounting) is still scanned above so
+        // resting reduces can't collectively flip the position, but it no longer discounts the
+        // reserved margin.
+        let _ = already_same_side;
+        let opening_qty: u64 = ix.data.quantity;
 
         // Per-position notional cap (missing-features §1.2): bound the order's
         // worst-case NEW exposure only. A same-side order grows `|pos|` by `qty`; an
@@ -217,6 +274,18 @@ pub fn process_submit_order(
         // Carry the worst-case reservation on the order so cancel/settle release
         // exactly this amount (missing-features §1.1).
         order.reserved_margin = reserved_margin;
+        // Stage B resting fields: the fixed worst-case price snapshot (for stable
+        // re-margining across rounds, §3.3) and the client-chosen expiry (0 = GTC).
+        order.worst_price = worst_price;
+        order.expires_at_auction = ix.data.expires_at_auction;
+        // Persist reduce_only (DDR-3 correction #1): its ONLY job now is to force
+        // `settle_fill` to mark the order `Consumed` (never re-armed `Resting`), so a
+        // reduce-only order can never carry across rounds and open new (under-reserved)
+        // exposure the market gapped it into. It applies its full computed fill this
+        // round with no settle-time clamp.
+        order.reduce_only = u8::from(ix.data.reduce_only);
+        // Always-open submission (Stage C1 / DDR-4): tag the round this order first folds.
+        order.arm_auction_id = arm_auction_id;
         write_order(&mut slab_data, capacity, slot, &order)?;
 
         // bump header counters + advance the allocation cursor past this slot
@@ -232,6 +301,17 @@ pub fn process_submit_order(
                 .checked_add(1)
                 .ok_or(TempoProgramError::MathOverflow)?,
         );
+        // Design Z (DDR-1): the fresh order is `Resting` (not yet folded). We track it in
+        // this shard's own `resting_count` — shard-local, maintained in the same borrow as
+        // the order write, so it can never drift — purely so the keeper can skip empty shards.
+        // Completeness itself is proven authoritatively by `finalize_clear` scanning every
+        // shard, so `submit_order` writes NO shared account (`Market` stays read-only here) and
+        // submits into different shards run fully in parallel.
+        let new_rc = header
+            .resting_count()
+            .checked_add(1)
+            .ok_or(TempoProgramError::MathOverflow)?;
+        header.set_resting_count(new_rc);
         header.set_next_free_hint(slot.saturating_add(1).min(capacity));
     }
 
@@ -247,6 +327,7 @@ pub fn process_submit_order(
         side: ix.data.side,
         // Taker-only (§1.3); kept in the event for indexer schema stability.
         is_maker: 0,
+        shard_id: ix.data.shard_id,
     };
     emit_event(
         program_id,

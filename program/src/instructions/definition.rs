@@ -30,12 +30,6 @@ pub enum TempoProgramInstruction {
         default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
     ))]
     #[codama(account(
-        name = "order_slab",
-        docs = "OrderSlab PDA (bounded resting-order slots) to be created",
-        writable,
-        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
-    ))]
-    #[codama(account(
         name = "oracle",
         docs = "Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation"
     ))]
@@ -56,8 +50,8 @@ pub enum TempoProgramInstruction {
         /// Bump for the histogram PDA
         #[codama(default_value = account_bump("histogram"))]
         histogram_bump: u8,
-        /// Bump for the order slab PDA
-        #[codama(default_value = account_bump("order_slab"))]
+        /// UNUSED (retained for wire-format stability). Stage A creates slab shards via
+        /// `init_shard`, not here.
         order_slab_bump: u8,
         /// Price tick size
         tick_size: u64,
@@ -90,16 +84,21 @@ pub enum TempoProgramInstruction {
         initial_margin_bps: u16,
         /// Max notional (|size|·entry) a single position may hold (0 = disabled)
         max_position_notional: u128,
+        /// Number of OrderSlab shards (Stage A sharding, ≥ 1). Shards are created
+        /// one-per-tx by `init_shard`, not here.
+        num_slab_shards: u16,
     } = 0,
 
     /// Submit a resting order into the slab (phase must be Collect).
     #[codama(account(name = "trader", docs = "Order owner", signer, writable))]
-    #[codama(account(name = "market", docs = "Market the order belongs to"))]
+    #[codama(account(
+        name = "market",
+        docs = "Market the order belongs to. Read-only (Design Z): submit writes only its own shard."
+    ))]
     #[codama(account(
         name = "order_slab",
-        docs = "OrderSlab to insert into",
-        writable,
-        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+        docs = "OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b\"order_slab\", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.",
+        writable
     ))]
     #[codama(account(
         name = "event_authority",
@@ -134,11 +133,21 @@ pub enum TempoProgramInstruction {
         /// the portion that would open new exposure reserves margin (missing-features
         /// §1.1/§2.2). 0 = a normal order (reserves the full worst case).
         reduce_only: bool,
+        /// Which OrderSlab shard to insert into (`[0, num_slab_shards)`). Must match the
+        /// `order_slab` account's stored shard id (Stage A sharding).
+        shard_id: u16,
+        /// Resting-order expiry (Stage B): 0 = good-till-cancelled; otherwise an absolute
+        /// auction id at/after which the order stops resting (its leftover is consumed at
+        /// settle instead of re-armed). A client typically sets `current_auction_id + N`.
+        expires_at_auction: u64,
     } = 1,
 
     /// Cancel a resting order before clearing begins.
     #[codama(account(name = "trader", docs = "Order owner", signer))]
-    #[codama(account(name = "market", docs = "Market the order belongs to"))]
+    #[codama(account(
+        name = "market",
+        docs = "Market the order belongs to. Read-only (Design Z): cancel writes only its own shard."
+    ))]
     #[codama(account(
         name = "order_slab",
         docs = "OrderSlab to remove from",
@@ -202,6 +211,12 @@ pub enum TempoProgramInstruction {
 
     /// Phase 2 DISCOVER (permissionless): one pass over the buckets to find the
     /// clearing price and write the ClearingResult. Requires completeness.
+    ///
+    /// Design Z (DDR-1): ALL of the market's slab shards are passed as trailing remaining
+    /// accounts (read-only), after the fixed accounts and the two crank-fee optional slots
+    /// (program-id sentinels when omitted). finalize scans every shard for completeness; the
+    /// count must equal `num_slab_shards`. Codama cannot model the variadic list, so callers
+    /// append the shard metas (see the `finalize_clear` SDK builder).
     #[codama(account(
         name = "cranker",
         docs = "Permissionless caller (paid a fee)",
@@ -213,11 +228,6 @@ pub enum TempoProgramInstruction {
         name = "histogram",
         docs = "AuctionHistogram to scan",
         default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
-    ))]
-    #[codama(account(
-        name = "order_slab",
-        docs = "OrderSlab scanned for the completeness gate",
-        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
     ))]
     #[codama(account(
         name = "clearing_result",
@@ -259,9 +269,8 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "market", docs = "Market being settled", writable))]
     #[codama(account(
         name = "order_slab",
-        docs = "OrderSlab holding the order",
-        writable,
-        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+        docs = "OrderSlab SHARD holding the order (Stage A sharding: seeds [b\"order_slab\", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA.",
+        writable
     ))]
     #[codama(account(
         name = "clearing_result",
@@ -320,14 +329,8 @@ pub enum TempoProgramInstruction {
         default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
     ))]
     #[codama(account(
-        name = "order_slab",
-        docs = "OrderSlab to clear",
-        writable,
-        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
-    ))]
-    #[codama(account(
         name = "oracle",
-        docs = "Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward."
+        docs = "Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards."
     ))]
     StartAuction {} = 6,
 
@@ -536,7 +539,10 @@ pub enum TempoProgramInstruction {
 
     /// Authority-gated escape hatch: abandon a wedged round and reopen `Collect`
     /// regardless of phase or unsettled orders (an operational backstop, not a
-    /// normal path). Zeroes the histogram + slab and bumps the auction id.
+    /// normal path). Zeroes the histogram + ALL slab shards and bumps the auction id once.
+    /// Stage A: ALL `num_slab_shards` shards must be passed as trailing writable accounts
+    /// (after the histogram) so the reset is atomic — a partial reset would leave stale
+    /// shards and desync shard auction ids. Bounded by the tx account limit.
     #[codama(account(name = "authority", docs = "Market authority / admin", signer))]
     #[codama(account(name = "market", docs = "Market to reset", writable))]
     #[codama(account(
@@ -547,7 +553,7 @@ pub enum TempoProgramInstruction {
     ))]
     #[codama(account(
         name = "order_slab",
-        docs = "OrderSlab to clear",
+        docs = "First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b\"order_slab\", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards.",
         writable,
         default_value = pda("orderSlabHeader", [seed("market", account("market"))])
     ))]
@@ -801,6 +807,33 @@ pub enum TempoProgramInstruction {
         writable
     ))]
     CloseMakerQuote {} = 29,
+
+    /// Stage A sharding: create one OrderSlab shard `[b"order_slab", market, shard_id]`.
+    #[codama(account(name = "payer", docs = "Pays for the shard account", signer, writable))]
+    #[codama(account(name = "market", docs = "Market the shard belongs to"))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "OrderSlab shard PDA to create (client resolves [b\"order_slab\", market, shard_id])",
+        writable
+    ))]
+    #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
+    InitShard {
+        /// Index of the shard to create (`[0, num_slab_shards)`)
+        shard_id: u16,
+        /// Bump for the shard's OrderSlab PDA
+        #[codama(default_value = account_bump("order_slab"))]
+        bump: u8,
+    } = 30,
+
+    /// Stage A sharding: reset one drained shard for the next round (permissionless).
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market (increments shards_ready)", writable))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "Drained OrderSlab shard to zero for the next round",
+        writable
+    ))]
+    ResetShard {} = 31,
 
     /// Invoked via CPI to emit event data in instruction args (prevents log truncation).
     #[codama(skip)]

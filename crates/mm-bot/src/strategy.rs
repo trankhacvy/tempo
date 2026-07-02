@@ -240,6 +240,7 @@ mod tests {
             window_floor_price: 1000,
             initial_margin_bps: 500,
             max_position_notional: 0,
+            num_slab_shards: 1,
         }
     }
 

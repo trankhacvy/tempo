@@ -12,6 +12,8 @@ import {
   getAddressEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
   getU32Decoder,
   getU32Encoder,
   getU64Decoder,
@@ -34,6 +36,7 @@ export type OrderSubmittedEvent = {
   slot: number;
   side: number;
   isMaker: number;
+  shardId: number;
 };
 
 export type OrderSubmittedEventArgs = {
@@ -46,6 +49,7 @@ export type OrderSubmittedEventArgs = {
   slot: number;
   side: number;
   isMaker: number;
+  shardId: number;
 };
 
 export function getOrderSubmittedEventEncoder(): FixedSizeEncoder<OrderSubmittedEventArgs> {
@@ -59,6 +63,7 @@ export function getOrderSubmittedEventEncoder(): FixedSizeEncoder<OrderSubmitted
     ["slot", getU32Encoder()],
     ["side", getU8Encoder()],
     ["isMaker", getU8Encoder()],
+    ["shardId", getU16Encoder()],
   ]);
 }
 
@@ -73,6 +78,7 @@ export function getOrderSubmittedEventDecoder(): FixedSizeDecoder<OrderSubmitted
     ["slot", getU32Decoder()],
     ["side", getU8Decoder()],
     ["isMaker", getU8Decoder()],
+    ["shardId", getU16Decoder()],
   ]);
 }
 

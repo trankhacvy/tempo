@@ -47,6 +47,10 @@ pub struct TraderCtx {
     pub pdas: MarketPdas,
     /// `None` ⇒ clearing-only (Phase A): orders carry no money accounts.
     pub collateral_mint: Option<Pubkey>,
+    /// Number of slab shards the market was provisioned with. Used to route this
+    /// trader deterministically to one shard (Finding 4), so the on-chain per-shard
+    /// order cap acts as a global cap. `1` for a single-shard market.
+    pub num_slab_shards: u16,
     pub cfg: TraderConfig,
     pub seed: u64,
 }
@@ -167,6 +171,13 @@ async fn tick(
                     o.price,
                     o.quantity,
                     o.reduce_only,
+                    // Finding 4: route this trader to its canonical shard so the on-chain
+                    // per-shard order cap acts as a global cap. `shard_for_trader` returns
+                    // 0 for a single-shard market, matching the current shard-0-only keeper.
+                    tempo_sdk::pda::shard_for_trader(&ctx.trader.pubkey(), ctx.num_slab_shards),
+                    // Stage B: GTC — the sim fleet re-derives its ladder each round, so it
+                    // leans on cancel/replace rather than a resting expiry for now.
+                    0,
                     &money,
                 )
             })

@@ -12,6 +12,8 @@ import {
   getBooleanEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
@@ -36,10 +38,8 @@ import {
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
-  getAddressFromResolvedInstructionAccount,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { findOrderSlabHeaderPda } from "../pdas";
 import { TEMPO_PROGRAM_PROGRAM_ADDRESS } from "../programs";
 
 export const SUBMIT_ORDER_DISCRIMINATOR = 1;
@@ -103,6 +103,8 @@ export type SubmitOrderInstructionData = {
   price: bigint;
   quantity: bigint;
   reduceOnly: boolean;
+  shardId: number;
+  expiresAtAuction: bigint;
 };
 
 export type SubmitOrderInstructionDataArgs = {
@@ -110,6 +112,8 @@ export type SubmitOrderInstructionDataArgs = {
   price: number | bigint;
   quantity: number | bigint;
   reduceOnly: boolean;
+  shardId: number;
+  expiresAtAuction: number | bigint;
 };
 
 export function getSubmitOrderInstructionDataEncoder(): FixedSizeEncoder<SubmitOrderInstructionDataArgs> {
@@ -120,6 +124,8 @@ export function getSubmitOrderInstructionDataEncoder(): FixedSizeEncoder<SubmitO
       ["price", getU64Encoder()],
       ["quantity", getU64Encoder()],
       ["reduceOnly", getBooleanEncoder()],
+      ["shardId", getU16Encoder()],
+      ["expiresAtAuction", getU64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: SUBMIT_ORDER_DISCRIMINATOR }),
   );
@@ -132,6 +138,8 @@ export function getSubmitOrderInstructionDataDecoder(): FixedSizeDecoder<SubmitO
     ["price", getU64Decoder()],
     ["quantity", getU64Decoder()],
     ["reduceOnly", getBooleanDecoder()],
+    ["shardId", getU16Decoder()],
+    ["expiresAtAuction", getU64Decoder()],
   ]);
 }
 
@@ -145,126 +153,6 @@ export function getSubmitOrderInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type SubmitOrderAsyncInput<
-  TAccountTrader extends string = string,
-  TAccountMarket extends string = string,
-  TAccountOrderSlab extends string = string,
-  TAccountEventAuthority extends string = string,
-  TAccountTempoProgram extends string = string,
-  TAccountPosition extends string = string,
-  TAccountUserCollateral extends string = string,
-> = {
-  /** Order owner */
-  trader: TransactionSigner<TAccountTrader>;
-  /** Market the order belongs to */
-  market: Address<TAccountMarket>;
-  /** OrderSlab to insert into */
-  orderSlab?: Address<TAccountOrderSlab>;
-  /** Event authority PDA for CPI event emission */
-  eventAuthority: Address<TAccountEventAuthority>;
-  /** Tempo program, for self-CPI event emission */
-  tempoProgram: Address<TAccountTempoProgram>;
-  /** (Optional) trader's Position; required on a money-path market to reserve margin */
-  position?: Address<TAccountPosition>;
-  /** (Optional) trader's collateral ledger; locks the order's worst-case initial margin */
-  userCollateral?: Address<TAccountUserCollateral>;
-  side: SubmitOrderInstructionDataArgs["side"];
-  price: SubmitOrderInstructionDataArgs["price"];
-  quantity: SubmitOrderInstructionDataArgs["quantity"];
-  reduceOnly: SubmitOrderInstructionDataArgs["reduceOnly"];
-};
-
-export async function getSubmitOrderInstructionAsync<
-  TAccountTrader extends string,
-  TAccountMarket extends string,
-  TAccountOrderSlab extends string,
-  TAccountEventAuthority extends string,
-  TAccountTempoProgram extends string,
-  TAccountPosition extends string,
-  TAccountUserCollateral extends string,
-  TProgramAddress extends Address = typeof TEMPO_PROGRAM_PROGRAM_ADDRESS,
->(
-  input: SubmitOrderAsyncInput<
-    TAccountTrader,
-    TAccountMarket,
-    TAccountOrderSlab,
-    TAccountEventAuthority,
-    TAccountTempoProgram,
-    TAccountPosition,
-    TAccountUserCollateral
-  >,
-  config?: { programAddress?: TProgramAddress },
-): Promise<
-  SubmitOrderInstruction<
-    TProgramAddress,
-    TAccountTrader,
-    TAccountMarket,
-    TAccountOrderSlab,
-    TAccountEventAuthority,
-    TAccountTempoProgram,
-    TAccountPosition,
-    TAccountUserCollateral
-  >
-> {
-  // Program address.
-  const programAddress =
-    config?.programAddress ?? TEMPO_PROGRAM_PROGRAM_ADDRESS;
-
-  // Original accounts.
-  const originalAccounts = {
-    trader: { value: input.trader ?? null, isWritable: true },
-    market: { value: input.market ?? null, isWritable: false },
-    orderSlab: { value: input.orderSlab ?? null, isWritable: true },
-    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
-    tempoProgram: { value: input.tempoProgram ?? null, isWritable: false },
-    position: { value: input.position ?? null, isWritable: true },
-    userCollateral: { value: input.userCollateral ?? null, isWritable: true },
-  };
-  const accounts = originalAccounts as Record<
-    keyof typeof originalAccounts,
-    ResolvedInstructionAccount
-  >;
-
-  // Original args.
-  const args = { ...input };
-
-  // Resolve default values.
-  if (!accounts.orderSlab.value) {
-    accounts.orderSlab.value = await findOrderSlabHeaderPda({
-      market: getAddressFromResolvedInstructionAccount(
-        "market",
-        accounts.market.value,
-      ),
-    });
-  }
-
-  const getAccountMeta = getAccountMetaFactory(programAddress, "omitted");
-  return Object.freeze({
-    accounts: [
-      getAccountMeta("trader", accounts.trader),
-      getAccountMeta("market", accounts.market),
-      getAccountMeta("orderSlab", accounts.orderSlab),
-      getAccountMeta("eventAuthority", accounts.eventAuthority),
-      getAccountMeta("tempoProgram", accounts.tempoProgram),
-      getAccountMeta("position", accounts.position),
-      getAccountMeta("userCollateral", accounts.userCollateral),
-    ].filter(<T>(x: T | undefined): x is T => x !== undefined),
-    data: getSubmitOrderInstructionDataEncoder().encode(
-      args as SubmitOrderInstructionDataArgs,
-    ),
-    programAddress,
-  } as SubmitOrderInstruction<
-    TProgramAddress,
-    TAccountTrader,
-    TAccountMarket,
-    TAccountOrderSlab,
-    TAccountEventAuthority,
-    TAccountTempoProgram,
-    TAccountPosition,
-    TAccountUserCollateral
-  >);
-}
-
 export type SubmitOrderInput<
   TAccountTrader extends string = string,
   TAccountMarket extends string = string,
@@ -276,9 +164,9 @@ export type SubmitOrderInput<
 > = {
   /** Order owner */
   trader: TransactionSigner<TAccountTrader>;
-  /** Market the order belongs to */
+  /** Market the order belongs to. Read-only (Design Z): submit writes only its own shard. */
   market: Address<TAccountMarket>;
-  /** OrderSlab to insert into */
+  /** OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`. */
   orderSlab: Address<TAccountOrderSlab>;
   /** Event authority PDA for CPI event emission */
   eventAuthority: Address<TAccountEventAuthority>;
@@ -292,6 +180,8 @@ export type SubmitOrderInput<
   price: SubmitOrderInstructionDataArgs["price"];
   quantity: SubmitOrderInstructionDataArgs["quantity"];
   reduceOnly: SubmitOrderInstructionDataArgs["reduceOnly"];
+  shardId: SubmitOrderInstructionDataArgs["shardId"];
+  expiresAtAuction: SubmitOrderInstructionDataArgs["expiresAtAuction"];
 };
 
 export function getSubmitOrderInstruction<
@@ -381,9 +271,9 @@ export type ParsedSubmitOrderInstruction<
   accounts: {
     /** Order owner */
     trader: TAccountMetas[0];
-    /** Market the order belongs to */
+    /** Market the order belongs to. Read-only (Design Z): submit writes only its own shard. */
     market: TAccountMetas[1];
-    /** OrderSlab to insert into */
+    /** OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`. */
     orderSlab: TAccountMetas[2];
     /** Event authority PDA for CPI event emission */
     eventAuthority: TAccountMetas[3];

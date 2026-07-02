@@ -19,11 +19,21 @@ use crate::{errors::TempoProgramError, state::OrderSide, traits::InstructionData
 ///   position; the processor reserves margin only for any portion that would open
 ///   new exposure, so a close is not blocked by the worst-case reservation
 ///   (missing-features §1.1/§2.2). 0 = a normal order (reserves the full worst case).
+/// * `shard_id` (u16) — which `OrderSlab` shard to insert into (`[0, num_slab_shards)`).
+///   The client picks the shard (least-full / hash) and passes the resolved shard PDA
+///   as the `order_slab` account; the processor validates the PDA against this index.
+/// * `expires_at_auction` (u64) — Stage B resting-order expiry. `0` = good-till-cancelled
+///   (the order rests until filled or cancelled). Otherwise an absolute auction id: the
+///   order stops resting once `expires_at_auction <= current_auction_id` (its leftover is
+///   `Consumed` at that round's settle instead of re-armed). A client sets e.g.
+///   `current_auction_id + 20` to bound how long the order squats a slab slot.
 pub struct SubmitOrderData {
     pub side: u8,
     pub price: u64,
     pub quantity: u64,
     pub reduce_only: bool,
+    pub shard_id: u16,
+    pub expires_at_auction: u64,
 }
 
 impl<'a> TryFrom<&'a [u8]> for SubmitOrderData {
@@ -31,10 +41,10 @@ impl<'a> TryFrom<&'a [u8]> for SubmitOrderData {
 
     #[inline(always)]
     fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
-        // EXACT length, not a minimum: the wire format is fixed-size. The body is 18
-        // bytes (the trailing `reduce_only` flag, missing-features §1.1). Any other
-        // length fails loud ("invalid instruction data") rather than mis-parsing a
-        // shifted price/quantity.
+        // EXACT length, not a minimum: the wire format is fixed-size. The body is 28
+        // bytes (`reduce_only` + `shard_id` (Stage A sharding) + `expires_at_auction`
+        // (Stage B resting orders)). Any other length fails loud ("invalid instruction
+        // data") rather than mis-parsing a shifted price/quantity.
         if data.len() != Self::LEN {
             return Err(ProgramError::InvalidInstructionData);
         }
@@ -43,6 +53,8 @@ impl<'a> TryFrom<&'a [u8]> for SubmitOrderData {
         let price = u64::from_le_bytes(data[1..9].try_into().unwrap());
         let quantity = u64::from_le_bytes(data[9..17].try_into().unwrap());
         let reduce_only = data[17] != 0;
+        let shard_id = u16::from_le_bytes(data[18..20].try_into().unwrap());
+        let expires_at_auction = u64::from_le_bytes(data[20..28].try_into().unwrap());
 
         // Validate the side byte; price tick-alignment is validated against the
         // market in the processor (needs tick_size).
@@ -56,24 +68,28 @@ impl<'a> TryFrom<&'a [u8]> for SubmitOrderData {
             price,
             quantity,
             reduce_only,
+            shard_id,
+            expires_at_auction,
         })
     }
 }
 
 impl<'a> InstructionData<'a> for SubmitOrderData {
-    const LEN: usize = 1 + 8 + 8 + 1;
+    const LEN: usize = 1 + 8 + 8 + 1 + 2 + 8;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn encode(side: u8, price: u64, qty: u64) -> [u8; 18] {
-        let mut buf = [0u8; 18];
+    fn encode(side: u8, price: u64, qty: u64) -> [u8; 28] {
+        let mut buf = [0u8; 28];
         buf[0] = side;
         buf[1..9].copy_from_slice(&price.to_le_bytes());
         buf[9..17].copy_from_slice(&qty.to_le_bytes());
         // buf[17] = reduce_only, defaults to 0 (normal order)
+        // buf[18..20] = shard_id, defaults to 0
+        // buf[20..28] = expires_at_auction, defaults to 0 (GTC)
         buf
     }
 
@@ -85,6 +101,24 @@ mod tests {
         assert_eq!(d.price, 100);
         assert_eq!(d.quantity, 50);
         assert!(!d.reduce_only);
+        assert_eq!(d.shard_id, 0);
+        assert_eq!(d.expires_at_auction, 0);
+    }
+
+    #[test]
+    fn test_shard_id_parsed() {
+        let mut buf = encode(0, 100, 50);
+        buf[18..20].copy_from_slice(&7u16.to_le_bytes());
+        let d = SubmitOrderData::try_from(&buf[..]).unwrap();
+        assert_eq!(d.shard_id, 7);
+    }
+
+    #[test]
+    fn test_expires_at_auction_parsed() {
+        let mut buf = encode(0, 100, 50);
+        buf[20..28].copy_from_slice(&123u64.to_le_bytes());
+        let d = SubmitOrderData::try_from(&buf[..]).unwrap();
+        assert_eq!(d.expires_at_auction, 123);
     }
 
     #[test]
@@ -114,11 +148,11 @@ mod tests {
     }
 
     #[test]
-    fn test_old_17_byte_body_rejected() {
-        // The pre-reservation body was 17 bytes (no reduce_only). The exact-length
-        // gate now requires 18, so a stale 17-byte client fails loud rather than
-        // submitting with an unspecified reduce_only.
-        let buf = [0u8; 17];
+    fn test_old_20_byte_body_rejected() {
+        // The Stage A body was 20 bytes (no `expires_at_auction`). The exact-length
+        // gate now requires 28, so a stale client fails loud rather than submitting
+        // with an unspecified expiry.
+        let buf = [0u8; 20];
         assert!(matches!(
             SubmitOrderData::try_from(&buf[..]),
             Err(ProgramError::InvalidInstructionData)

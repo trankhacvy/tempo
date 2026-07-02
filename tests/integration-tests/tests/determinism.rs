@@ -4,6 +4,7 @@
 //!   1. one big `process_chunk` over the whole slab, by the default cranker;
 //!   2. many single-slot chunks in *reversed* slot order, by a *different*
 //!      signer.
+//!
 //! Commutativity of histogram folding (clearing-protocol §4.1) means both must
 //! produce the identical `ClearingResult` math (every field except the
 //! per-market `market` pubkey + bump, which necessarily differ between the two

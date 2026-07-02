@@ -15,9 +15,9 @@ pub const SUBMIT_ORDER_DISCRIMINATOR: u8 = 1;
 pub struct SubmitOrder {
     /// Order owner
     pub trader: solana_address::Address,
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): submit writes only its own shard.
     pub market: solana_address::Address,
-    /// OrderSlab to insert into
+    /// OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.
     pub order_slab: solana_address::Address,
     /// Event authority PDA for CPI event emission
     pub event_authority: solana_address::Address,
@@ -101,6 +101,8 @@ pub struct SubmitOrderInstructionArgs {
     pub price: u64,
     pub quantity: u64,
     pub reduce_only: bool,
+    pub shard_id: u16,
+    pub expires_at_auction: u64,
 }
 
 impl SubmitOrderInstructionArgs {
@@ -133,6 +135,8 @@ pub struct SubmitOrderBuilder {
     price: Option<u64>,
     quantity: Option<u64>,
     reduce_only: Option<bool>,
+    shard_id: Option<u16>,
+    expires_at_auction: Option<u64>,
     __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
@@ -146,13 +150,13 @@ impl SubmitOrderBuilder {
         self.trader = Some(trader);
         self
     }
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): submit writes only its own shard.
     #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
         self.market = Some(market);
         self
     }
-    /// OrderSlab to insert into
+    /// OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.
     #[inline(always)]
     pub fn order_slab(&mut self, order_slab: solana_address::Address) -> &mut Self {
         self.order_slab = Some(order_slab);
@@ -207,6 +211,16 @@ impl SubmitOrderBuilder {
         self.reduce_only = Some(reduce_only);
         self
     }
+    #[inline(always)]
+    pub fn shard_id(&mut self, shard_id: u16) -> &mut Self {
+        self.shard_id = Some(shard_id);
+        self
+    }
+    #[inline(always)]
+    pub fn expires_at_auction(&mut self, expires_at_auction: u64) -> &mut Self {
+        self.expires_at_auction = Some(expires_at_auction);
+        self
+    }
     /// Add an additional account to the instruction.
     #[inline(always)]
     pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
@@ -238,6 +252,11 @@ impl SubmitOrderBuilder {
             price: self.price.clone().expect("price is not set"),
             quantity: self.quantity.clone().expect("quantity is not set"),
             reduce_only: self.reduce_only.clone().expect("reduce_only is not set"),
+            shard_id: self.shard_id.clone().expect("shard_id is not set"),
+            expires_at_auction: self
+                .expires_at_auction
+                .clone()
+                .expect("expires_at_auction is not set"),
         };
 
         accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
@@ -248,9 +267,9 @@ impl SubmitOrderBuilder {
 pub struct SubmitOrderCpiAccounts<'a, 'b> {
     /// Order owner
     pub trader: &'b solana_account_info::AccountInfo<'a>,
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): submit writes only its own shard.
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab to insert into
+    /// OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
     /// Event authority PDA for CPI event emission
     pub event_authority: &'b solana_account_info::AccountInfo<'a>,
@@ -268,9 +287,9 @@ pub struct SubmitOrderCpi<'a, 'b> {
     pub __program: &'b solana_account_info::AccountInfo<'a>,
     /// Order owner
     pub trader: &'b solana_account_info::AccountInfo<'a>,
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): submit writes only its own shard.
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab to insert into
+    /// OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
     /// Event authority PDA for CPI event emission
     pub event_authority: &'b solana_account_info::AccountInfo<'a>,
@@ -424,6 +443,8 @@ impl<'a, 'b> SubmitOrderCpiBuilder<'a, 'b> {
             price: None,
             quantity: None,
             reduce_only: None,
+            shard_id: None,
+            expires_at_auction: None,
             __remaining_accounts: Vec::new(),
         });
         Self { instruction }
@@ -434,13 +455,13 @@ impl<'a, 'b> SubmitOrderCpiBuilder<'a, 'b> {
         self.instruction.trader = Some(trader);
         self
     }
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): submit writes only its own shard.
     #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.market = Some(market);
         self
     }
-    /// OrderSlab to insert into
+    /// OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b"order_slab", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`.
     #[inline(always)]
     pub fn order_slab(
         &mut self,
@@ -507,6 +528,16 @@ impl<'a, 'b> SubmitOrderCpiBuilder<'a, 'b> {
         self.instruction.reduce_only = Some(reduce_only);
         self
     }
+    #[inline(always)]
+    pub fn shard_id(&mut self, shard_id: u16) -> &mut Self {
+        self.instruction.shard_id = Some(shard_id);
+        self
+    }
+    #[inline(always)]
+    pub fn expires_at_auction(&mut self, expires_at_auction: u64) -> &mut Self {
+        self.instruction.expires_at_auction = Some(expires_at_auction);
+        self
+    }
     /// Add an additional account to the instruction.
     #[inline(always)]
     pub fn add_remaining_account(
@@ -554,6 +585,16 @@ impl<'a, 'b> SubmitOrderCpiBuilder<'a, 'b> {
                 .reduce_only
                 .clone()
                 .expect("reduce_only is not set"),
+            shard_id: self
+                .instruction
+                .shard_id
+                .clone()
+                .expect("shard_id is not set"),
+            expires_at_auction: self
+                .instruction
+                .expires_at_auction
+                .clone()
+                .expect("expires_at_auction is not set"),
         };
         let instruction = SubmitOrderCpi {
             __program: self.instruction.__program,
@@ -600,6 +641,8 @@ struct SubmitOrderCpiBuilderInstruction<'a, 'b> {
     price: Option<u64>,
     quantity: Option<u64>,
     reduce_only: Option<bool>,
+    shard_id: Option<u16>,
+    expires_at_auction: Option<u64>,
     /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
     __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }

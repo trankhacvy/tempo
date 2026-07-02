@@ -234,4 +234,30 @@ impl TempoClient {
             .send_with_conflict_retry(payer, ixs, DEFAULT_CU_LIMIT, 4)
             .await?)
     }
+
+    /// Multi-signer send: `signers[0]` is the fee payer and every signer signs. Packs
+    /// instructions from many distinct signers (e.g. one `submit_order` per trader) into
+    /// one transaction for the high-volume batched submitter.
+    pub async fn send_signed(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+    ) -> Result<Signature, SdkError> {
+        Ok(TxSender::new(&self.pool, self.priority_fee_micro_lamports)
+            .send_signed_with_conflict_retry(signers, ixs, DEFAULT_CU_LIMIT, 4)
+            .await?)
+    }
+
+    /// Fire-and-forget multi-signer send: broadcast and return the signature WITHOUT
+    /// waiting for confirmation (the high-volume flood's fast path — landing is verified
+    /// out-of-band). A deterministic preflight rejection still surfaces as an error.
+    pub async fn send_signed_no_confirm(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+    ) -> Result<Signature, SdkError> {
+        Ok(TxSender::new(&self.pool, self.priority_fee_micro_lamports)
+            .send_signed_no_confirm(signers, ixs, DEFAULT_CU_LIMIT)
+            .await?)
+    }
 }

@@ -1178,6 +1178,38 @@
                 },
                 "kind": "arrayTypeNode"
               }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "numSlabShardsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "shardsReadyLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
             }
           ],
           "kind": "structTypeNode"
@@ -1299,6 +1331,54 @@
                 "count": {
                   "kind": "fixedCountNode",
                   "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "shardIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "restingCountLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 4
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "foldedAuctionIdLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
                 },
                 "item": {
                   "endian": "le",
@@ -1831,6 +1911,15 @@
                 "format": "u8",
                 "kind": "numberTypeNode"
               }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "shardId",
+              "type": {
+                "endian": "le",
+                "format": "u16",
+                "kind": "numberTypeNode"
+              }
             }
           ],
           "kind": "structTypeNode"
@@ -2103,6 +2192,15 @@
                 "format": "u8",
                 "kind": "numberTypeNode"
               }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "shardId",
+              "type": {
+                "endian": "le",
+                "format": "u16",
+                "kind": "numberTypeNode"
+              }
             }
           ],
           "kind": "structTypeNode"
@@ -2244,11 +2342,20 @@
             },
             {
               "kind": "structFieldTypeNode",
+              "name": "reduceOnly",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
               "name": "padding",
               "type": {
                 "count": {
                   "kind": "fixedCountNode",
-                  "value": 5
+                  "value": 4
                 },
                 "item": {
                   "endian": "le",
@@ -2270,6 +2377,33 @@
             {
               "kind": "structFieldTypeNode",
               "name": "reservedMargin",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "worstPrice",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "expiresAtAuction",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "armAuctionId",
               "type": {
                 "endian": "le",
                 "format": "u64",
@@ -2551,6 +2685,18 @@
         "kind": "errorNode",
         "message": "Order would exceed the market's max position notional",
         "name": "positionLimitExceeded"
+      },
+      {
+        "code": 45,
+        "kind": "errorNode",
+        "message": "Shard id is out of range for this market",
+        "name": "shardOutOfRange"
+      },
+      {
+        "code": 46,
+        "kind": "errorNode",
+        "message": "Order expiry is already reached at submit time",
+        "name": "orderAlreadyExpired"
       }
     ],
     "events": [],
@@ -2637,32 +2783,6 @@
             "name": "histogram"
           },
           {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
-                "name": "orderSlabHeader"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "market",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "market"
-                  }
-                }
-              ]
-            },
-            "docs": [
-              "OrderSlab PDA (bounded resting-order slots) to be created"
-            ],
-            "isSigner": false,
-            "isWritable": true,
-            "kind": "instructionAccountNode",
-            "name": "orderSlab"
-          },
-          {
             "docs": [
               "Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation"
             ],
@@ -2745,10 +2865,6 @@
             }
           },
           {
-            "defaultValue": {
-              "kind": "accountBumpValueNode",
-              "name": "orderSlab"
-            },
             "kind": "instructionArgumentNode",
             "name": "orderSlabBump",
             "type": {
@@ -2905,6 +3021,15 @@
               "format": "u128",
               "kind": "numberTypeNode"
             }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "numSlabShards",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
           }
         ],
         "discriminators": [
@@ -2930,7 +3055,7 @@
           },
           {
             "docs": [
-              "Market the order belongs to"
+              "Market the order belongs to. Read-only (Design Z): submit writes only its own shard."
             ],
             "isSigner": false,
             "isWritable": false,
@@ -2938,25 +3063,8 @@
             "name": "market"
           },
           {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
-                "name": "orderSlabHeader"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "market",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "market"
-                  }
-                }
-              ]
-            },
             "docs": [
-              "OrderSlab to insert into"
+              "OrderSlab SHARD to insert into. Stage A sharding: a market has num_slab_shards slabs at seeds [b\"order_slab\", market, shard_id.to_le_bytes()]. The client resolves the shard PDA for the chosen `shard_id` (least-full / hash) and passes it here; the processor validates the PDA against `shard_id`."
             ],
             "isSigner": false,
             "isWritable": true,
@@ -3055,6 +3163,24 @@
                 "kind": "numberTypeNode"
               }
             }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "shardId",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "expiresAtAuction",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
           }
         ],
         "discriminators": [
@@ -3080,7 +3206,7 @@
           },
           {
             "docs": [
-              "Market the order belongs to"
+              "Market the order belongs to. Read-only (Design Z): cancel writes only its own shard."
             ],
             "isSigner": false,
             "isWritable": false,
@@ -3372,32 +3498,6 @@
               "kind": "pdaValueNode",
               "pda": {
                 "kind": "pdaLinkNode",
-                "name": "orderSlabHeader"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "market",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "market"
-                  }
-                }
-              ]
-            },
-            "docs": [
-              "OrderSlab scanned for the completeness gate"
-            ],
-            "isSigner": false,
-            "isWritable": false,
-            "kind": "instructionAccountNode",
-            "name": "orderSlab"
-          },
-          {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
                 "name": "clearingResult"
               },
               "seeds": [
@@ -3531,25 +3631,8 @@
             "name": "market"
           },
           {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
-                "name": "orderSlabHeader"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "market",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "market"
-                  }
-                }
-              ]
-            },
             "docs": [
-              "OrderSlab holding the order"
+              "OrderSlab SHARD holding the order (Stage A sharding: seeds [b\"order_slab\", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA."
             ],
             "isSigner": false,
             "isWritable": true,
@@ -3732,34 +3815,8 @@
             "name": "histogram"
           },
           {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
-                "name": "orderSlabHeader"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "market",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "market"
-                  }
-                }
-              ]
-            },
             "docs": [
-              "OrderSlab to clear"
-            ],
-            "isSigner": false,
-            "isWritable": true,
-            "kind": "instructionAccountNode",
-            "name": "orderSlab"
-          },
-          {
-            "docs": [
-              "Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward."
+              "Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards."
             ],
             "isSigner": false,
             "isWritable": false,
@@ -4650,7 +4707,7 @@
               ]
             },
             "docs": [
-              "OrderSlab to clear"
+              "First OrderSlab shard to clear. ALL of the market's shards must follow as additional trailing writable accounts (shards [b\"order_slab\", market, shard_id.to_le_bytes()] for every shard_id in [0, num_slab_shards)); the processor requires shards.len() == num_slab_shards."
             ],
             "isSigner": false,
             "isWritable": true,
@@ -5975,6 +6032,153 @@
         ],
         "kind": "instructionNode",
         "name": "closeMakerQuote"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Pays for the shard account"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "payer"
+          },
+          {
+            "docs": [
+              "Market the shard belongs to"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "OrderSlab shard PDA to create (client resolves [b\"order_slab\", market, shard_id])"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "11111111111111111111111111111111"
+            },
+            "docs": [
+              "System program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "systemProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 30
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "shardId",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "defaultValue": {
+              "kind": "accountBumpValueNode",
+              "name": "orderSlab"
+            },
+            "kind": "instructionArgumentNode",
+            "name": "bump",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "initShard"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Market (increments shards_ready)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "Drained OrderSlab shard to zero for the next round"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 31
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "resetShard"
       }
     ],
     "kind": "programNode",
@@ -6120,6 +6324,15 @@
             "name": "market",
             "type": {
               "kind": "publicKeyTypeNode"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "shardId",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
             }
           }
         ]

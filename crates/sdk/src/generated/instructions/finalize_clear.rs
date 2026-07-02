@@ -19,8 +19,6 @@ pub struct FinalizeClear {
     pub market: solana_address::Address,
     /// AuctionHistogram to scan
     pub histogram: solana_address::Address,
-    /// OrderSlab scanned for the completeness gate
-    pub order_slab: solana_address::Address,
     /// ClearingResult PDA to be created/written
     pub clearing_result: solana_address::Address,
     /// System program
@@ -49,15 +47,11 @@ impl FinalizeClear {
         args: FinalizeClearInstructionArgs,
         remaining_accounts: &[solana_instruction::AccountMeta],
     ) -> solana_instruction::Instruction {
-        let mut accounts = Vec::with_capacity(10 + remaining_accounts.len());
+        let mut accounts = Vec::with_capacity(9 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new(self.cranker, true));
         accounts.push(solana_instruction::AccountMeta::new(self.market, false));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.histogram,
-            false,
-        ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.order_slab,
             false,
         ));
         accounts.push(solana_instruction::AccountMeta::new(
@@ -137,19 +131,17 @@ impl FinalizeClearInstructionArgs {
 ///   0. `[writable, signer]` cranker
 ///   1. `[writable]` market
 ///   2. `[]` histogram
-///   3. `[]` order_slab
-///   4. `[writable]` clearing_result
-///   5. `[optional]` system_program (default to `11111111111111111111111111111111`)
-///   6. `[]` event_authority
-///   7. `[]` tempo_program
-///   8. `[writable, optional]` cranker_collateral
-///   9. `[writable, optional]` vault
+///   3. `[writable]` clearing_result
+///   4. `[optional]` system_program (default to `11111111111111111111111111111111`)
+///   5. `[]` event_authority
+///   6. `[]` tempo_program
+///   7. `[writable, optional]` cranker_collateral
+///   8. `[writable, optional]` vault
 #[derive(Clone, Debug, Default)]
 pub struct FinalizeClearBuilder {
     cranker: Option<solana_address::Address>,
     market: Option<solana_address::Address>,
     histogram: Option<solana_address::Address>,
-    order_slab: Option<solana_address::Address>,
     clearing_result: Option<solana_address::Address>,
     system_program: Option<solana_address::Address>,
     event_authority: Option<solana_address::Address>,
@@ -180,12 +172,6 @@ impl FinalizeClearBuilder {
     #[inline(always)]
     pub fn histogram(&mut self, histogram: solana_address::Address) -> &mut Self {
         self.histogram = Some(histogram);
-        self
-    }
-    /// OrderSlab scanned for the completeness gate
-    #[inline(always)]
-    pub fn order_slab(&mut self, order_slab: solana_address::Address) -> &mut Self {
-        self.order_slab = Some(order_slab);
         self
     }
     /// ClearingResult PDA to be created/written
@@ -256,7 +242,6 @@ impl FinalizeClearBuilder {
             cranker: self.cranker.expect("cranker is not set"),
             market: self.market.expect("market is not set"),
             histogram: self.histogram.expect("histogram is not set"),
-            order_slab: self.order_slab.expect("order_slab is not set"),
             clearing_result: self.clearing_result.expect("clearing_result is not set"),
             system_program: self
                 .system_program
@@ -285,8 +270,6 @@ pub struct FinalizeClearCpiAccounts<'a, 'b> {
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// AuctionHistogram to scan
     pub histogram: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab scanned for the completeness gate
-    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
     /// ClearingResult PDA to be created/written
     pub clearing_result: &'b solana_account_info::AccountInfo<'a>,
     /// System program
@@ -311,8 +294,6 @@ pub struct FinalizeClearCpi<'a, 'b> {
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// AuctionHistogram to scan
     pub histogram: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab scanned for the completeness gate
-    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
     /// ClearingResult PDA to be created/written
     pub clearing_result: &'b solana_account_info::AccountInfo<'a>,
     /// System program
@@ -340,7 +321,6 @@ impl<'a, 'b> FinalizeClearCpi<'a, 'b> {
             cranker: accounts.cranker,
             market: accounts.market,
             histogram: accounts.histogram,
-            order_slab: accounts.order_slab,
             clearing_result: accounts.clearing_result,
             system_program: accounts.system_program,
             event_authority: accounts.event_authority,
@@ -373,7 +353,7 @@ impl<'a, 'b> FinalizeClearCpi<'a, 'b> {
         signers_seeds: &[&[&[u8]]],
         remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
     ) -> solana_program_error::ProgramResult {
-        let mut accounts = Vec::with_capacity(10 + remaining_accounts.len());
+        let mut accounts = Vec::with_capacity(9 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new(
             *self.cranker.key,
             true,
@@ -384,10 +364,6 @@ impl<'a, 'b> FinalizeClearCpi<'a, 'b> {
         ));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             *self.histogram.key,
-            false,
-        ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.order_slab.key,
             false,
         ));
         accounts.push(solana_instruction::AccountMeta::new(
@@ -431,12 +407,11 @@ impl<'a, 'b> FinalizeClearCpi<'a, 'b> {
             accounts,
             data,
         };
-        let mut account_infos = Vec::with_capacity(11 + remaining_accounts.len());
+        let mut account_infos = Vec::with_capacity(10 + remaining_accounts.len());
         account_infos.push(self.__program.clone());
         account_infos.push(self.cranker.clone());
         account_infos.push(self.market.clone());
         account_infos.push(self.histogram.clone());
-        account_infos.push(self.order_slab.clone());
         account_infos.push(self.clearing_result.clone());
         account_infos.push(self.system_program.clone());
         account_infos.push(self.event_authority.clone());
@@ -466,13 +441,12 @@ impl<'a, 'b> FinalizeClearCpi<'a, 'b> {
 ///   0. `[writable, signer]` cranker
 ///   1. `[writable]` market
 ///   2. `[]` histogram
-///   3. `[]` order_slab
-///   4. `[writable]` clearing_result
-///   5. `[]` system_program
-///   6. `[]` event_authority
-///   7. `[]` tempo_program
-///   8. `[writable, optional]` cranker_collateral
-///   9. `[writable, optional]` vault
+///   3. `[writable]` clearing_result
+///   4. `[]` system_program
+///   5. `[]` event_authority
+///   6. `[]` tempo_program
+///   7. `[writable, optional]` cranker_collateral
+///   8. `[writable, optional]` vault
 #[derive(Clone, Debug)]
 pub struct FinalizeClearCpiBuilder<'a, 'b> {
     instruction: Box<FinalizeClearCpiBuilderInstruction<'a, 'b>>,
@@ -485,7 +459,6 @@ impl<'a, 'b> FinalizeClearCpiBuilder<'a, 'b> {
             cranker: None,
             market: None,
             histogram: None,
-            order_slab: None,
             clearing_result: None,
             system_program: None,
             event_authority: None,
@@ -513,15 +486,6 @@ impl<'a, 'b> FinalizeClearCpiBuilder<'a, 'b> {
     #[inline(always)]
     pub fn histogram(&mut self, histogram: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.histogram = Some(histogram);
-        self
-    }
-    /// OrderSlab scanned for the completeness gate
-    #[inline(always)]
-    pub fn order_slab(
-        &mut self,
-        order_slab: &'b solana_account_info::AccountInfo<'a>,
-    ) -> &mut Self {
-        self.instruction.order_slab = Some(order_slab);
         self
     }
     /// ClearingResult PDA to be created/written
@@ -632,8 +596,6 @@ impl<'a, 'b> FinalizeClearCpiBuilder<'a, 'b> {
 
             histogram: self.instruction.histogram.expect("histogram is not set"),
 
-            order_slab: self.instruction.order_slab.expect("order_slab is not set"),
-
             clearing_result: self
                 .instruction
                 .clearing_result
@@ -672,7 +634,6 @@ struct FinalizeClearCpiBuilderInstruction<'a, 'b> {
     cranker: Option<&'b solana_account_info::AccountInfo<'a>>,
     market: Option<&'b solana_account_info::AccountInfo<'a>>,
     histogram: Option<&'b solana_account_info::AccountInfo<'a>>,
-    order_slab: Option<&'b solana_account_info::AccountInfo<'a>>,
     clearing_result: Option<&'b solana_account_info::AccountInfo<'a>>,
     system_program: Option<&'b solana_account_info::AccountInfo<'a>>,
     event_authority: Option<&'b solana_account_info::AccountInfo<'a>>,

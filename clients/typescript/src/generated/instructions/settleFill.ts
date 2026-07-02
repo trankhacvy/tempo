@@ -39,7 +39,7 @@ import {
   getAddressFromResolvedInstructionAccount,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { findClearingResultPda, findOrderSlabHeaderPda } from "../pdas";
+import { findClearingResultPda } from "../pdas";
 import { TEMPO_PROGRAM_PROGRAM_ADDRESS } from "../programs";
 
 export const SETTLE_FILL_DISCRIMINATOR = 5;
@@ -176,8 +176,8 @@ export type SettleFillAsyncInput<
   cranker: TransactionSigner<TAccountCranker>;
   /** Market being settled */
   market: Address<TAccountMarket>;
-  /** OrderSlab holding the order */
-  orderSlab?: Address<TAccountOrderSlab>;
+  /** OrderSlab SHARD holding the order (Stage A sharding: seeds [b"order_slab", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA. */
+  orderSlab: Address<TAccountOrderSlab>;
   /** Published clearing result */
   clearingResult?: Address<TAccountClearingResult>;
   /** Event authority PDA for CPI event emission */
@@ -266,14 +266,6 @@ export async function getSettleFillInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
-  if (!accounts.orderSlab.value) {
-    accounts.orderSlab.value = await findOrderSlabHeaderPda({
-      market: getAddressFromResolvedInstructionAccount(
-        "market",
-        accounts.market.value,
-      ),
-    });
-  }
   if (!accounts.clearingResult.value) {
     accounts.clearingResult.value = await findClearingResultPda({
       market: getAddressFromResolvedInstructionAccount(
@@ -332,7 +324,7 @@ export type SettleFillInput<
   cranker: TransactionSigner<TAccountCranker>;
   /** Market being settled */
   market: Address<TAccountMarket>;
-  /** OrderSlab holding the order */
+  /** OrderSlab SHARD holding the order (Stage A sharding: seeds [b"order_slab", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA. */
   orderSlab: Address<TAccountOrderSlab>;
   /** Published clearing result */
   clearingResult: Address<TAccountClearingResult>;
@@ -462,7 +454,7 @@ export type ParsedSettleFillInstruction<
     cranker: TAccountMetas[0];
     /** Market being settled */
     market: TAccountMetas[1];
-    /** OrderSlab holding the order */
+    /** OrderSlab SHARD holding the order (Stage A sharding: seeds [b"order_slab", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA. */
     orderSlab: TAccountMetas[2];
     /** Published clearing result */
     clearingResult: TAccountMetas[3];

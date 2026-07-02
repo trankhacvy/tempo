@@ -51,6 +51,9 @@ export type OrderSlabHeader = {
   market: Address;
   bump: number;
   nextFreeHintLe: Array<number>;
+  shardIdLe: Array<number>;
+  restingCountLe: Array<number>;
+  foldedAuctionIdLe: Array<number>;
 };
 
 export type OrderSlabHeaderArgs = {
@@ -62,6 +65,9 @@ export type OrderSlabHeaderArgs = {
   market: Address;
   bump: number;
   nextFreeHintLe: Array<number>;
+  shardIdLe: Array<number>;
+  restingCountLe: Array<number>;
+  foldedAuctionIdLe: Array<number>;
 };
 
 /** Gets the encoder for {@link OrderSlabHeaderArgs} account data. */
@@ -76,6 +82,9 @@ export function getOrderSlabHeaderEncoder(): FixedSizeEncoder<OrderSlabHeaderArg
       ["market", getAddressEncoder()],
       ["bump", getU8Encoder()],
       ["nextFreeHintLe", getArrayEncoder(getU8Encoder(), { size: 4 })],
+      ["shardIdLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
+      ["restingCountLe", getArrayEncoder(getU8Encoder(), { size: 4 })],
+      ["foldedAuctionIdLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
     ]),
     (value) => ({
       ...value,
@@ -95,6 +104,9 @@ export function getOrderSlabHeaderDecoder(): FixedSizeDecoder<OrderSlabHeader> {
     ["market", getAddressDecoder()],
     ["bump", getU8Decoder()],
     ["nextFreeHintLe", getArrayDecoder(getU8Decoder(), { size: 4 })],
+    ["shardIdLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
+    ["restingCountLe", getArrayDecoder(getU8Decoder(), { size: 4 })],
+    ["foldedAuctionIdLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
   ]);
 }
 

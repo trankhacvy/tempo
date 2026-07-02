@@ -13,8 +13,10 @@ use tempo_integration_tests::*;
 /// 2 + `max_position_notional` 16) is appended after it (missing-features §1.2).
 fn window_floor(ctx: &TestContext, pdas: &MarketPdas) -> u64 {
     let raw = ctx.account_raw(&pdas.market);
-    let n = raw.len();
-    u64::from_le_bytes(raw[n - 26..n - 18].try_into().unwrap())
+    // Read from the STABLE front offset (376), not the end — the shard tail
+    // (`num_slab_shards`/`shards_ready`) changes size across versions, but
+    // `window_floor_price` sits at a fixed offset the SDK decoder also uses.
+    u64::from_le_bytes(raw[376..384].try_into().unwrap())
 }
 
 #[test]

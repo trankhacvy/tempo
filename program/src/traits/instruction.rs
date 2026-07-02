@@ -63,6 +63,10 @@ pub enum TempoInstructionDiscriminators {
     RemovePositionFromMargin = 28,
     /// Maker: close a cleared quote PDA and reclaim its rent.
     CloseMakerQuote = 29,
+    /// Stage A sharding: create one OrderSlab shard for a market.
+    InitShard = 30,
+    /// Stage A sharding: reset one drained shard for the next round.
+    ResetShard = 31,
     /// Self-CPI event emission (carries event data in instruction data).
     EmitEvent = 228,
 }
@@ -102,6 +106,8 @@ impl TryFrom<u8> for TempoInstructionDiscriminators {
             27 => Ok(Self::MigratePosition),
             28 => Ok(Self::RemovePositionFromMargin),
             29 => Ok(Self::CloseMakerQuote),
+            30 => Ok(Self::InitShard),
+            31 => Ok(Self::ResetShard),
             228 => Ok(Self::EmitEvent),
             _ => Err(ProgramError::InvalidInstructionData),
         }

@@ -50,11 +50,7 @@ import {
   getResolvedInstructionAccountAsProgramDerivedAddress,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import {
-  findAuctionHistogramHeaderPda,
-  findMarketPda,
-  findOrderSlabHeaderPda,
-} from "../pdas";
+import { findAuctionHistogramHeaderPda, findMarketPda } from "../pdas";
 import { TEMPO_PROGRAM_PROGRAM_ADDRESS } from "../programs";
 
 export const INITIALIZE_MARKET_DISCRIMINATOR = 0;
@@ -70,7 +66,6 @@ export type InitializeMarketInstruction<
   TAccountMarketSeed extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountHistogram extends string | AccountMeta<string> = string,
-  TAccountOrderSlab extends string | AccountMeta<string> = string,
   TAccountOracle extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
@@ -99,9 +94,6 @@ export type InitializeMarketInstruction<
       TAccountHistogram extends string
         ? WritableAccount<TAccountHistogram>
         : TAccountHistogram,
-      TAccountOrderSlab extends string
-        ? WritableAccount<TAccountOrderSlab>
-        : TAccountOrderSlab,
       TAccountOracle extends string
         ? ReadonlyAccount<TAccountOracle>
         : TAccountOracle,
@@ -138,6 +130,7 @@ export type InitializeMarketInstructionData = {
   softStaleSlots: bigint;
   initialMarginBps: number;
   maxPositionNotional: bigint;
+  numSlabShards: number;
 };
 
 export type InitializeMarketInstructionDataArgs = {
@@ -159,6 +152,7 @@ export type InitializeMarketInstructionDataArgs = {
   softStaleSlots: number | bigint;
   initialMarginBps: number;
   maxPositionNotional: number | bigint;
+  numSlabShards: number;
 };
 
 export function getInitializeMarketInstructionDataEncoder(): FixedSizeEncoder<InitializeMarketInstructionDataArgs> {
@@ -183,6 +177,7 @@ export function getInitializeMarketInstructionDataEncoder(): FixedSizeEncoder<In
       ["softStaleSlots", getU64Encoder()],
       ["initialMarginBps", getU16Encoder()],
       ["maxPositionNotional", getU128Encoder()],
+      ["numSlabShards", getU16Encoder()],
     ]),
     (value) => ({ ...value, discriminator: INITIALIZE_MARKET_DISCRIMINATOR }),
   );
@@ -209,6 +204,7 @@ export function getInitializeMarketInstructionDataDecoder(): FixedSizeDecoder<In
     ["softStaleSlots", getU64Decoder()],
     ["initialMarginBps", getU16Decoder()],
     ["maxPositionNotional", getU128Decoder()],
+    ["numSlabShards", getU16Decoder()],
   ]);
 }
 
@@ -228,7 +224,6 @@ export type InitializeMarketAsyncInput<
   TAccountMarketSeed extends string = string,
   TAccountMarket extends string = string,
   TAccountHistogram extends string = string,
-  TAccountOrderSlab extends string = string,
   TAccountOracle extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
@@ -244,8 +239,6 @@ export type InitializeMarketAsyncInput<
   market?: ProgramDerivedAddress<TAccountMarket>;
   /** AuctionHistogram PDA (the mailboxes) to be created */
   histogram?: ProgramDerivedAddress<TAccountHistogram>;
-  /** OrderSlab PDA (bounded resting-order slots) to be created */
-  orderSlab?: ProgramDerivedAddress<TAccountOrderSlab>;
   /** Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation */
   oracle: Address<TAccountOracle>;
   /** System program */
@@ -256,7 +249,7 @@ export type InitializeMarketAsyncInput<
   tempoProgram: Address<TAccountTempoProgram>;
   marketBump?: InitializeMarketInstructionDataArgs["marketBump"];
   histogramBump?: InitializeMarketInstructionDataArgs["histogramBump"];
-  orderSlabBump?: InitializeMarketInstructionDataArgs["orderSlabBump"];
+  orderSlabBump: InitializeMarketInstructionDataArgs["orderSlabBump"];
   tickSize: InitializeMarketInstructionDataArgs["tickSize"];
   numTicks: InitializeMarketInstructionDataArgs["numTicks"];
   ordersPerAuctionCap: InitializeMarketInstructionDataArgs["ordersPerAuctionCap"];
@@ -272,6 +265,7 @@ export type InitializeMarketAsyncInput<
   softStaleSlots: InitializeMarketInstructionDataArgs["softStaleSlots"];
   initialMarginBps: InitializeMarketInstructionDataArgs["initialMarginBps"];
   maxPositionNotional: InitializeMarketInstructionDataArgs["maxPositionNotional"];
+  numSlabShards: InitializeMarketInstructionDataArgs["numSlabShards"];
 };
 
 export async function getInitializeMarketInstructionAsync<
@@ -280,7 +274,6 @@ export async function getInitializeMarketInstructionAsync<
   TAccountMarketSeed extends string,
   TAccountMarket extends string,
   TAccountHistogram extends string,
-  TAccountOrderSlab extends string,
   TAccountOracle extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
@@ -293,7 +286,6 @@ export async function getInitializeMarketInstructionAsync<
     TAccountMarketSeed,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -308,7 +300,6 @@ export async function getInitializeMarketInstructionAsync<
     TAccountMarketSeed,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -326,7 +317,6 @@ export async function getInitializeMarketInstructionAsync<
     marketSeed: { value: input.marketSeed ?? null, isWritable: false },
     market: { value: input.market ?? null, isWritable: true },
     histogram: { value: input.histogram ?? null, isWritable: true },
-    orderSlab: { value: input.orderSlab ?? null, isWritable: true },
     oracle: { value: input.oracle ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
@@ -357,14 +347,6 @@ export async function getInitializeMarketInstructionAsync<
       ),
     });
   }
-  if (!accounts.orderSlab.value) {
-    accounts.orderSlab.value = await findOrderSlabHeaderPda({
-      market: getAddressFromResolvedInstructionAccount(
-        "market",
-        accounts.market.value,
-      ),
-    });
-  }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
@@ -381,12 +363,6 @@ export async function getInitializeMarketInstructionAsync<
       accounts.histogram.value,
     )[1];
   }
-  if (!args.orderSlabBump) {
-    args.orderSlabBump = getResolvedInstructionAccountAsProgramDerivedAddress(
-      "orderSlab",
-      accounts.orderSlab.value,
-    )[1];
-  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "omitted");
   return Object.freeze({
@@ -396,7 +372,6 @@ export async function getInitializeMarketInstructionAsync<
       getAccountMeta("marketSeed", accounts.marketSeed),
       getAccountMeta("market", accounts.market),
       getAccountMeta("histogram", accounts.histogram),
-      getAccountMeta("orderSlab", accounts.orderSlab),
       getAccountMeta("oracle", accounts.oracle),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -413,7 +388,6 @@ export async function getInitializeMarketInstructionAsync<
     TAccountMarketSeed,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -427,7 +401,6 @@ export type InitializeMarketInput<
   TAccountMarketSeed extends string = string,
   TAccountMarket extends string = string,
   TAccountHistogram extends string = string,
-  TAccountOrderSlab extends string = string,
   TAccountOracle extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
@@ -443,8 +416,6 @@ export type InitializeMarketInput<
   market: ProgramDerivedAddress<TAccountMarket>;
   /** AuctionHistogram PDA (the mailboxes) to be created */
   histogram: ProgramDerivedAddress<TAccountHistogram>;
-  /** OrderSlab PDA (bounded resting-order slots) to be created */
-  orderSlab: ProgramDerivedAddress<TAccountOrderSlab>;
   /** Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation */
   oracle: Address<TAccountOracle>;
   /** System program */
@@ -455,7 +426,7 @@ export type InitializeMarketInput<
   tempoProgram: Address<TAccountTempoProgram>;
   marketBump?: InitializeMarketInstructionDataArgs["marketBump"];
   histogramBump?: InitializeMarketInstructionDataArgs["histogramBump"];
-  orderSlabBump?: InitializeMarketInstructionDataArgs["orderSlabBump"];
+  orderSlabBump: InitializeMarketInstructionDataArgs["orderSlabBump"];
   tickSize: InitializeMarketInstructionDataArgs["tickSize"];
   numTicks: InitializeMarketInstructionDataArgs["numTicks"];
   ordersPerAuctionCap: InitializeMarketInstructionDataArgs["ordersPerAuctionCap"];
@@ -471,6 +442,7 @@ export type InitializeMarketInput<
   softStaleSlots: InitializeMarketInstructionDataArgs["softStaleSlots"];
   initialMarginBps: InitializeMarketInstructionDataArgs["initialMarginBps"];
   maxPositionNotional: InitializeMarketInstructionDataArgs["maxPositionNotional"];
+  numSlabShards: InitializeMarketInstructionDataArgs["numSlabShards"];
 };
 
 export function getInitializeMarketInstruction<
@@ -479,7 +451,6 @@ export function getInitializeMarketInstruction<
   TAccountMarketSeed extends string,
   TAccountMarket extends string,
   TAccountHistogram extends string,
-  TAccountOrderSlab extends string,
   TAccountOracle extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
@@ -492,7 +463,6 @@ export function getInitializeMarketInstruction<
     TAccountMarketSeed,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -506,7 +476,6 @@ export function getInitializeMarketInstruction<
   TAccountMarketSeed,
   TAccountMarket,
   TAccountHistogram,
-  TAccountOrderSlab,
   TAccountOracle,
   TAccountSystemProgram,
   TAccountEventAuthority,
@@ -523,7 +492,6 @@ export function getInitializeMarketInstruction<
     marketSeed: { value: input.marketSeed ?? null, isWritable: false },
     market: { value: input.market ?? null, isWritable: true },
     histogram: { value: input.histogram ?? null, isWritable: true },
-    orderSlab: { value: input.orderSlab ?? null, isWritable: true },
     oracle: { value: input.oracle ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
@@ -554,12 +522,6 @@ export function getInitializeMarketInstruction<
       accounts.histogram.value,
     )[1];
   }
-  if (!args.orderSlabBump) {
-    args.orderSlabBump = getResolvedInstructionAccountAsProgramDerivedAddress(
-      "orderSlab",
-      accounts.orderSlab.value,
-    )[1];
-  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "omitted");
   return Object.freeze({
@@ -569,7 +531,6 @@ export function getInitializeMarketInstruction<
       getAccountMeta("marketSeed", accounts.marketSeed),
       getAccountMeta("market", accounts.market),
       getAccountMeta("histogram", accounts.histogram),
-      getAccountMeta("orderSlab", accounts.orderSlab),
       getAccountMeta("oracle", accounts.oracle),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -586,7 +547,6 @@ export function getInitializeMarketInstruction<
     TAccountMarketSeed,
     TAccountMarket,
     TAccountHistogram,
-    TAccountOrderSlab,
     TAccountOracle,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -610,16 +570,14 @@ export type ParsedInitializeMarketInstruction<
     market: TAccountMetas[3];
     /** AuctionHistogram PDA (the mailboxes) to be created */
     histogram: TAccountMetas[4];
-    /** OrderSlab PDA (bounded resting-order slots) to be created */
-    orderSlab: TAccountMetas[5];
     /** Oracle (Pyth PriceUpdateV2) recorded on the market; consumed by funding/liquidation */
-    oracle: TAccountMetas[6];
+    oracle: TAccountMetas[5];
     /** System program */
-    systemProgram: TAccountMetas[7];
+    systemProgram: TAccountMetas[6];
     /** Event authority PDA for CPI event emission */
-    eventAuthority: TAccountMetas[8];
+    eventAuthority: TAccountMetas[7];
     /** Tempo program, for self-CPI event emission */
-    tempoProgram: TAccountMetas[9];
+    tempoProgram: TAccountMetas[8];
   };
   data: InitializeMarketInstructionData;
 };
@@ -632,12 +590,12 @@ export function parseInitializeMarketInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedInitializeMarketInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 10) {
+  if (instruction.accounts.length < 9) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 10,
+        expectedAccountMetas: 9,
       },
     );
   }
@@ -655,7 +613,6 @@ export function parseInitializeMarketInstruction<
       marketSeed: getNextAccount(),
       market: getNextAccount(),
       histogram: getNextAccount(),
-      orderSlab: getNextAccount(),
       oracle: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),

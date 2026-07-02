@@ -40,6 +40,7 @@ fn market_view() -> MarketView {
         window_floor_price: 1000,
         initial_margin_bps: 600,
         max_position_notional: 1_000_000,
+        num_slab_shards: 1,
     }
 }
 
@@ -89,6 +90,10 @@ fn live_state(with_clearing: bool) -> LiveState {
         status: 1,
         price: 1020,
         quantity: 5,
+        remaining: 5,
+        expires_at_auction: 0,
+        arm_auction_id: 0,
+        shard_id: 0,
     };
     let quote_key = Pubkey::new_unique();
     let quote = MakerQuoteView {

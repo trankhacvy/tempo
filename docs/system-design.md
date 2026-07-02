@@ -16,7 +16,14 @@ one bounded pass, and each trader pulls their own fill. Read this together with
 > soft-stale fallback, overflow-safe notional math, and cross-margin. See `README.md` for
 > current build status and `risk-model.md` for the as-built risk layer. The throughput
 > questions in §7 (histogram write-lock contention, the period clock, and the maximum
-> orders per auction) remain the genuine open research items.
+> orders per auction) were the genuine open research items when this was written; **they
+> have since been substantially answered by the scaling work in `docs/plan.md`** — the
+> order book is sharded (Stage A), unfilled orders rest across rounds instead of being
+> discarded (Stage B), and order submission is always-open (Stage C1). See §6.3, §7, §8,
+> and §14 below (each carries an updated note) and `docs/design-decisions.md` (DDR-1..DDR-4)
+> for the detailed reasoning; `docs/bench/cu_report.md` has the measured numbers. The one
+> remaining deliberately-deferred piece is true round-*processing* overlap (Stage C2 —
+> `docs/known-issues.md` §2.14), gated behind a benchmark showing it's actually needed.
 
 **Confidence levels used throughout:**
 - 🟢 **Confident** — standard, well-understood, safe as described.
@@ -173,6 +180,8 @@ flowchart TB
 
 **Reading the auction loop:** `submit_order` fills the `OrderSlab` during `Collect`; the **crank fleet** drives `process_chunk` (folds orders into the `AuctionHistogram`), then `finalize_clear` (runs `find_cross`, writes `ClearingResult`), then `settle_fill` per order (pulls fills, applies them to `Position`); `start_auction` rolls to the next round. Every state-changing instruction emits a CPI event that the **indexer** decodes. The program trusts none of the off-chain components — correctness comes from commutativity + the completeness check (§1, `tempo-clearing-protocol.md §4`).
 
+> **Diagram note (predates Stage A/B/C1 and the money-path instructions).** This diagram was drawn early and shows one `OrderSlab` per market and a `submit_order` gated to `Collect`; both are now out of date (see §6.3, §8, and `CLAUDE.md`'s module map for the current, accurate picture) — `OrderSlab` is `num_slab_shards` independent shard accounts fed by a matching `InitShard`/`ResetShard` pair, and `submit_order`/`cancel_order` are always-open, not `Collect`-gated. It also predates the money path, cross-margin, and maker-quote instructions entirely. Kept as a high-level orientation diagram, not a literal current account/instruction map.
+
 ---
 
 ## 5. Program split — one program or two? 🟡
@@ -197,10 +206,10 @@ All accounts are PDAs with a 1-byte type discriminator + 1-byte version prefix (
 - **`AuctionHistogram`** (the mailboxes): fixed-size buckets of buy/sell quantity per price tick for the round being cleared, plus an accumulated-order counter for the completeness check. **Size depends on tick count, not order count** — this is the key structure from §1. May need sharding (§7).
 - **`ClearingResult`**: small, fixed-size output of Phase 2 — the clearing price(s), matched volume, and per-tick allocation constants each user reads to self-compute their fill.
 
-### 6.3 Order storage 🟡 (re-evaluated)
+### 6.3 Order storage 🟢 (decided and shipped: sharded)
 A self-balancing order tree (as a *continuous* order book uses) is optimized for constant insert/cancel/local-match churn. A batch auction only reads the book at the clearing instant, so a simpler structure serves better:
-- A **bounded slab of order slots per market** with a hard **orders-per-auction cap** (the cap is a measured number — see §7). Orders rest here; Phase 1 folds them into the histogram and marks them consumed.
-- 🟡 Whether orders share one slab account (simpler clearing, but submission write-lock contention) or shard across a few accounts (more submission parallelism, slightly more complex folding) is coupled to the §7 contention question. Decide with measurement.
+- A **bounded slab of order slots per market** with a hard **orders-per-auction cap per shard** (`orders_per_auction_cap ≤ 90`, sized so one shard fits a single CPI `CreateAccount` at the final `ORDER_LEN = 112`). Orders rest here; Phase 1 folds them into the histogram; Phase 3 either consumes a fully-filled/expired order or re-arms an unfilled/partial one to rest into the next round (Stage B, §3.6 there is now the resting-orders design in `docs/plan.md`).
+- **Decided (Stage A, `docs/design-decisions.md` DDR-1): shard across `num_slab_shards` accounts**, not one slab. This was exactly the §7 contention trade-off this section deferred — measurement (and a wedge bug found in the first sharded prototype's aggregate counter) settled it: sharding wins decisively on submission/settlement parallelism (`submit_order`/`cancel_order`/`settle_fill` touch only their own shard, `Market` stays read-only on submit/cancel) at the cost of `finalize_clear` needing every shard account as a trailing account to prove completeness (an O(shards) cost, not O(orders) — see `docs/bench/cu_report.md`). `num_slab_shards` is a per-market `initialize_market` parameter (the scaling knob — dev default 16, raise it for a bigger book) and shards are created one-per-tx via a separate `InitShard` instruction (a market can have more shards than fit one transaction's account budget for `initialize_market` itself).
 
 ### 6.4 Positions & collateral
 - **`Position`** (per market, per user): size, entry price, allocated collateral, last funding index seen, PnL bookkeeping. Written when the user settles a fill or funding applies — spread across users, not one hot account.
@@ -209,38 +218,40 @@ A self-balancing order tree (as a *continuous* order book uses) is optimized for
 
 ---
 
-## 7. The compute & write-lock reality — the make-or-break section 🔴
+## 7. The compute & write-lock reality — the make-or-break section 🟡 (now measured; one item still deferred)
 
-Still the most important section, but the picture is better than a single-transaction clear because clearing no longer needs the whole book in one tx.
+Still the most important section, but the picture is better than a single-transaction clear because clearing no longer needs the whole book in one tx — and, since the Stage A/B/C1 scaling work (`docs/plan.md`), the throughput questions below have moved from open research to measured numbers with one deliberately deferred follow-up.
 
 **Verified Solana limits (as of April 2026):**
 - 1,400,000 CU per transaction (hard cap).
 - 12,000,000 CU of writes per account per block.
 - 64 MiB loaded account data per transaction.
 - 60,000,000 CU block limit.
+- 10,240 bytes max data increase per `CreateAccount`/realloc CPI — this is what caps a single `OrderSlab` at ~90 orders (`ORDER_LEN = 112`), the hard ceiling sharding was built to work around.
 
 **What the clearing breakthrough fixed:** per-transaction cost and the persistent clearing state are now bounded by tick count, not order count. Position writes are sharded across users (each pays their own). So the old "write hundreds of positions in one tx" wall is gone by design.
 
-**What remains genuinely open (the throughput questions):**
-- 🔴 **Histogram write-lock contention.** Every Phase-1 accumulate tx writes the *same* histogram account, so under the 12M-CU-per-account-per-block limit those txs serialize and share that budget — the single-account write-lock trade-off, now on the clearing path. Possible fix: **shard the histogram by tick range** into several sub-accounts summed at discover time, restoring parallelism. Unverified that sharded sums stay correct and cheap. Measure it.
-- 🔴 **Period clock vs. clear duration.** If accumulate+discover+settle spans several slots, what happens to the next period — overlap pipelines, or freeze the book until the clear completes? Overlap is complex and may have correctness pitfalls; freezing is simple but lengthens periods on busy books. Unresolved.
-- 🔴 **Maximum orders per auction.** Now a function of how many accumulate txs fit in the per-account write budget per block, not a single-tx sort limit. Still must be measured. Could be a few hundred to a few thousand depending on sharding — genuinely unknown until built.
+**What was open, now measured (`docs/bench/cu_report.md`, vs. the pre-shard baseline `cu_report_pre_shard.md`):**
+- 🟡 **Histogram write-lock contention — bounded, not eliminated.** The order book is sharded (`docs/design-decisions.md` DDR-1) into `num_slab_shards` independent `OrderSlab` accounts, so submission and settlement are fully parallel (they touch only their own shard; `Market` and the histogram are untouched). The one histogram account is still shared and still written by Phase-1 accumulate txs, but now bounded to ≤`num_slab_shards` such txs per round rather than one per order — a sharded-*histogram* design (summed at discover) was considered and not needed once the *order book* was sharded. Measured: at 16 shards × 90-order cap, `finalize_clear`'s per-shard completeness scan (the analogous O(shards) cost on the discover side) adds ~160,542 CU total, 11.5% of the 1.4M CU/tx cap.
+- 🟡 **Period clock vs. clear duration — the submission half is resolved, the processing half is deferred.** Stage C1 (always-open submission, DDR-4) means a user is never blocked from submitting regardless of what phase the round is in — the "book frozen, can't submit" version of this problem is gone. Two rounds still cannot *process* (accumulate/discover/settle) concurrently — there is one histogram and one `ClearingResult` per market — so a slow clear still lengthens that round. True processing overlap (double-buffered per-round histograms, Stage C2) is designed on paper (plan §4.2) but intentionally not built; see `docs/known-issues.md` §2.14 for the gating condition.
+- 🟢 **Maximum orders per auction — measured, and now a tunable, not a hard ceiling.** A single `OrderSlab` is capped at ~90 orders by the 10,240-byte `CreateAccount` limit; sharding makes the *market's* effective cap `num_slab_shards × 90`, chosen at `initialize_market` time (dev default 16 shards ⇒ 1,440 orders/round; raise the shard count for more). `docs/bench/cu_report.md` also shows folding compute is not the real constraint (~178 CU/order — a single chunk tx could fold ~7,800 orders before hitting the 1.4M CU/tx cap); the account-size ceiling, not compute, was always the binding limit, and sharding is the fix for it.
 
-These numbers — orders per auction per block, with and without histogram sharding — are a measurement the benchmark produces, not a guarantee assumed up front.
+These numbers are committed in `docs/bench/cu_report.md` (this measurement is done, not outstanding); the one genuinely open follow-up is whether Stage A + C1 throughput is sufficient in practice, which would decide whether Stage C2 (round-processing overlap) or OI-sharding (the `Market` OI write still serializes `settle_fill` across shards) are worth building — see `docs/known-issues.md` §2.14 and `docs/plan.md` §2.6.
 
 ---
 
 ## 8. Instruction set 🟢
 
 **User/trading:**
-- `deposit_collateral` / `withdraw_collateral` — withdraw checks margin across all positions.
-- `submit_order` — place a maker/taker order; writes to the order slab; rejected mid-clear or when at the per-auction cap.
-- `cancel_order` — remove a resting order before the next clear begins.
+- `deposit` / `withdraw` — withdraw checks margin across all positions (isolated) or the combined group (cross-margin, `withdraw_cross`).
+- `submit_order` — place a taker order into a client-chosen shard (`shard_id`); writes only that shard. **Always-open (Stage C1, DDR-4):** accepted in any phase, not just `Collect` — an order submitted mid-round is tagged for the next round instead of being rejected. Rejected only at the per-*shard* auction cap (`orders_per_auction_cap ≤ 90`), never by the phase.
+- `cancel_order` — remove a resting order from its shard; **always-open**, symmetric with `submit_order`. Also permissionlessly callable by anyone (not just the owner) once the order has expired — a "reaper" cleanup path; margin always returns to the original owner.
 
 **Auction (permissionless, the three phases):**
-- `process_chunk` (Phase 1) — fold a bounded slice of resting orders into the histogram; mark them consumed; bump the accumulated counter. Callable by anyone, any number of times.
-- `finalize_clear` (Phase 2) — only succeeds once the completeness check passes (every active order folded exactly once); does the bucket pass; writes `ClearingResult`. Pays the caller a fee.
-- `settle_fill` (Phase 3) — caller updates exactly one position (their own) from `ClearingResult`. Each user pays their own compute.
+- `process_chunk` (Phase 1) — fold a bounded slice of one shard's resting orders into the shared histogram; mark them accumulated. Callable by anyone, any number of times, per shard.
+- `finalize_clear` (Phase 2) — only succeeds once the completeness check passes, now proven per shard by scanning every `OrderSlab` shard account passed in (Design Z, DDR-1 — no `Market`-level aggregate counter); does the bucket pass; writes `ClearingResult`. Pays the caller a fee.
+- `settle_fill` (Phase 3) — caller updates exactly one order's outcome: a fully-filled or expired order updates the trader's position and leaves the book (`Consumed`); an unfilled/partial order updates the position for the filled slice and **re-arms `Resting`** to carry the remainder into the next round (Stage B). Each user pays their own compute.
+- `reset_shard` — permissionless, one shard per tx: once a shard's settle work is done (no order left mid-settle), frees its `Consumed`/`Empty` slots, keeps `Resting` survivors in place, and marks the shard ready for the next round. `start_auction` rolls the market to `Collect` once every shard has been reset. `init_shard` creates one shard PDA per tx at market setup (or to grow a market's shard count later).
 
 **Funding & liquidation:**
 - `update_funding` — applies funding between longs and shorts. 🔴 formula is an open design question (§9).
@@ -314,18 +325,21 @@ Steps 1–3 are implemented and tested (see `README.md`); step 4 is in progress.
 
 **Solved (tested):**
 - 🟢 Finding the fair clearing price without the whole book in one tx — the histogram method, simulation-tested.
-- 🟢 The trigger party can't rig the price by sequencing — commutativity, tested.
+- 🟢 The trigger party can't rig the price by sequencing — commutativity, tested, and unchanged by sharding the order book across it.
 - 🟢 The "write hundreds of positions at once" wall — gone via pull-based per-user settlement.
 - 🟢 The money/risk layer conserves — solvency invariant `vault_token ≥ Σ balances + insurance` is enforced and asserted by tests; shortfalls are socialized or fail closed, never minted.
 - 🟢 Sealed orders — decided out.
+- 🟢 The single-account ~90-order-per-market ceiling — gone via sharding the order book (Stage A, `docs/design-decisions.md` DDR-1); `num_slab_shards` is now the scaling knob, and completeness is proven per shard with no `Market`-level aggregate counter to drift.
+- 🟢 Lazy per-user settlement vs. margin safety — resolved by the resting-order design (Stage B, DDR-2/DDR-3): margin is reserved at submit against a fixed worst-case snapshot, and a settle that would otherwise revert on a margin shortfall instead lets the trade clear and leaves the resulting position for the ordinary liquidation backstop, so a delayed or awkward settlement can never wedge the round or hide a loss.
+- 🟢 Submission dead time — gone via always-open submission (Stage C1, DDR-4): users can submit in any phase; a mid-round order is simply deferred one round, with no aggregate counter and no roll-time re-arm step needed.
+- 🟢 Histogram write-lock contention — bounded and measured, not merely argued: sharding the order book bounds accumulate-phase histogram writes to ≤`num_slab_shards`/round; `docs/bench/cu_report.md` has the numbers (16 shards × 90 cap ⇒ ~160,542 CU finalize, 11.5% of the 1.4M CU/tx cap).
+- 🟢 Maximum orders per auction — no longer an unknown, it's a tunable: `num_slab_shards × ~90`, chosen per market at `initialize_market`; folding compute itself was shown not to be the real constraint (~178 CU/order).
 
 **Still genuinely open (🔴):**
-- Histogram write-lock contention and whether sharding fixes it (§7).
-- Period clock vs. multi-slot clear duration (§7).
-- Maximum orders per auction — a measurement (§7).
+- True round-*processing* overlap (Stage C2 — double-buffered per-round histograms) is designed but deliberately not built; `docs/known-issues.md` §2.14 gates it behind a benchmark showing Stage A + C1 is actually insufficient. The period clock's *submission*-side dead time is already solved (Stage C1); this is the narrower remaining piece.
+- OI-sharding — `Market`'s open-interest counters still serialize `settle_fill` across shards (`docs/plan.md` §2.6); deferred pending a benchmark showing it's the bottleneck.
 - Funding-rate stability for a batch perp (§9.2).
 - True OI-netted PnL — continuous mark-to-market between longs and shorts (today PnL is conserved through the insurance pool; continuous netting is the planned step up).
-- Lazy per-user settlement vs. margin safety — a user delaying a losing fill (clearing doc §6; §9 here).
 
 **Decide with measurement (🟡):** one program vs two (§5); order-storage sharding (§6.3); mark-price formula edge cases (§9.1); maker/taker abuse resistance.
 

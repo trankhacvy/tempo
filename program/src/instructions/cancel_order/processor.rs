@@ -5,8 +5,8 @@ use crate::{
     events::OrderCancelledEvent,
     instructions::CancelOrder,
     state::{
-        find_order_by_id_hinted, read_order, write_order, AuctionPhase, Market, Order,
-        OrderSlabHeader, OrderStatus,
+        find_order_by_id_hinted, read_order, write_order, Market, Order, OrderSlabHeader,
+        OrderStatus,
     },
     traits::{AccountDeserialize, EventSerialize, PdaSeeds},
     utils::emit_event,
@@ -14,9 +14,18 @@ use crate::{
 
 /// Processes the CancelOrder instruction (Collect phase only).
 ///
-/// Removes a resting order owned by the signing trader, freeing its slot (which
-/// decrements the authoritative `OrderSlabHeader.count`). The market is read-only
-/// here (PERF-1, known-issues §2.1): `cancel_order` never write-locks `Market`.
+/// Removes a resting order, freeing its slot (which decrements the authoritative
+/// `OrderSlabHeader.count`). The market is read-only here (PERF-1, known-issues
+/// §2.1): `cancel_order` never write-locks `Market`.
+///
+/// Authorization (DDR-3 correction #2 + Correction-2 item 4): the order's **owner**
+/// may always cancel; **anyone** may reap an order only *after its last active round*
+/// (strict `expires_at_auction < current_auction_id`). A passive resting order is never folded, so `settle_fill`
+/// (the only other place expiry is handled) never runs on it — without a
+/// permissionless reaper its `reserved_margin` would stay locked forever if the
+/// window never returns. In BOTH paths the released margin returns to the
+/// **owner's** ledger (`order.trader`), never the signer — a reaper cannot redirect
+/// margin to itself.
 pub fn process_cancel_order(
     program_id: &Address,
     accounts: &[AccountView],
@@ -24,19 +33,26 @@ pub fn process_cancel_order(
 ) -> ProgramResult {
     let ix = CancelOrder::try_from((instruction_data, accounts))?;
 
-    // --- phase check ---
+    // --- read auction id (always-open, DDR-4) ---
+    // Cancel is accepted in ANY phase, symmetric with the now always-open `submit_order`
+    // (Stage C1): otherwise a trader who submits mid-round could not reclaim that order's
+    // locked margin until the next Collect, a full round later. This is safe in every
+    // phase because the `status == OrderStatus::Resting` guard below refuses to cancel an
+    // order that has already folded (`Accumulated`) — only a still-Resting order (never in
+    // the histogram) can be removed, so cancelling can never desync the histogram/clearing
+    // from the slab. `market.phase()?` still validates the phase byte is a known value.
     let auction_id = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
-        market.require_phase(AuctionPhase::Collect)?;
+        let _ = market.phase()?;
         market.current_auction_id()
     };
 
     let market_key = *ix.accounts.market.address();
-    let trader = *ix.accounts.trader.address();
+    let signer = *ix.accounts.trader.address();
 
-    // --- locate + remove order from slab; capture its reservation ---
-    let reserved_margin = {
+    // --- locate + remove order from slab; capture its reservation + owner ---
+    let (reserved_margin, order_owner) = {
         let mut slab_account = *ix.accounts.order_slab;
         let mut slab_data = slab_account.try_borrow_mut()?;
 
@@ -53,12 +69,21 @@ pub fn process_cancel_order(
             find_order_by_id_hinted(&slab_data, capacity, ix.data.order_id, ix.data.slot_hint)?;
         let order = read_order(&slab_data, capacity, slot)?;
 
-        // must be the owner and still resting (not yet accumulated/consumed)
-        if order.trader != trader {
-            return Err(TempoProgramError::InvalidOrderOwner.into());
-        }
+        // must still be resting (not yet accumulated/consumed)
         if order.status != OrderStatus::Resting as u8 {
             return Err(TempoProgramError::InvalidOrderStatus.into());
+        }
+
+        // DDR-3 correction #2 + Correction-2 item 4: the owner may always cancel; anyone
+        // may reap an EXPIRED order (permissionless GC of a passive order's locked margin).
+        // The permissionless reap boundary is STRICT `<` — an order is reapable by a
+        // non-owner only AFTER its last active round. Using `<=` would let anyone strip an
+        // order during the very round it is still entitled to fold and fill (a denial-of-fill
+        // grief). `settle_fill` keeps its own `<=` consume-after-fill boundary UNCHANGED. The
+        // reaper never benefits — the reservation always returns to `order.trader` below.
+        let reapable = order.expires_at_auction != 0 && order.expires_at_auction < auction_id;
+        if !reapable && order.trader != signer {
+            return Err(TempoProgramError::InvalidOrderOwner.into());
         }
 
         // free the slot
@@ -71,10 +96,26 @@ pub fn process_cancel_order(
             .ok_or(TempoProgramError::MathOverflow)?;
         header.set_count(c);
 
-        order.reserved_margin
+        // Design Z (DDR-1): the cancelled order was `Resting` (unfolded — guaranteed by the
+        // status check above), so it was counted in this shard's own `resting_count`. Decrement
+        // it in the SAME borrow as the slot free so it can never drift. This is shard-local only
+        // (the keeper uses it to skip empty shards); completeness is proven by finalize scanning
+        // every shard, so `cancel_order` writes NO shared account (`Market` stays read-only).
+        let new_rc = header
+            .resting_count()
+            .checked_sub(1)
+            .ok_or(TempoProgramError::MathOverflow)?;
+        header.set_resting_count(new_rc);
+
+        (order.reserved_margin, order.trader)
     };
 
     // --- release the worst-case margin reserved at submit (missing-features §1.1) ---
+    //
+    // Always release to the ORDER OWNER (`order_owner`), never the signer — a reaper
+    // of an expired order must not be able to redirect margin to itself
+    // (DDR-3 correction #2). `release_order_reservation` also validates the passed
+    // `user_collateral` belongs to `order_owner`.
     if reserved_margin > 0 {
         let uc_acct = ix
             .accounts
@@ -83,15 +124,16 @@ pub fn process_cancel_order(
         crate::settle_money::release_order_reservation(
             uc_acct,
             program_id,
-            &trader,
+            &order_owner,
             reserved_margin,
         )?;
     }
 
-    // Emit event via CPI.
+    // Emit event via CPI. The `trader` is the order's OWNER, not the (possibly
+    // reaping) signer.
     let event = OrderCancelledEvent {
         market: market_key,
-        trader: *ix.accounts.trader.address(),
+        trader: order_owner,
         order_id: ix.data.order_id,
         auction_id,
     };

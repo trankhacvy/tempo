@@ -117,6 +117,7 @@ mod tests {
             window_floor_price: 10,
             initial_margin_bps: 0,
             max_position_notional: 0,
+            num_slab_shards: 1,
         }
     }
 
@@ -129,6 +130,10 @@ mod tests {
             status,
             price: 100,
             quantity: 5,
+            remaining: 5,
+            expires_at_auction: 0,
+            arm_auction_id: 0,
+            shard_id: 0,
         }
     }
 

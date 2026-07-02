@@ -49,6 +49,8 @@ pub struct Market {
     pub window_floor_price_le: [u8; 8],
     pub initial_margin_bps_le: [u8; 2],
     pub max_position_notional_le: [u8; 16],
+    pub num_slab_shards_le: [u8; 2],
+    pub shards_ready_le: [u8; 2],
 }
 
 pub const MARKET_DISCRIMINATOR: u8 = 1;

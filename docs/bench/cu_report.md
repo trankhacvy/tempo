@@ -1,6 +1,6 @@
 # Tempo Clearing Benchmark (CU profile)
 
-Measured under LiteSVM 0.13 (in-process SVM). CU accounting is a faithful proxy for the on-chain meter; treat the *relative profile*, the *scaling*, and the *derived ceilings* as the signal, not the absolute digits. This is the CURRENT **unsharded** design (Market / OrderSlab / AuctionHistogram are each written on the hot path).
+Measured under LiteSVM 0.13 (in-process SVM). CU accounting is a faithful proxy for the on-chain meter; treat the *relative profile*, the *scaling*, and the *derived ceilings* as the signal, not the absolute digits. This is the **Stage A sharded** design: the OrderSlab is split into `num_slab_shards` shards, each holding up to `SLAB_CAP` orders, that submit and fold in parallel (submit is read-only on Market since PERF-1); the single AuctionHistogram and Market remain shared. Per-instruction CU is unchanged from the pre-shard baseline (`cu_report_pre_shard.md`) — sharding adds no per-tx overhead; it multiplies intake throughput by the shard count.
 
 Solana limits used: **1400000 CU/tx**, **12000000 CU/account/block** (write-lock).
 
@@ -10,21 +10,21 @@ Writes Market + OrderSlab. The cost grows with occupancy because `find_free_slot
 
 | orders already resting | CU |
 |---|---|
-| 1 | 8269 |
-| 32 | 14734 |
-| 64 | 9214 |
-| 120 | 10054 |
+| 1 | 7494 |
+| 30 | 9139 |
+| 60 | 9289 |
+| 89 | 13934 |
 
 ## process_chunk — fold cost
 
-Writes Market + OrderSlab + AuctionHistogram. Folding is O(orders) but the per-order cost is small next to the fixed base (event CPI + account I/O), so we report the clean endpoints: one order vs a full 128-order slab in a single chunk.
+Writes the shard + Market + AuctionHistogram. Folding is O(orders) but the per-order cost is small next to the fixed base (event CPI + account I/O), so we report the clean endpoints: one order vs a full shard (SLAB_CAP orders) in a single chunk. Shards fold in parallel into the one histogram (commutative addition).
 
 | orders folded | CU |
 |---|---|
-| 1 | 10390 |
-| 128 | 33735 |
+| 1 | 11920 |
+| 90 | 27775 |
 
-Incremental: ~**10207 CU base** + ~**183 CU/order**. A single chunk tx could fold ~**7594** orders under the 1400000 CU/tx limit — far more than a slab can hold — so **folding compute is not the constraint**; the slab's single-account size cap is.
+Incremental: ~**11742 CU base** + ~**178 CU/order**. A single chunk tx could fold ~**7799** orders under the 1400000 CU/tx limit — far more than a slab can hold — so **folding compute is not the constraint**; the slab's single-account size cap is.
 
 ## finalize_clear — CU vs num_ticks
 
@@ -32,33 +32,45 @@ One transaction; a single O(ticks) pass over the 4 histogram regions (both cross
 
 | num_ticks | CU |
 |---|---|
-| 64 | 38810 |
-| 128 | 58590 |
-| 256 | 102650 |
+| 64 | 37407 |
+| 128 | 58687 |
+| 256 | 95247 |
 
-At the max supported 256 ticks finalize uses ~102650 CU — 7.3% of the 1400000 CU/tx limit, so the discovery pass fits comfortably in one tx across the whole tick range.
+At the max supported 256 ticks finalize uses ~95247 CU — 6.8% of the 1400000 CU/tx limit, so the discovery pass fits comfortably in one tx across the whole tick range.
+
+## finalize_clear — CU vs shard count (Design-Z completeness scan)
+
+At 256 ticks, passing K shards (each folded). On top of the O(ticks) discovery pass, finalize scans every shard it is passed (`all_active_orders_accumulated`, an O(capacity) loop per shard) to prove completeness in one tx (DDR-1). This is the cost that grows with K·SLAB_CAP.
+
+| shards passed | CU |
+|---|---|
+| 1 | 106487 |
+| 8 | 130722 |
+| 16 | 160542 |
+
+At the dev target of 16 shards × 90 cap, finalize uses ~160542 CU — 11.5% of the 1400000 CU/tx limit. The per-shard scan adds ~3603 CU/shard on top of the ~106487 CU tick pass, so finalize stays a single tx well under the limit at the dev target; K·SLAB_CAP is the cost to watch as shard count grows (DDR-1 re-review trigger: chunked finalize past ~40 shards).
 
 ## settle_fill — CU
 
-One order per tx (writes Market + OrderSlab, + Position when filled). Includes the marginal-tick cumulative scan. Measured: **20773 CU**.
+One order per tx (writes Market + OrderSlab, + Position when filled). Includes the marginal-tick cumulative scan. Measured: **20869 CU**.
 
-## The hard ceiling: single-account size (not compute)
+## The former hard ceiling — now sharded away
 
-Solana caps a CPI-created/grown account at **10_240 bytes** per instruction (`MAX_PERMITTED_DATA_INCREASE`). The OrderSlab (~72 bytes/order) and the AuctionHistogram (~32 bytes/tick) are created this way, so a single market is capped at roughly **140 orders/auction** and **~310 ticks** — *regardless of compute budget*. The program enforces `orders_per_auction_cap ≤ 128` and `num_ticks ≤ 256` accordingly. Reaching the "thousands of orders" goal therefore requires either pre-sizing the accounts over multiple realloc transactions, or **sharding the slab/histogram** across several accounts — which would *also* relieve the write-lock contention below. This is the single most important measured constraint.
+Solana caps a CPI-created/grown account at **10_240 bytes** per instruction (`MAX_PERMITTED_DATA_INCREASE`). At `ORDER_LEN = 112` (Stage C1) one OrderSlab account tops out near **90 orders**, which is why the pre-shard design was capped at 128 and could not reach "thousands of orders". **Stage A removes this by sharding**: the slab is split into `num_slab_shards` independent shard accounts (`init_shard`), each sized at `SLAB_CAP` (90 orders, kept within one CPI `CreateAccount` through every stage). N shards ⇒ N·SLAB_CAP orders/round with no per-tx overhead, and — because submit is read-only on Market and each shard is its own account — submissions and settlements to different shards run in parallel. The single histogram is still O(ticks) and untouched. Completeness stays a hard gate: `finalize_clear` refuses until every shard it is passed scans as fully folded (Design Z), an O(K) check backed by a per-shard confirming scan.
 
-## Throughput of one full auction (≤128 orders)
+## Throughput of one full shard (SLAB_CAP orders)
 
-Every hot-path tx write-locks the Market account, so the whole round's CU competes for Market's 12M-CU/block budget. Modelling a full 128-order auction end-to-end:
+Settle write-locks Market (OI), so a shard's settle CU competes for Market's 12M-CU/block budget; submit is read-only on Market and hits only its own shard, so shards submit in parallel. Modelling one full shard end-to-end (aggregate = this × num_slab_shards for the parallel parts):
 
 | phase | txs | CU each | CU total |
 |---|---|---|---|
-| submit | 128 | ~10054 (occ 120) | ~1286912 |
-| accumulate | 1 | ~33735 | ~33735 |
-| finalize | 1 | ~102650 | ~102650 |
-| settle | 128 | ~20773 | ~2658944 |
-| **total Market write-lock** | | | **~4082241 CU** |
+| submit (own shard, parallel) | 90 | ~13934 (occ 89) | ~1254060 |
+| accumulate | 1 | ~27775 | ~27775 |
+| finalize | 1 | ~95247 | ~95247 |
+| settle | 90 | ~20869 | ~1878210 |
+| **total Market write-lock** | | | **~3255292 CU** |
 
-A full 128-order auction puts ~4082241 CU on the Market write-lock — about 34.0% of one block's 12M budget — so a single market clears a **full auction in ~1 block(s)**. Submission and settlement (128 txs each, serialized on the shared Market/OrderSlab locks) dominate; clearing itself is negligible.
+A full shard puts ~3255292 CU on the Market write-lock — about 27.1% of one block's 12M budget — so one shard's settle-side load clears in ~1 block(s). Submission is now parallel across shards (Market read-only), so intake scales with `num_slab_shards`; the remaining shared serialization is the Market OI write on settle (a candidate for OI-sharding if the benchmark shows it is the wall).
 
 
 ## Reading the result

@@ -19,9 +19,7 @@ pub struct StartAuction {
     pub market: solana_address::Address,
     /// AuctionHistogram to zero
     pub histogram: solana_address::Address,
-    /// OrderSlab to clear
-    pub order_slab: solana_address::Address,
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward.
+    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
     pub oracle: solana_address::Address,
 }
 
@@ -35,14 +33,13 @@ impl StartAuction {
         &self,
         remaining_accounts: &[solana_instruction::AccountMeta],
     ) -> solana_instruction::Instruction {
-        let mut accounts = Vec::with_capacity(5 + remaining_accounts.len());
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.cranker,
             true,
         ));
         accounts.push(solana_instruction::AccountMeta::new(self.market, false));
         accounts.push(solana_instruction::AccountMeta::new(self.histogram, false));
-        accounts.push(solana_instruction::AccountMeta::new(self.order_slab, false));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.oracle,
             false,
@@ -86,14 +83,12 @@ impl Default for StartAuctionInstructionData {
 ///   0. `[signer]` cranker
 ///   1. `[writable]` market
 ///   2. `[writable]` histogram
-///   3. `[writable]` order_slab
-///   4. `[]` oracle
+///   3. `[]` oracle
 #[derive(Clone, Debug, Default)]
 pub struct StartAuctionBuilder {
     cranker: Option<solana_address::Address>,
     market: Option<solana_address::Address>,
     histogram: Option<solana_address::Address>,
-    order_slab: Option<solana_address::Address>,
     oracle: Option<solana_address::Address>,
     __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
@@ -120,13 +115,7 @@ impl StartAuctionBuilder {
         self.histogram = Some(histogram);
         self
     }
-    /// OrderSlab to clear
-    #[inline(always)]
-    pub fn order_slab(&mut self, order_slab: solana_address::Address) -> &mut Self {
-        self.order_slab = Some(order_slab);
-        self
-    }
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward.
+    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
     #[inline(always)]
     pub fn oracle(&mut self, oracle: solana_address::Address) -> &mut Self {
         self.oracle = Some(oracle);
@@ -153,7 +142,6 @@ impl StartAuctionBuilder {
             cranker: self.cranker.expect("cranker is not set"),
             market: self.market.expect("market is not set"),
             histogram: self.histogram.expect("histogram is not set"),
-            order_slab: self.order_slab.expect("order_slab is not set"),
             oracle: self.oracle.expect("oracle is not set"),
         };
 
@@ -169,9 +157,7 @@ pub struct StartAuctionCpiAccounts<'a, 'b> {
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// AuctionHistogram to zero
     pub histogram: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab to clear
-    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward.
+    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
     pub oracle: &'b solana_account_info::AccountInfo<'a>,
 }
 
@@ -185,9 +171,7 @@ pub struct StartAuctionCpi<'a, 'b> {
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// AuctionHistogram to zero
     pub histogram: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab to clear
-    pub order_slab: &'b solana_account_info::AccountInfo<'a>,
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward.
+    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
     pub oracle: &'b solana_account_info::AccountInfo<'a>,
 }
 
@@ -201,7 +185,6 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
             cranker: accounts.cranker,
             market: accounts.market,
             histogram: accounts.histogram,
-            order_slab: accounts.order_slab,
             oracle: accounts.oracle,
         }
     }
@@ -228,7 +211,7 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
         signers_seeds: &[&[&[u8]]],
         remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
     ) -> solana_program_error::ProgramResult {
-        let mut accounts = Vec::with_capacity(5 + remaining_accounts.len());
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             *self.cranker.key,
             true,
@@ -239,10 +222,6 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
         ));
         accounts.push(solana_instruction::AccountMeta::new(
             *self.histogram.key,
-            false,
-        ));
-        accounts.push(solana_instruction::AccountMeta::new(
-            *self.order_slab.key,
             false,
         ));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
@@ -263,12 +242,11 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
             accounts,
             data,
         };
-        let mut account_infos = Vec::with_capacity(6 + remaining_accounts.len());
+        let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
         account_infos.push(self.__program.clone());
         account_infos.push(self.cranker.clone());
         account_infos.push(self.market.clone());
         account_infos.push(self.histogram.clone());
-        account_infos.push(self.order_slab.clone());
         account_infos.push(self.oracle.clone());
         remaining_accounts
             .iter()
@@ -289,8 +267,7 @@ impl<'a, 'b> StartAuctionCpi<'a, 'b> {
 ///   0. `[signer]` cranker
 ///   1. `[writable]` market
 ///   2. `[writable]` histogram
-///   3. `[writable]` order_slab
-///   4. `[]` oracle
+///   3. `[]` oracle
 #[derive(Clone, Debug)]
 pub struct StartAuctionCpiBuilder<'a, 'b> {
     instruction: Box<StartAuctionCpiBuilderInstruction<'a, 'b>>,
@@ -303,7 +280,6 @@ impl<'a, 'b> StartAuctionCpiBuilder<'a, 'b> {
             cranker: None,
             market: None,
             histogram: None,
-            order_slab: None,
             oracle: None,
             __remaining_accounts: Vec::new(),
         });
@@ -327,16 +303,7 @@ impl<'a, 'b> StartAuctionCpiBuilder<'a, 'b> {
         self.instruction.histogram = Some(histogram);
         self
     }
-    /// OrderSlab to clear
-    #[inline(always)]
-    pub fn order_slab(
-        &mut self,
-        order_slab: &'b solana_account_info::AccountInfo<'a>,
-    ) -> &mut Self {
-        self.instruction.order_slab = Some(order_slab);
-        self
-    }
-    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward.
+    /// Market's bound Pyth oracle; the new round's tick window is re-snapped onto it (known-issues §2.7). Stale price carries the previous window forward. Stage A: shards are drained by reset_shard first; the roll gates on shards_ready == num_slab_shards.
     #[inline(always)]
     pub fn oracle(&mut self, oracle: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.oracle = Some(oracle);
@@ -385,8 +352,6 @@ impl<'a, 'b> StartAuctionCpiBuilder<'a, 'b> {
 
             histogram: self.instruction.histogram.expect("histogram is not set"),
 
-            order_slab: self.instruction.order_slab.expect("order_slab is not set"),
-
             oracle: self.instruction.oracle.expect("oracle is not set"),
         };
         instruction.invoke_signed_with_remaining_accounts(
@@ -402,7 +367,6 @@ struct StartAuctionCpiBuilderInstruction<'a, 'b> {
     cranker: Option<&'b solana_account_info::AccountInfo<'a>>,
     market: Option<&'b solana_account_info::AccountInfo<'a>>,
     histogram: Option<&'b solana_account_info::AccountInfo<'a>>,
-    order_slab: Option<&'b solana_account_info::AccountInfo<'a>>,
     oracle: Option<&'b solana_account_info::AccountInfo<'a>>,
     /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
     __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,

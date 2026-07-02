@@ -15,7 +15,7 @@ pub const CANCEL_ORDER_DISCRIMINATOR: u8 = 2;
 pub struct CancelOrder {
     /// Order owner
     pub trader: solana_address::Address,
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): cancel writes only its own shard.
     pub market: solana_address::Address,
     /// OrderSlab to remove from
     pub order_slab: solana_address::Address,
@@ -138,7 +138,7 @@ impl CancelOrderBuilder {
         self.trader = Some(trader);
         self
     }
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): cancel writes only its own shard.
     #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
         self.market = Some(market);
@@ -220,7 +220,7 @@ impl CancelOrderBuilder {
 pub struct CancelOrderCpiAccounts<'a, 'b> {
     /// Order owner
     pub trader: &'b solana_account_info::AccountInfo<'a>,
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): cancel writes only its own shard.
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// OrderSlab to remove from
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
@@ -238,7 +238,7 @@ pub struct CancelOrderCpi<'a, 'b> {
     pub __program: &'b solana_account_info::AccountInfo<'a>,
     /// Order owner
     pub trader: &'b solana_account_info::AccountInfo<'a>,
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): cancel writes only its own shard.
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// OrderSlab to remove from
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
@@ -394,7 +394,7 @@ impl<'a, 'b> CancelOrderCpiBuilder<'a, 'b> {
         self.instruction.trader = Some(trader);
         self
     }
-    /// Market the order belongs to
+    /// Market the order belongs to. Read-only (Design Z): cancel writes only its own shard.
     #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.market = Some(market);

@@ -2,53 +2,30 @@ use pinocchio::{account::AccountView, Address, ProgramResult};
 
 use crate::{
     errors::TempoProgramError,
-    state::{AuctionHistogramHeader, AuctionPhase, Market, OrderSlabHeader, COLLECT_WINDOW_SLOTS},
+    state::{AuctionHistogramHeader, AuctionPhase, Market, COLLECT_WINDOW_SLOTS},
     traits::{AccountDeserialize, PdaSeeds},
 };
 
-/// Reset a market's round state and reopen `Collect`: zero the order slab and
-/// histogram (which resets the authoritative order/accumulated counts), bump both
-/// to `next_id`, reset the maker-quote fold counter, and open a fresh collection
-/// window at `slot + COLLECT_WINDOW_SLOTS`. Validates that the slab and
-/// histogram belong to this market. Shared by `start_auction` (after its
-/// settled-slab preconditions) and `force_reset` (after its authority check).
+/// Reset a market's round state and reopen `Collect`: zero the histogram, bump it to
+/// `next_id`, reset the maker-quote fold counter, reset the shard roll gate
+/// (`shards_ready = 0`; Design Z has no `shards_pending` completeness counter), and open a
+/// fresh collection window at `slot + COLLECT_WINDOW_SLOTS`. Validates the histogram belongs
+/// to this market. Shared by `start_auction` (after `shards_ready == num_slab_shards`)
+/// and `force_reset` (after its authority check).
+///
+/// Stage A sharding: the OrderSlab shards are NOT touched here — they are drained and
+/// zeroed one-per-tx by `reset_shard` before the roll (a market may have too many shards
+/// for one tx). `force_reset` therefore leaves shards dirty; an admin must `reset_shard`
+/// each afterward (it is an escape hatch, not a hot path).
 pub fn reset_round_to_collect(
     program_id: &Address,
     market: &AccountView,
     histogram: &AccountView,
-    order_slab: &AccountView,
     num_ticks: u32,
     next_id: u64,
     slot: u64,
 ) -> ProgramResult {
     let market_key = *market.address();
-
-    // --- order slab: validate, zero every slot, bump the round ---
-    {
-        let mut slab_account = *order_slab;
-        let mut slab_data = slab_account.try_borrow_mut()?;
-
-        {
-            let slab = OrderSlabHeader::from_bytes(&slab_data)?;
-            if slab.market != market_key {
-                return Err(TempoProgramError::AccountMarketMismatch.into());
-            }
-            slab.validate_pda(order_slab, program_id, slab.bump)?;
-        }
-
-        // Zero every slot (sets each Order's status byte to Empty == 0) so the
-        // next round reuses them; Consumed slots are otherwise never freed.
-        let slots_off = OrderSlabHeader::slots_offset();
-        slab_data[slots_off..].iter_mut().for_each(|b| *b = 0);
-
-        let header = OrderSlabHeader::from_bytes_mut(&mut slab_data)?;
-        header.set_auction_id(next_id);
-        header.set_next_order_id(0);
-        header.set_count(0);
-        // Reset the forward allocation cursor for the fresh (empty) slab so the
-        // next round starts allocating at slot 0 (known-issues §2.7).
-        header.set_next_free_hint(0);
-    }
 
     // --- histogram: validate, zero all buckets, bump the round ---
     {
@@ -83,6 +60,10 @@ pub fn reset_round_to_collect(
         // Per-round maker-quote fold counter resets; the active count persists
         // (quotes survive across rounds, unlike the ephemeral slab).
         market.set_folded_maker_quote_count(0);
+        // Stage A: reset the roll gate for the new round. `shards_ready` resets to 0 — every
+        // shard must be `reset_shard`'d again before the next roll. (Design Z / DDR-1: there is
+        // no `shards_pending` completeness counter anymore; finalize scans all shards directly.)
+        market.set_shards_ready(0);
         market.set_phase_deadline_slot(slot.saturating_add(COLLECT_WINDOW_SLOTS));
         market.phase = AuctionPhase::Collect as u8;
     }

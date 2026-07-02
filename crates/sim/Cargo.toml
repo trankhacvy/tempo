@@ -16,6 +16,10 @@ path = "src/bin/provision.rs"
 name = "tempo-sim-orchestrator"
 path = "src/bin/orchestrator.rs"
 
+[[bin]]
+name = "tempo-sim-flood"
+path = "src/bin/flood.rs"
+
 [lints]
 workspace = true
 

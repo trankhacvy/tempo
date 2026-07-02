@@ -29,6 +29,30 @@ Tooling locations (each dictated by its toolchain):
 | Oracle-anchored tick window maps price↔tick | `market::test_recenter_window_*`, `tick` tests (`tempo-math`) | `window.rs`, `window_recenter.rs` | — | — |
 | No overflow/panic in `find_cross` raw arithmetic | — | — | differential fuzzes | `proof_find_cross_safe` ✅ |
 
+## Sharded book / resting-order / always-open invariants (Stage A/B/C1)
+
+> The scaling work in `docs/plan.md`; design rationale in `docs/design-decisions.md`
+> DDR-1 (sharding completeness), DDR-2 (resting-order roll gate), DDR-3 (moving
+> window vs. resting orders), DDR-4 (always-open submission). These are the load-bearing
+> invariants Stage A/B/C1 added on top of the clearing-engine table above — sharding and
+> resting orders change *how* completeness/conservation are proven, not *whether* they hold.
+
+| Invariant | Unit | Integration (LiteSVM) | Fuzz | Formal (Kani) |
+| --- | --- | --- | --- | --- |
+| Completeness is proven per shard, no `Market`-level aggregate to drift (Design Z / DDR-1) | `order::test_all_active_orders_accumulated`, `order::test_roll_gate_helpers` | `sharding.rs` (`nonempty_unfolded_shard_still_blocks_finalize`, `empty_shards_do_not_block_finalize`, `finalize_rejects_short_or_duplicate_shard_set`), `active_order_count.rs` | — | — |
+| Cross-shard fold == unsharded fold (commutativity extends across shards) | `histogram::test_fold_commutativity` | `sharding.rs::orders_route_to_distinct_shards_and_fold`, `determinism.rs` | — | — |
+| A submit+cancel (or a multi-shard `force_reset`) can never wedge the market | — | `sharding.rs` (`submit_then_cancel_does_not_wedge_clearing`, `multi_shard_force_reset_recovers_and_next_round_rolls`) | — | — |
+| Round rolls only once every shard reports fully settled (`shards_ready == num_slab_shards`); an order-less round still rolls | — | `sharding.rs::multi_shard_round_rolls_after_all_shards_reset`, `wedge.rs` (`start_auction_rolls_empty_discovered_round`, `start_auction_refuses_discovered_with_orders`) | — | — |
+| A partial/zero fill re-arms `Resting` and carries into next round; total fill conserves across rounds | `order::test_roll_gate_helpers` | `resting_orders.rs::partial_fill_rests_then_completes_conserving`, `resting_orders.rs::roll_gate_rejects_unsettled_then_carries_resting` | `fuzz_full_book_conserves_oi` (per-round classifier is unchanged by carrying) | — |
+| A carried `Resting` order still blocks finalize until re-folded (no completeness escape via carrying) | — | `resting_orders.rs::carried_resting_order_blocks_finalize_next_round` | — | — |
+| Off-window resting order: marketable folds at the boundary (fills), passive parks (exempt from completeness) | `market::test_classify_resting_fold`, `order::test_all_active_orders_accumulated_ddr3_offwindow` | `resting_orders.rs` (`passive_resting_order_parks_then_folds_when_window_returns`, `marketable_resting_order_folds_after_recenter`) | — | — |
+| Resting-order margin never wedges settle (`worst_price` snapshot + non-reverting `lock_up_to` re-lock) | `user_collateral::` lock tests | (covered by the window-recenter resting-order tests above; the position is left liquidatable, never a revert) | — | — |
+| Reduce-only orders never rest (force-`Consumed`), so a shrink-only order can't drift OI across rounds | — | `resting_orders.rs::reduce_only_partial_fill_is_consumed_not_rearmed` | — | — |
+| Expired resting order leaves the book (not re-armed); reap is permissionless only *after* the order's last active round, margin always returns to the owner | — | `resting_orders.rs` (`expired_resting_order_is_consumed_not_rearmed`, `permissionless_reap_boundary_is_strict_less_than`, `submit_of_already_expired_order_is_rejected`) | — | — |
+| Always-open submit: an order armed for a later round is skipped by fold AND exempt from completeness — never joins or blocks the in-flight round | `order::test_all_active_orders_accumulated_ddr4_future_armed_exempt` | `phase_guards.rs` (`submit_after_accumulating_arms_next_round`, `cancel_is_always_open_symmetric_with_submit`) | — | — |
+| `resting_count` / `shards_ready` counters never underflow | — | — | — | — (by construction: maintained with `saturating_sub`/checked ops, not asserted separately — see `state/order.rs`/`state/market.rs`) |
+| Throughput/CU scaling with shard count and slab occupancy | — | `benchmark.rs` → `docs/bench/cu_report.md` (vs. `cu_report_pre_shard.md` baseline) | — | — |
+
 ## Money-path & risk invariants
 
 | Invariant | Unit | Integration (LiteSVM) | Fuzz | Formal (Kani) |
@@ -46,10 +70,10 @@ Tooling locations (each dictated by its toolchain):
 
 | Invariant | Unit | Integration (LiteSVM) | Fuzz | Formal (Kani) |
 | --- | --- | --- | --- | --- |
-| Phase guards reject wrong-phase instructions | `market::test_require_phase` | `phase_guards.rs` | — | — |
-| Round rolls only from `Settling`/empty `Discovered` with empty slab | — | `lifecycle.rs`, `wedge.rs` | — | — |
+| Phase guards reject wrong-phase instructions on the crank path (`process_chunk`/`finalize_clear`/`settle_fill`); `submit_order`/`cancel_order` are deliberately phase-independent (always-open, Stage C1) | `market::test_require_phase` | `phase_guards.rs` | — | — |
+| Round rolls only once fully settled — see the sharded-book table above (`shards_ready == num_slab_shards`, resting survivors carried, not wiped) | — | `lifecycle.rs`, `wedge.rs`, `sharding.rs` | — | — |
 | Vault binding (a foreign vault is rejected) | — | `vault_binding.rs` | — | — |
-| Anti-spam order cap per trader | `order::count_trader_orders` | `anti_spam.rs` | — | — |
+| Anti-spam order cap per trader (enforced per shard; reference clients route a trader to a deterministic shard so it acts as a de facto global cap) | `order::trader_resting_stats` tests | `anti_spam.rs` | — | — |
 | Account migration (v4→v5 / v1→v2) preserves state | — | `migration.rs` | — | — |
 | Security regressions C1–C5 | — | `security_c1_c5.rs` | — | — |
 

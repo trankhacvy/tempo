@@ -1,12 +1,14 @@
 //! Phase-machine guards:
-//!  - `submit_order` is rejected once the market has left Collect (Accumulating).
+//!  - `submit_order` is ALWAYS OPEN (Stage C1 / DDR-4): a submit after the market has
+//!    left Collect succeeds and is armed for the NEXT round — it does not fold into or
+//!    block the current round.
 //!  - `finalize_clear` fails the completeness check when a chunk is skipped so
 //!    not every active order has been accumulated.
 
 use tempo_integration_tests::*;
 
 #[test]
-fn submit_order_rejected_after_accumulating() {
+fn submit_after_accumulating_arms_next_round() {
     let mut ctx = TestContext::new();
     let pdas = ctx.init_market(10, 16, 64);
 
@@ -15,16 +17,77 @@ fn submit_order_rejected_after_accumulating() {
     ctx.submit_order(&pdas, &a, SIDE_BUY, 30, 10);
     ctx.submit_order(&pdas, &b, SIDE_SELL, 30, 10);
 
-    // Transition into Accumulating by processing a chunk.
+    // Enter Accumulating and fold the two Collect-phase orders.
+    ctx.process_chunk(&pdas, 0, 64);
+    assert_eq!(ctx.market(&pdas).phase, PHASE_ACCUMULATING);
+    assert_eq!(ctx.histogram(&pdas).accumulated_count, 2);
+
+    // Stage C1 / DDR-4 (always-open submission): a submit mid-round now SUCCEEDS and is
+    // tagged for the NEXT round (`arm_auction_id = current + 1`) instead of being rejected.
+    let c = ctx.new_funded_signer();
+    let c_id = ctx.submit_order(&pdas, &c, SIDE_BUY, 30, 5);
+    assert_eq!(
+        ctx.order_slab(&pdas).count,
+        3,
+        "the deferred order was added"
+    );
+
+    // It is armed for the next round, so a further chunk does NOT fold it this round
+    // (the folded count stays at the two Collect orders)...
+    ctx.process_chunk(&pdas, 0, 64);
+    assert_eq!(
+        ctx.histogram(&pdas).accumulated_count,
+        2,
+        "a next-round-armed order must not fold into the current round"
+    );
+
+    // ...and it does NOT block the current round's finalize (the completeness gate
+    // exempts an order armed for a later round — DDR-4).
+    ctx.finalize_clear(&pdas);
+    assert_eq!(ctx.market(&pdas).phase, PHASE_DISCOVERED);
+
+    // The deferred order is still Resting, carried to fold next round.
+    let c_rec = ctx
+        .orders(&pdas)
+        .into_iter()
+        .find(|o| o.order_id == c_id)
+        .expect("deferred order still present");
+    assert_eq!(c_rec.status, STATUS_RESTING);
+}
+
+#[test]
+fn cancel_is_always_open_symmetric_with_submit() {
+    // Stage C1 follow-up: submit is always-open, so cancel must be too — otherwise a
+    // trader who submits mid-round cannot reclaim that order (and its locked margin)
+    // until the next Collect. Cancelling a still-Resting order is safe in any phase
+    // (it was never folded into the histogram).
+    let mut ctx = TestContext::new();
+    let pdas = ctx.init_market(10, 16, 64);
+
+    let a = ctx.new_funded_signer();
+    let b = ctx.new_funded_signer();
+    ctx.submit_order(&pdas, &a, SIDE_BUY, 30, 10);
+    ctx.submit_order(&pdas, &b, SIDE_SELL, 30, 10);
+
+    // Leave Collect.
     ctx.process_chunk(&pdas, 0, 64);
     assert_eq!(ctx.market(&pdas).phase, PHASE_ACCUMULATING);
 
-    // A further submit must now be rejected (wrong phase).
+    // Submit a deferred order mid-round, then cancel it in the SAME (non-Collect) phase.
     let c = ctx.new_funded_signer();
-    let res = ctx.try_submit_order(&pdas, &c, SIDE_BUY, 30, 5);
-    assert!(res.is_err(), "submit_order must fail once Accumulating");
-    // The live-order count (authoritative slab header count) is unchanged.
-    assert_eq!(ctx.order_slab(&pdas).count, 2);
+    let c_id = ctx.submit_order(&pdas, &c, SIDE_BUY, 30, 5);
+    assert_eq!(ctx.order_slab(&pdas).count, 3);
+
+    ctx.cancel_order(&pdas, &c, c_id); // must succeed outside Collect now
+    assert_eq!(
+        ctx.order_slab(&pdas).count,
+        2,
+        "deferred order was cancelled"
+    );
+    assert!(
+        ctx.orders(&pdas).into_iter().all(|o| o.order_id != c_id),
+        "cancelled order is gone from the slab"
+    );
 }
 
 #[test]

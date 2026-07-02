@@ -42,17 +42,22 @@ pub fn process_finalize_clear(
     let ix = FinalizeClear::try_from((instruction_data, accounts))?;
     let market_key = *ix.accounts.market.address();
 
-    // --- validate market phase + completeness; capture params ---
-    let (num_ticks, tick_size, window_floor, auction_id, crank_fee, market_collateral_mint) = {
+    // --- validate market phase; capture params ---
+    let (
+        num_ticks,
+        tick_size,
+        window_floor,
+        auction_id,
+        crank_fee,
+        market_collateral_mint,
+        num_slab_shards,
+    ) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
         market.require_phase(AuctionPhase::Accumulating)?;
         // Maker-quote completeness check (clearing-protocol §4.2): refuse to finalize
         // until every active maker quote has been folded exactly once (keeps our
-        // censorship guarantee for maker liquidity). The ORDER-side completeness is
-        // enforced authoritatively by the `all_active_orders_accumulated` slab scan
-        // below — PERF-1 removed the redundant `accumulated_order_count`/
-        // `active_order_count` market counters that used to mirror it (known-issues §2.1).
+        // censorship guarantee for maker liquidity).
         if market.folded_maker_quote_count() != market.active_maker_quote_count() {
             return Err(TempoProgramError::AuctionNotComplete.into());
         }
@@ -63,21 +68,65 @@ pub fn process_finalize_clear(
             market.current_auction_id(),
             market.crank_fee(),
             market.collateral_mint,
+            market.num_slab_shards(),
         )
     };
 
-    // Slab-derived completeness (known-issues §2.1): the counter check above is an
-    // O(1) hint, but the censorship guarantee must rest on the slab itself — refuse
-    // to finalize while any slot is still `Resting` (not yet folded).
+    // --- Design Z (DDR-1) order-side completeness: authoritatively scan EVERY shard ---
+    //
+    // The caller must pass all `num_slab_shards` slab shards; finalize proves the censorship
+    // guarantee directly — no aggregate counter to drift. For each shard: it belongs to this
+    // market, is the canonical PDA for a distinct in-range `shard_id`, is at this auction id,
+    // and holds NO still-`Resting` (unfolded) order (`all_active_orders_accumulated`). A short,
+    // wrong, foreign, stale, or duplicated shard set is rejected, so a hostile cranker cannot
+    // dodge the scan to finalize while an order sits unfolded.
+    if ix.accounts.shards.len() != num_slab_shards as usize {
+        return Err(TempoProgramError::AuctionNotComplete.into());
+    }
     {
-        let slab_data = ix.accounts.order_slab.try_borrow()?;
-        let slab = OrderSlabHeader::from_bytes(&slab_data)?;
-        if slab.market != market_key {
-            return Err(TempoProgramError::AccountMarketMismatch.into());
-        }
-        slab.validate_pda(ix.accounts.order_slab, program_id, slab.bump)?;
-        if !all_active_orders_accumulated(&slab_data, slab.capacity())? {
-            return Err(TempoProgramError::AuctionNotComplete.into());
+        let mut seen_mask: u64 = 0;
+        for shard_ai in ix.accounts.shards.iter() {
+            let slab_data = shard_ai.try_borrow()?;
+            let slab = OrderSlabHeader::from_bytes(&slab_data)?;
+            if slab.market != market_key {
+                return Err(TempoProgramError::AccountMarketMismatch.into());
+            }
+            slab.validate_pda(shard_ai, program_id, slab.bump)?;
+            if slab.auction_id() != auction_id {
+                return Err(TempoProgramError::AuctionIdMismatch.into());
+            }
+            let shard_id = slab.shard_id();
+            if shard_id >= num_slab_shards {
+                return Err(TempoProgramError::ShardOutOfRange.into());
+            }
+            // De-dup: each shard index appears at most once, so the caller cannot satisfy the
+            // count check by passing one folded shard N times while a real shard stays unfolded.
+            // (Mask covers up to 64 shards; larger markets exceed the tx account limit anyway.)
+            let bit = 1u64
+                .checked_shl(shard_id as u32)
+                .ok_or(TempoProgramError::ShardOutOfRange)?;
+            if seen_mask & bit != 0 {
+                return Err(TempoProgramError::AccountMarketMismatch.into());
+            }
+            seen_mask |= bit;
+
+            // DDR-3: pass the window params so the scan exempts passive-out-of-window
+            // resting orders (which legitimately can't fold this round) while still
+            // requiring every in-window / marketable order to be folded — the
+            // censorship guarantee holds on a verdict anyone can recompute.
+            // DDR-4: `auction_id` (the round being finalized) also exempts orders armed
+            // for a later round (`arm_auction_id > auction_id`), which were submitted
+            // mid-round and are not eligible to fold until the next round.
+            if !all_active_orders_accumulated(
+                &slab_data,
+                slab.capacity(),
+                auction_id,
+                window_floor,
+                tick_size,
+                num_ticks,
+            )? {
+                return Err(TempoProgramError::AuctionNotComplete.into());
+            }
         }
     }
 

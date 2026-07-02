@@ -13,6 +13,7 @@ pub mod funding;
 pub mod margin;
 pub mod mark;
 pub mod oracle;
+pub mod resting;
 pub mod tick;
 pub mod wide;
 

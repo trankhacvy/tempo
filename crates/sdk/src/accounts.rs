@@ -41,6 +41,8 @@ pub struct MarketView {
     pub window_floor_price: u64,
     pub initial_margin_bps: u16,
     pub max_position_notional: u128,
+    /// Number of OrderSlab shards (Stage A). 1 when the field is absent (pre-shard account).
+    pub num_slab_shards: u16,
 }
 
 impl MarketView {
@@ -77,6 +79,13 @@ impl MarketView {
         } else {
             0
         };
+        // v10+ appends `num_slab_shards` (u16) at offset 402. Design Z (v11) removed the
+        // `shards_pending` counter that used to follow it; `shards_ready` now sits at 404.
+        let num_slab_shards = if data.len() >= 404 {
+            u16_at(data, 402)
+        } else {
+            1
+        };
         Ok(Self {
             version: data[1],
             current_auction_id: u64_at(data, 2),
@@ -95,6 +104,7 @@ impl MarketView {
             window_floor_price: u64_at(data, 376),
             initial_margin_bps,
             max_position_notional,
+            num_slab_shards,
         })
     }
 
@@ -364,11 +374,12 @@ pub const STATUS_RESTING: u8 = 1;
 pub const STATUS_ACCUMULATED: u8 = 2;
 pub const STATUS_CONSUMED: u8 = 3;
 
-/// One decoded slab slot. Slab on-disk layout (`state/order.rs`):
-/// `[disc(1)][version(1)][OrderSlabHeader(61)][Order; capacity]` ⇒ slots start at
-/// offset 63, each `Order` is `ORDER_LEN = 88` bytes. Within a slot:
+/// One decoded slab slot. Slab on-disk layout (`state/order.rs`, v5 Stage B):
+/// `[disc(1)][version(1)][OrderSlabHeader(75)][Order; capacity]` ⇒ slots start at
+/// offset 77, each `Order` is `ORDER_LEN = 112` bytes. Within a slot:
 /// `price@0 qty@8 remaining@16 order_id@24 trader@32..64 side@64 is_maker@65
-/// status@66 cum_before@72 reserved_margin@80`.
+/// status@66 cum_before@72 reserved_margin@80 worst_price@88 expires_at_auction@96
+/// arm_auction_id@104`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SlabOrder {
     /// Array index of this slot — this IS the `slot_hint` passed to `settle_fill`.
@@ -379,11 +390,25 @@ pub struct SlabOrder {
     pub status: u8,
     pub price: u64,
     pub quantity: u64,
+    /// Unfilled quantity still resting (Stage B: shrinks as an order partially fills
+    /// across rounds; `quantity` is the original size).
+    pub remaining: u64,
+    /// Auto-expiry auction id (Stage B; 0 = good-till-cancelled).
+    pub expires_at_auction: u64,
+    /// First round this order may fold (Stage C1 / DDR-4 always-open submission):
+    /// eligible iff `arm_auction_id <= market.current_auction_id`.
+    pub arm_auction_id: u64,
+    /// The shard this order lives in. NOT part of the on-disk `Order` layout —
+    /// `decode_slab_orders` defaults it to 0; a multi-shard reader (the keeper snapshot)
+    /// stamps the real shard id after decoding each shard's slab, so `settle_fill` /
+    /// `cancel_order` can target the correct shard account.
+    pub shard_id: u16,
 }
 
 /// Offset of the first order slot in the slab account data (2-byte prefix +
-/// `OrderSlabHeader::DATA_LEN` = 61).
-const SLAB_SLOTS_OFFSET: usize = 63;
+/// `OrderSlabHeader::DATA_LEN` = 75 in v4 sharding: the base 61 + shard_id(2) +
+/// resting_count(4) + folded_auction_id(8)).
+const SLAB_SLOTS_OFFSET: usize = 77;
 
 /// Decode every non-empty slot from a raw `OrderSlab` account. Empty slots
 /// (`status == 0`) are skipped; the returned `slot` field is the on-disk index.
@@ -412,10 +437,15 @@ pub fn decode_slab_orders(data: &[u8]) -> Result<Vec<SlabOrder>, SdkError> {
                 slot,
                 price: u64_at(data, off),
                 quantity: u64_at(data, off + 8),
+                remaining: u64_at(data, off + 16),
                 order_id: u64_at(data, off + 24),
                 trader: pubkey_at(data, off + 32),
                 side: data[off + 64],
                 status,
+                expires_at_auction: u64_at(data, off + 96),
+                arm_auction_id: u64_at(data, off + 104),
+                // Not on-disk; the multi-shard snapshot reader stamps the real shard id.
+                shard_id: 0,
             });
         }
         off += ORDER_LEN;

@@ -15,7 +15,8 @@ use solana_system_interface::instruction as system_instruction;
 use tempo_common::load_keypair_file;
 use tempo_sdk::accounts::UserCollateralView;
 use tempo_sdk::ix::{
-    InitVault, InitVaultInstructionArgs, InitializeMarket, InitializeMarketInstructionArgs,
+    InitShard, InitShardInstructionArgs, InitVault, InitVaultInstructionArgs, InitializeMarket,
+    InitializeMarketInstructionArgs,
 };
 use tempo_sdk::{ix, pda, MarketPdas, SOL_USD_FEED_ID, TEMPO_PROGRAM_ID};
 
@@ -98,6 +99,16 @@ pub fn provision(cfg: &ProvisionConfig) -> Result<SimArtifact, SimError> {
         }
         Some(vta)
     } else {
+        // Phase A (clearing-only): no vault/collateral/mint, but settle_fill still
+        // needs a Position account to record a crossing order's non-zero fill (the C1
+        // rule). Give every agent a money-free position; without it settle reverts
+        // "Invalid account owner" and the round wedges in Settling.
+        for (kp, _) in &mm {
+            ensure_position(&rpc, &master, kp, &pdas)?;
+        }
+        for (kp, _, _, _) in &traders {
+            ensure_position(&rpc, &master, kp, &pdas)?;
+        }
         None
     };
 
@@ -131,6 +142,7 @@ pub fn provision(cfg: &ProvisionConfig) -> Result<SimArtifact, SimError> {
                 seed: *seed,
             })
             .collect(),
+        num_slab_shards: cfg.num_slab_shards,
     };
     artifact.save(&cfg.artifact_path)?;
     tracing::info!(path = %cfg.artifact_path, market = %market, "provisioner: artifact written");
@@ -206,9 +218,16 @@ fn ensure_market(
         tracing::info!(market = %pdas.market, "provisioner: market already exists, skipping");
         return Ok(());
     }
+    // Stage A sharding: create `cfg.num_slab_shards` shards (each an OrderSlab account via
+    // init_shard below). The keeper now fans out across every shard (snapshot loads all
+    // shards, settle targets each order's shard, roll resets all shards), and traders route
+    // by `shard_for_trader`, so a multi-shard market runs end-to-end.
+    let num_slab_shards: u16 = cfg.num_slab_shards;
     let (_, market_bump) = pda::market(&market_seed.pubkey());
     let (_, histogram_bump) = pda::histogram(&pdas.market);
-    let (_, order_slab_bump) = pda::order_slab(&pdas.market);
+    // `order_slab_bump` is retained in InitializeMarket args for wire stability but
+    // UNUSED (shards are created by init_shard below); shard 0's bump is fine.
+    let (_, order_slab_bump) = pda::order_slab(&pdas.market, 0);
     let (event_authority, _) = pda::event_authority();
 
     let ix = InitializeMarket {
@@ -217,7 +236,6 @@ fn ensure_market(
         market_seed: market_seed.pubkey(),
         market: pdas.market,
         histogram: pdas.histogram,
-        order_slab: pdas.order_slab,
         oracle,
         system_program: SYSTEM_PROGRAM_ID,
         event_authority,
@@ -227,6 +245,7 @@ fn ensure_market(
         market_bump,
         histogram_bump,
         order_slab_bump,
+        num_slab_shards,
         tick_size: cfg.tick_size,
         num_ticks: cfg.num_ticks,
         orders_per_auction_cap: cfg.cap,
@@ -245,6 +264,20 @@ fn ensure_market(
     });
     spl::send(rpc, &[master, market_seed], &[ix])?;
     tracing::info!(market = %pdas.market, money = cfg.is_money_market(), "provisioner: market created");
+
+    // Stage A sharding: create each OrderSlab shard (one tx per shard).
+    for shard_id in 0..num_slab_shards {
+        let (shard, bump) = pda::order_slab(&pdas.market, shard_id);
+        let ix = InitShard {
+            payer: master.pubkey(),
+            market: pdas.market,
+            order_slab: shard,
+            system_program: SYSTEM_PROGRAM_ID,
+        }
+        .instruction(InitShardInstructionArgs { shard_id, bump });
+        spl::send(rpc, &[master], &[ix])?;
+    }
+    tracing::info!(market = %pdas.market, num_slab_shards, "provisioner: slab shards created");
     Ok(())
 }
 
@@ -319,6 +352,21 @@ fn setup_money_agent(
         spl::send(rpc, &[owner], &[dep])?;
     }
 
+    ensure_position(rpc, master, owner, pdas)?;
+    Ok(())
+}
+
+/// Create the owner's `Position` PDA if it does not exist. Required in BOTH phases:
+/// `settle_fill` needs the position to record a non-zero fill's size (the C1 rule),
+/// so even a Phase-A clearing-only market (no vault/collateral) must give each agent a
+/// money-free position — otherwise settle reverts with "Invalid account owner" on the
+/// System-owned (uninitialized) position account and the round never rolls.
+fn ensure_position(
+    rpc: &RpcClient,
+    master: &Keypair,
+    owner: &Keypair,
+    pdas: &MarketPdas,
+) -> Result<(), SimError> {
     let (position, _) = pda::position(&pdas.market, &owner.pubkey());
     if !account_exists(rpc, &position) {
         let init = ix::init_position(pdas, master.pubkey(), owner.pubkey());

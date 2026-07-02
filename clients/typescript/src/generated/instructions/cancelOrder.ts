@@ -139,7 +139,7 @@ export type CancelOrderAsyncInput<
 > = {
   /** Order owner */
   trader: TransactionSigner<TAccountTrader>;
-  /** Market the order belongs to */
+  /** Market the order belongs to. Read-only (Design Z): cancel writes only its own shard. */
   market: Address<TAccountMarket>;
   /** OrderSlab to remove from */
   orderSlab?: Address<TAccountOrderSlab>;
@@ -248,7 +248,7 @@ export type CancelOrderInput<
 > = {
   /** Order owner */
   trader: TransactionSigner<TAccountTrader>;
-  /** Market the order belongs to */
+  /** Market the order belongs to. Read-only (Design Z): cancel writes only its own shard. */
   market: Address<TAccountMarket>;
   /** OrderSlab to remove from */
   orderSlab: Address<TAccountOrderSlab>;
@@ -343,7 +343,7 @@ export type ParsedCancelOrderInstruction<
   accounts: {
     /** Order owner */
     trader: TAccountMetas[0];
-    /** Market the order belongs to */
+    /** Market the order belongs to. Read-only (Design Z): cancel writes only its own shard. */
     market: TAccountMetas[1];
     /** OrderSlab to remove from */
     orderSlab: TAccountMetas[2];

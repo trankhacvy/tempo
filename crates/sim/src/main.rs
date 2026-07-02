@@ -55,6 +55,14 @@ async fn main() -> Result<(), SimError> {
         trader,
         pdas,
         collateral_mint,
+        // Route to this trader's canonical shard (Stage A). This standalone bin has no
+        // artifact, so it reads the shard count from the same env the provisioner used;
+        // it must match, or the trader submits to the wrong shard.
+        num_slab_shards: std::env::var("TEMPO_SIM_NUM_SHARDS")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(1)
+            .clamp(1, 16),
         cfg: cfg.trader_config(),
         seed: cfg.seed,
     };

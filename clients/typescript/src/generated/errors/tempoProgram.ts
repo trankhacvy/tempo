@@ -59,6 +59,8 @@ export const TEMPO_PROGRAM_ERROR__MARGIN_MEMBER_NOT_FOUND = 0x29; // 41
 export const TEMPO_PROGRAM_ERROR__ORACLE_FUTURE_TIMESTAMP = 0x2a; // 42
 export const TEMPO_PROGRAM_ERROR__COLLATERAL_LEDGER_DRIFT = 0x2b; // 43
 export const TEMPO_PROGRAM_ERROR__POSITION_LIMIT_EXCEEDED = 0x2c; // 44
+export const TEMPO_PROGRAM_ERROR__SHARD_OUT_OF_RANGE = 0x2d; // 45
+export const TEMPO_PROGRAM_ERROR__ORDER_ALREADY_EXPIRED = 0x2e; // 46
 
 export type TempoProgramError =
   | typeof TEMPO_PROGRAM_ERROR__ACCOUNT_MARKET_MISMATCH
@@ -100,10 +102,12 @@ export type TempoProgramError =
   | typeof TEMPO_PROGRAM_ERROR__ORACLE_SOFT_STALE
   | typeof TEMPO_PROGRAM_ERROR__ORACLE_STALE
   | typeof TEMPO_PROGRAM_ERROR__ORDER_ALREADY_ACCUMULATED
+  | typeof TEMPO_PROGRAM_ERROR__ORDER_ALREADY_EXPIRED
   | typeof TEMPO_PROGRAM_ERROR__ORDER_BELOW_MINIMUM
   | typeof TEMPO_PROGRAM_ERROR__ORDER_NOT_FOUND
   | typeof TEMPO_PROGRAM_ERROR__ORDER_SLAB_FULL
   | typeof TEMPO_PROGRAM_ERROR__POSITION_LIMIT_EXCEEDED
+  | typeof TEMPO_PROGRAM_ERROR__SHARD_OUT_OF_RANGE
   | typeof TEMPO_PROGRAM_ERROR__TRADER_ORDER_CAP_REACHED
   | typeof TEMPO_PROGRAM_ERROR__ZERO_QUANTITY;
 
@@ -149,10 +153,12 @@ if (process.env["NODE_ENV"] !== "production") {
     [TEMPO_PROGRAM_ERROR__ORACLE_SOFT_STALE]: `Oracle is soft-stale; extraction is blocked`,
     [TEMPO_PROGRAM_ERROR__ORACLE_STALE]: `Oracle price update is stale`,
     [TEMPO_PROGRAM_ERROR__ORDER_ALREADY_ACCUMULATED]: `Order has already been accumulated into the histogram`,
+    [TEMPO_PROGRAM_ERROR__ORDER_ALREADY_EXPIRED]: `Order expiry is already reached at submit time`,
     [TEMPO_PROGRAM_ERROR__ORDER_BELOW_MINIMUM]: `Order quantity is below the minimum order size`,
     [TEMPO_PROGRAM_ERROR__ORDER_NOT_FOUND]: `Order not found in the slab`,
     [TEMPO_PROGRAM_ERROR__ORDER_SLAB_FULL]: `The order slab is full (orders-per-auction cap reached)`,
     [TEMPO_PROGRAM_ERROR__POSITION_LIMIT_EXCEEDED]: `Order would exceed the market's max position notional`,
+    [TEMPO_PROGRAM_ERROR__SHARD_OUT_OF_RANGE]: `Shard id is out of range for this market`,
     [TEMPO_PROGRAM_ERROR__TRADER_ORDER_CAP_REACHED]: `Per-trader order cap reached for this auction`,
     [TEMPO_PROGRAM_ERROR__ZERO_QUANTITY]: `Order quantity is zero`,
   };

@@ -19,7 +19,11 @@ pub struct Order {
     pub side: u8,
     pub is_maker: u8,
     pub status: u8,
-    pub padding: [u8; 5],
+    pub reduce_only: u8,
+    pub padding: [u8; 4],
     pub cum_before: u64,
     pub reserved_margin: u64,
+    pub worst_price: u64,
+    pub expires_at_auction: u64,
+    pub arm_auction_id: u64,
 }

@@ -10,6 +10,10 @@ use tempo_integration_tests::*;
 
 /// A v4 market upgrades to v5: prefix fields are preserved, the new risk block is
 /// zeroed, the admin config is applied, and the market is still fully usable.
+// Superseded by Stage A (plan §0.4): sharding bumped `Market` to VERSION 10, and the
+// slab seed gained `shard_id`, so a pre-shard market is re-provisioned, not migrated in
+// place. The v4→v5 `migrate_market` path no longer reaches the current layout.
+#[ignore = "Stage A: pre-shard markets are re-provisioned, not migrated (plan §0.4)"]
 #[test]
 fn migrate_market_v4_to_v5_preserves_prefix_and_works() {
     let mut ctx = TestContext::new();
@@ -179,6 +183,10 @@ fn migrate_position_v2_to_v3_appends_isolated_margin_mode() {
 /// A v1 `Position` upgrades straight to v3: the `last_social_index` + `margin_mode`
 /// tail is appended (both zero), and — as in the original v1 path — the market OI
 /// that `migrate_market` reset to 0 is rebuilt from each migrated position's size.
+// Superseded by Stage A (plan §0.4): depends on `migrate_market` reaching the current
+// `Market` layout, which no longer holds after the VERSION 10 shard bump — pre-shard
+// markets are re-provisioned, not migrated.
+#[ignore = "Stage A: pre-shard markets are re-provisioned, not migrated (plan §0.4)"]
 #[test]
 fn migrate_positions_v1_to_v3_rebuild_market_oi() {
     let mut ctx = TestContext::new();

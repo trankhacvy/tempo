@@ -17,7 +17,7 @@ pub struct SettleFill {
     pub cranker: solana_address::Address,
     /// Market being settled
     pub market: solana_address::Address,
-    /// OrderSlab holding the order
+    /// OrderSlab SHARD holding the order (Stage A sharding: seeds [b"order_slab", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA.
     pub order_slab: solana_address::Address,
     /// Published clearing result
     pub clearing_result: solana_address::Address,
@@ -173,7 +173,7 @@ impl SettleFillBuilder {
         self.market = Some(market);
         self
     }
-    /// OrderSlab holding the order
+    /// OrderSlab SHARD holding the order (Stage A sharding: seeds [b"order_slab", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA.
     #[inline(always)]
     pub fn order_slab(&mut self, order_slab: solana_address::Address) -> &mut Self {
         self.order_slab = Some(order_slab);
@@ -285,7 +285,7 @@ pub struct SettleFillCpiAccounts<'a, 'b> {
     pub cranker: &'b solana_account_info::AccountInfo<'a>,
     /// Market being settled
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab holding the order
+    /// OrderSlab SHARD holding the order (Stage A sharding: seeds [b"order_slab", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA.
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
     /// Published clearing result
     pub clearing_result: &'b solana_account_info::AccountInfo<'a>,
@@ -311,7 +311,7 @@ pub struct SettleFillCpi<'a, 'b> {
     pub cranker: &'b solana_account_info::AccountInfo<'a>,
     /// Market being settled
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// OrderSlab holding the order
+    /// OrderSlab SHARD holding the order (Stage A sharding: seeds [b"order_slab", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA.
     pub order_slab: &'b solana_account_info::AccountInfo<'a>,
     /// Published clearing result
     pub clearing_result: &'b solana_account_info::AccountInfo<'a>,
@@ -517,7 +517,7 @@ impl<'a, 'b> SettleFillCpiBuilder<'a, 'b> {
         self.instruction.market = Some(market);
         self
     }
-    /// OrderSlab holding the order
+    /// OrderSlab SHARD holding the order (Stage A sharding: seeds [b"order_slab", market, shard_id]). The client passes the shard the order lives in (known from the OrderSubmitted event's shard_id); the processor validates its PDA.
     #[inline(always)]
     pub fn order_slab(
         &mut self,

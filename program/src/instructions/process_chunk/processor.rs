@@ -115,15 +115,45 @@ pub fn process_process_chunk(
                 continue; // empty, already accumulated, or consumed
             }
 
-            let tick =
-                crate::state::price_to_tick_raw(order.price, window_floor, tick_size, num_ticks)?;
+            // Stage C1 / DDR-4 (always-open submission): an order submitted mid-round is
+            // armed for a LATER round (`arm_auction_id > current`). It rests in the slab but
+            // is not eligible to fold into THIS round's histogram — skip it. It becomes
+            // foldable once `arm_auction_id <= current_auction_id` (the roll bumps the current
+            // id, never the order's arm). The completeness gate exempts exactly this case, so a
+            // future-armed order never blocks the current round's finalize.
+            if order.arm_auction_id > auction_id {
+                continue;
+            }
+
+            // DDR-3 (marketable-fill / passive-park): a resting order whose FIXED price
+            // left the recentered window is not an error. Classify it by side:
+            //   InWindow  → fold at its own tick (the normal case);
+            //   Marketable→ fold at the boundary tick so it clears this round (a SELL
+            //               below the floor / a BUY above the top — the market moved
+            //               through its limit);
+            //   Passive   → SKIP (leave it Resting): the window moved away from it, so
+            //               it can't fold now. It re-folds when the window slides back,
+            //               or its expiry removes it. finalize's completeness gate
+            //               exempts exactly this case, so a passive order never wedges.
+            let side = OrderSide::from_u8(order.side)?;
+            let tick = match crate::state::classify_resting_fold(
+                order.price,
+                side,
+                window_floor,
+                tick_size,
+                num_ticks,
+            )? {
+                crate::state::RestingFold::InWindow(t)
+                | crate::state::RestingFold::Marketable(t) => t,
+                crate::state::RestingFold::Passive => continue,
+            };
 
             // Slab orders are taker-only (§1.3), so they fold only into the two
             // taker regions of the dual auction (system-design §1): a taker sell is
             // the supply side of the bid auction; a taker buy is the demand side of
             // the ask auction. The maker regions (`BidDemand`/`AskSupply`) are fed
             // exclusively by `process_maker_quote` from the `MakerQuote` book.
-            let region = match OrderSide::from_u8(order.side)? {
+            let region = match side {
                 OrderSide::Sell => Region::BidSupply,
                 OrderSide::Buy => Region::AskDemand,
             };
@@ -156,6 +186,17 @@ pub fn process_process_chunk(
             .checked_add(folded)
             .ok_or(TempoProgramError::MathOverflow)?;
         hist.set_accumulated_count(c);
+
+        // Design Z (DDR-1): maintain this shard's own `resting_count` (unfolded orders) in the
+        // same borrow as the order status above, so the keeper can tell which shards still need
+        // folding and skip empty ones. It is a hint only — completeness is NOT gated on it.
+        // `finalize_clear` proves completeness authoritatively by scanning every shard, so no
+        // market-level aggregate is touched here (the `folded_auction_id` header field is now
+        // dead — retained only to keep the slab layout/version stable).
+        let slab = OrderSlabHeader::from_bytes_mut(&mut slab_data)?;
+        // `folded` counts orders folded this call (≤ capacity ≤ u32::MAX), safe to narrow.
+        let rc = slab.resting_count().saturating_sub(folded as u32);
+        slab.set_resting_count(rc);
         c
     };
 

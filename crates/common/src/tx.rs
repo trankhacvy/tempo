@@ -46,6 +46,24 @@ impl<'a> TxSender<'a> {
         ixs: &[Instruction],
         cu_limit: u32,
     ) -> Result<Signature, CommonError> {
+        self.send_signed(&[payer], ixs, cu_limit).await
+    }
+
+    /// Multi-signer variant: `signers[0]` is the fee payer, and every signer signs.
+    /// Used to pack `submit_order` instructions from many DISTINCT traders into one
+    /// transaction (the high-volume batched submitter), so N orders cost one RPC send
+    /// instead of N. Otherwise identical to [`send`](Self::send).
+    /// Build (compute-budget + priority fee), sign with all `signers`, and broadcast —
+    /// WITHOUT waiting for confirmation. Returns the signature. Shared by `send_signed`
+    /// (which then confirms) and `send_signed_no_confirm` (fire-and-forget). A deterministic
+    /// preflight failure propagates as `SimulationFailed`.
+    async fn broadcast_signed(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+        cu_limit: u32,
+    ) -> Result<(Signature, usize), CommonError> {
+        let payer = signers[0];
         let mut all = Vec::with_capacity(ixs.len() + 2);
         all.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
         if self.priority_fee_micro_lamports > 0 {
@@ -64,10 +82,34 @@ impl<'a> TxSender<'a> {
             .await?;
 
         let tx =
-            Transaction::new_signed_with_payer(&all, Some(&payer.pubkey()), &[payer], blockhash);
+            Transaction::new_signed_with_payer(&all, Some(&payer.pubkey()), signers, blockhash);
         let sig = tx.signatures[0];
+        self.broadcast(start_idx, &tx).await?;
+        Ok((sig, start_idx))
+    }
 
-        self.broadcast(start_idx, &tx).await;
+    /// Fire-and-forget: build, sign, and broadcast, returning the signature WITHOUT waiting
+    /// for confirmation. Used by the high-volume flood to lift the throughput ceiling
+    /// imposed by per-tx confirmation latency — the caller verifies landing out-of-band
+    /// (e.g. by reading on-chain slab counts afterward). Still surfaces a deterministic
+    /// `SimulationFailed` (the tx was rejected at send time and will never land).
+    pub async fn send_signed_no_confirm(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+        cu_limit: u32,
+    ) -> Result<Signature, CommonError> {
+        let (sig, _) = self.broadcast_signed(signers, ixs, cu_limit).await?;
+        Ok(sig)
+    }
+
+    pub async fn send_signed(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+        cu_limit: u32,
+    ) -> Result<Signature, CommonError> {
+        let (sig, _) = self.broadcast_signed(signers, ixs, cu_limit).await?;
 
         let deadline = Instant::now() + CONFIRM_TIMEOUT;
         loop {
@@ -103,8 +145,22 @@ impl<'a> TxSender<'a> {
         cu_limit: u32,
         attempts: usize,
     ) -> Result<Signature, CommonError> {
+        self.send_signed_with_conflict_retry(&[payer], ixs, cu_limit, attempts)
+            .await
+    }
+
+    /// Multi-signer [`send_with_conflict_retry`](Self::send_with_conflict_retry):
+    /// `signers[0]` is the fee payer; rebuilds with a fresh blockhash on a
+    /// blockhash/expiry/timeout conflict.
+    pub async fn send_signed_with_conflict_retry(
+        &self,
+        signers: &[&Keypair],
+        ixs: &[Instruction],
+        cu_limit: u32,
+        attempts: usize,
+    ) -> Result<Signature, CommonError> {
         for i in 0..attempts.max(1) {
-            match self.send(payer, ixs, cu_limit).await {
+            match self.send_signed(signers, ixs, cu_limit).await {
                 Ok(sig) => return Ok(sig),
                 Err(e) => {
                     if i + 1 >= attempts || !is_conflict(&e) {
@@ -118,9 +174,12 @@ impl<'a> TxSender<'a> {
     }
 
     /// Broadcast a signed tx across the pool: rotate off a throttled key (a
-    /// 429-rejected send never landed), but return on a transient timeout (it
-    /// may have landed — let the confirm poll decide). Port of `sendOnPool`.
-    async fn broadcast(&self, start_idx: usize, tx: &Transaction) {
+    /// 429-rejected send never landed), but return `Ok` on a transient timeout (it
+    /// may have landed — let the confirm poll decide). A deterministic preflight failure
+    /// (neither rate-limit nor transient) is returned as `Err(SimulationFailed)` so the
+    /// caller skips the confirm-wait + conflict-retry on a tx that will never land.
+    /// Port of `sendOnPool`.
+    async fn broadcast(&self, start_idx: usize, tx: &Transaction) -> Result<(), CommonError> {
         let cfg = RpcSendTransactionConfig {
             skip_preflight: false,
             preflight_commitment: Some(CommitmentLevel::Confirmed),
@@ -134,24 +193,26 @@ impl<'a> TxSender<'a> {
                 .send_transaction_with_config(tx, cfg)
                 .await
             {
-                Ok(_) => return,
+                Ok(_) => return Ok(()),
                 Err(e) => {
                     let msg = e.to_string();
                     let (rate, transient) = classify_error(&msg);
-                    if !rate && !transient {
-                        tracing::debug!(error = %msg, "broadcast: non-retryable send error (simulation failure or invalid tx)");
-                    }
                     if rate {
                         tokio::time::sleep(Duration::from_millis(80)).await;
                         continue;
                     }
                     if transient {
-                        return;
+                        return Ok(());
                     }
-                    return;
+                    // Deterministic rejection (program error / invalid tx): it will never
+                    // land, so surface it instead of entering the confirm-wait.
+                    return Err(CommonError::SimulationFailed(msg));
                 }
             }
         }
+        // Exhausted the pool while rate-limited (429 on every client): the tx may or may
+        // not have landed, so let the confirm poll decide (a timeout there is retryable).
+        Ok(())
     }
 }
 
@@ -181,6 +242,10 @@ mod tests {
             err: "block height exceeded".into(),
         }));
         assert!(!is_conflict(&CommonError::Rpc("insufficient funds".into())));
+        // A deterministic preflight rejection must NOT be retried as a conflict.
+        assert!(!is_conflict(&CommonError::SimulationFailed(
+            "custom program error: 0x2a".into()
+        )));
     }
 
     #[test]

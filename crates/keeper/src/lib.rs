@@ -83,12 +83,30 @@ async fn tick(ctx: &KeeperCtx) -> Result<TickReport, KeeperError> {
         "keeper tick"
     );
 
+    // Operational duty (DDR-3 correction #2 + Correction-2 item 5): reap expired resting
+    // orders so a passive expired order's slot + reserved margin isn't squatted forever.
+    // `cancel_order` is permissionless when expired and only valid in the Collect phase;
+    // it is orthogonal to the clearing phase machine, so it runs alongside the plan rather
+    // than through it. `reap` scans EVERY shard itself (the snapshot only loads shard 0),
+    // so expired orders on shards 1..N are not leaked; it early-returns when nothing is
+    // reapable.
+    if snapshot.market.phase == engine::PHASE_COLLECT {
+        actions::reap(
+            ctx,
+            snapshot.market.current_auction_id,
+            snapshot.market.num_slab_shards,
+        )
+        .await;
+    }
+
     match plan {
         Plan::Idle => {}
-        Plan::Accumulate { chunks, quotes } => actions::accumulate(ctx, chunks, quotes).await,
-        Plan::Discover => actions::discover(ctx).await,
+        Plan::Accumulate { chunks, quotes } => {
+            actions::accumulate(ctx, chunks, quotes, snapshot.market.num_slab_shards).await
+        }
+        Plan::Discover => actions::discover(ctx, snapshot.market.num_slab_shards).await,
         Plan::Settle { orders, quotes } => actions::settle(ctx, orders, quotes).await,
-        Plan::Roll { oracle } => actions::roll(ctx, oracle).await,
+        Plan::Roll { oracle } => actions::roll(ctx, oracle, snapshot.market.num_slab_shards).await,
     }
 
     Ok(TickReport {

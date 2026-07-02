@@ -213,6 +213,19 @@ pub enum TempoProgramError {
     /// trade that must settle.
     #[error("Order would exceed the market's max position notional")]
     PositionLimitExceeded,
+
+    /// (45) A requested `shard_id` is outside `[0, num_slab_shards)` (Stage A
+    /// sharding). Names the actual shard-index violation instead of the previously
+    /// misleading `InvalidTick` (which points at price/tick logic).
+    #[error("Shard id is out of range for this market")]
+    ShardOutOfRange,
+
+    /// (46) A submitted order's `expires_at_auction` is already reached/passed at
+    /// submit time (`!= 0 && <= current_auction_id`) — it could never fold or fill,
+    /// so it is rejected up front (DDR-3 Correction-2 item 4) rather than resting as
+    /// dead margin the reaper must later collect.
+    #[error("Order expiry is already reached at submit time")]
+    OrderAlreadyExpired,
 }
 
 impl From<TempoProgramError> for ProgramError {

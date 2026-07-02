@@ -13,6 +13,8 @@ pub struct FillSettledEvent {
     pub fill: u64,
     pub side: u8,
     pub is_maker: u8,
+    /// Stage A sharding: which OrderSlab shard the settled order lived in.
+    pub shard_id: u16,
 }
 
 impl EventDiscriminator for FillSettledEvent {
@@ -30,10 +32,11 @@ impl EventSerialize for FillSettledEvent {
         data.extend_from_slice(&self.fill.to_le_bytes());
         data.push(self.side);
         data.push(self.is_maker);
+        data.extend_from_slice(&self.shard_id.to_le_bytes());
         data
     }
 }
 
 impl FillSettledEvent {
-    pub const DATA_LEN: usize = 32 + 32 + 8 + 8 + 8 + 1 + 1;
+    pub const DATA_LEN: usize = 32 + 32 + 8 + 8 + 8 + 1 + 1 + 2;
 }
