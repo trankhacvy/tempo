@@ -588,7 +588,7 @@ never to absorb.
 
 `apps/web/src/vendor/tempo-client.d.mts` · `apps/web/src/lib/tempo-client.ts`.
 
-### 2.8 Stage-B marketable-fill is only unit-tested, never validated on a live chain — [design]
+### 2.13 Stage-B marketable-fill is only unit-tested, never validated on a live chain — [design]
 
 > **Status: ⛔ DEFERRED (blocked on a devnet run).** Not a known defect — a
 > **coverage gap** flagged during the DDR-3 code reviews. Track here so it isn't
@@ -608,6 +608,30 @@ a maker+recenter fill test is brittle in LiteSVM.
 window move through its price, and confirm it fills at the clearing price with
 correct margin/position (`classify_resting_fold` in `program/src/state/market.rs`;
 `settle_fill` re-lock path). See DDR-3 in `docs/design-decisions.md`.
+
+### 2.14 Stage-C2 (true pipelining) not built — no processing overlap between rounds — [design]
+
+> **Status: ⛔ DEFERRED (blocked on a benchmark).** Stage C1 (always-open submit,
+> DDR-4) removed the *submit* dead-time, but round *processing* is still serial: one
+> histogram, so round N+1 can't accumulate while round N settles. C2 would
+> double-buffer the histogram + `ClearingResult` by round parity (plan §4.2) for true
+> overlap.
+
+Deliberately not built: C2 runs **two live rounds over one durable book** — the
+riskiest change in the whole scaling effort. The plan (§4.2) says build it **only if
+a benchmark proves C1 + Stage-A parallel settle is throughput-insufficient**. No such
+benchmark exists yet, so building it now would add adversarial surface for an
+unproven gain. **To close:** run the O(ticks) / throughput benchmark; if C1 is the
+bottleneck, implement C2 per plan §4.2 + DDR-4's re-review trigger.
+
+### 2.15 Keeper does not open the next Collect early (C1.6) — [design]
+
+> **Status: ⛔ DEFERRED (optimization, not correctness).** Plan task C1.6: the keeper
+> could schedule the next `Collect` to open as soon as `Discovered`/`Settling` begins
+> rather than after full settlement, shortening the round gap. Purely a keeper
+> scheduling change (`crates/keeper`); correctness does not depend on it, and C1
+> already lets users submit at any time. **To close:** adjust the keeper cadence once
+> C1 latency is measured (pairs naturally with the §2.14 benchmark).
 
 ---
 
