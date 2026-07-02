@@ -42,6 +42,10 @@ the **money/settlement glue** and the **lifecycle bookkeeping** around it.
 | 2.10 reduce-only settle race (code-review)        | ⬜ unverified  | likely a false positive — `trader_resting_stats` appears to bound it; needs a confirming conservation fuzz                |
 | 2.11 cancel/zero-fill settle need the ledger      | ⬜ by-design   | releasing the §1.1 reservation requires `user_collateral`; non-wedge, client + doc-note follow-up                        |
 | 2.12 stale client bundle after Market v8 / slab v3 | ⬜ operational | regen clients (`pnpm generate-clients && pnpm bundle-client`) + re-provision before any devnet money-path run            |
+| 2.13 Stage-B marketable-fill devnet validation    | ⛔ deferred    | park/no-wedge half is fully tested; the fill-after-recenter half is unit-tested only, not yet proven end-to-end on a live chain |
+| 2.14 Stage-C2 pipelining not built                | ⛔ deferred    | Stage C1 removed submit dead-time; round *processing* overlap is gated on a benchmark showing it's needed (plan §4.2) |
+| 2.15 keeper doesn't open next Collect early (C1.6) | ⛔ deferred    | scheduling optimization only; correctness doesn't depend on it                                            |
+| 2.16 keeper settles a zero-fill order without checking its position exists | ✅ fixed | found by the devnet flood run; keeper now checks position existence before attaching it (commit `73efc63`) |
 | §3 dead code                                      | ✅ fixed       | dead fields + `close_maker_quote` done; `compute_fill` removed + `classify_level` collapsed into one shared `clearing::fill_against_cross` |
 
 > Note (code-review re-confirmations): the `/code-review` workflow also re-surfaced
@@ -701,27 +705,30 @@ bottleneck, implement C2 per plan §4.2 + DDR-4's re-review trigger.
 
 ### 2.16 Keeper attaches an uninitialized position on a zero-fill settle → round wedges — [bug]
 
-> **Status: ⬜ to fix.** Found by the devnet flood run (a saturated 4-shard market). The
-> keeper's `settle` always attaches the owner's `Position` account
-> (`actions.rs::settle_money`, "position is always supplied"). For an order whose owner
-> has **no** position but whose fill is **zero** (the program permits consuming a
-> zero-fill order *without* a position), the keeper still passes the uninitialized
-> (System-owned) position PDA, and `settle_fill` reverts **`Invalid account owner`** on
-> the account check *before* it reaches the zero-fill path. Every such settle fails, so
-> the shard never drains of `Accumulated` orders, the roll gate never passes, and the
-> market wedges in `Settling` (`auction_id` frozen).
+> **Status: ✅ FIXED** (commit `73efc63`). `settle_money` (`crates/keeper/src/actions.rs`)
+> now takes a `has_position` flag; `settle` checks position existence on-chain
+> (`fetch_account_data_opt`, one `getAccount` per order, bounded by `settle_concurrency`)
+> before the settle fan-out, and attaches `position`/`user_collateral` only when it
+> exists — a zero-fill order for an owner with no position settles position-free
+> (program-permitted); a real fill for a position-less owner still correctly fails
+> `MissingSettleAccounts` (that trader must provision a position first). 15 keeper tests
+> pass. This is an off-chain (keeper) fix — the on-chain program's zero-fill-without-a-position
+> path was already correct; the bug was the keeper unconditionally attaching an account
+> that didn't exist.
 
-Surfaces whenever a settling order's owner lacks a position — e.g. the `tempo-sim-flood`
+Found by the devnet flood run (a saturated 4-shard market). The keeper's `settle` always
+attached the owner's `Position` account (`actions.rs::settle_money`, "position is always
+supplied"). For an order whose owner has **no** position but whose fill is **zero** (the
+program permits consuming a zero-fill order *without* a position), the keeper still
+passed the uninitialized (System-owned) position PDA, and `settle_fill` reverted
+**`Invalid account owner`** on the account check *before* it reached the zero-fill path.
+Every such settle failed, so the shard never drained of `Accumulated` orders, the roll
+gate never passed, and the market wedged in `Settling` (`auction_id` frozen).
+
+Surfaced whenever a settling order's owner lacked a position — e.g. the `tempo-sim-flood`
 load generator (throwaway ephemeral traders) or any zero-fill order on a market where
-positions weren't provisioned. Provisioned traders (the orchestrator personas) are
+positions weren't provisioned. Provisioned traders (the orchestrator personas) were
 unaffected, which is why the earlier multi-shard run rolled fine.
-
-**Fix:** the keeper must not pass a position account that doesn't exist for a zero-fill
-order. Cheapest correct approach: before the settle fan-out, batch-fetch the order
-owners' position PDAs (one `getMultipleAccounts`) and attach `position` only for owners
-that actually have one; an owner with no position + a zero fill settles position-free
-(program-permitted), while a real (non-zero) fill for a position-less owner correctly
-fails `MissingSettleAccounts` (that trader must provision a position). No per-order RPC.
 
 ---
 
@@ -943,8 +950,11 @@ deletions, so batch the re-provision.
 
 Remaining on-chain: none of §1–§3 — the only open items are the unverified §2.10
 reduce-only conservation fuzz, the by-design §2.11 client/doc parity, the operational
-§2.12 client regen + re-provision, and the off-chain §4.9 / §4.10 (deferred /
-accepted).
+§2.12 client regen + re-provision, the deferred Stage A/B/C1 scaling follow-ups §2.13
+(marketable-fill devnet validation depth), §2.14 (Stage C2 pipelining, gated on a
+benchmark), and §2.15 (keeper early-Collect scheduling, an optimization not a
+correctness item), and the off-chain §4.9 / §4.10 (deferred / accepted). §2.16 (a
+keeper-side bug found by the devnet flood run) is fixed.
 
 > Note: 1.1, 1.2, 1.4, and 1.5 shared one root cause — the settlement money-path
 > was copy-pasted into four processors and the copies drifted. The durable fix

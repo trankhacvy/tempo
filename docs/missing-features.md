@@ -4,9 +4,10 @@ This document lists functionality a production perps DEX needs that is **not yet
 built**. It is separate from `known-issues.md` (defects in code that already
 exists).
 
-Context: the **matching and clearing engine is complete** (order slab, price
-histogram, three-phase clearing, dual auction) and the **maker-quote book is
-real and end-to-end**. What is missing is the trading/risk/admin layer that turns
+Context: the **matching and clearing engine is complete** (sharded order book,
+price histogram, three-phase clearing, dual auction, resting orders,
+always-open submission — `docs/plan.md`) and the **maker-quote book is real
+and end-to-end**. What is missing is the trading/risk/admin layer that turns
 a clearing engine into an operable exchange. Items are grouped by area; each notes
 where the gap lives in code.
 
@@ -22,8 +23,8 @@ Status tags: ✅ **DONE** (built) · 🟡 **partial** (exists but incomplete) ·
 | 1.3 `initialize_market` param validation          | ✅ done        | structural + fee + risk-config bounds in `data.rs` `TryFrom`                          |
 | 2.1 close / reduce-position instruction           | ⬜ absent      | only exit is an opposing order into the next auction                                  |
 | 2.2 reduce-only flag                              | ✅ done        | margin-reservation scope only (does not enforce non-flip at settle)                   |
-| 2.3 order types beyond resting limit              | ⬜ absent      | no market / IOC / FOK / post-only / TIF                                               |
-| 2.4 partial-fill carry-over                       | 🟡 partial     | rationed remainder is `Consumed`, never requeued                                      |
+| 2.3 order types beyond resting limit              | 🟡 partial     | GTC/GTT expiry (`expires_at_auction`) shipped with resting orders; still no market / IOC / FOK / post-only |
+| 2.4 partial-fill carry-over                       | ✅ done        | resting orders (Stage B): unfilled/partial remainder re-arms `Resting` and carries to the next round        |
 | 2.5 remove-from-group for cross margin            | ✅ done        | `RemovePositionFromMargin` (disc 28) + compacting `remove_member`                     |
 | 2.6 minimum order size / notional                 | ⬜ absent      | only `quantity != 0`; dust flooding possible                                          |
 | 2.7 cancel-all / batch cancel / expiry            | ⬜ absent      | only single-order `cancel_order`                                                      |
@@ -114,17 +115,41 @@ non-flipping at settle (the auction's matched volume must always settle to
 conserve OI); the bind-time accounting guarantees a reduce-only set can only
 reduce, never flip without reserving for it.
 
-### 2.3 No order types beyond a resting limit — absent
+### 2.3 No order types beyond a resting limit — partial
 
-No market / IOC / FOK / post-only orders, and no time-in-force or expiry on
-regular orders (only maker quotes have `expiry_slots`). Every order is a
-single-shot limit that fills or dies in one auction.
+`submit_order` now takes an `expires_at_auction` field (0 = good-till-cancelled,
+else an absolute round id — Stage B, `docs/plan.md` §3.1/§3.2): a resting order
+carries forward round after round (see §2.4) until it fully fills, is cancelled,
+or expires, at which point it leaves the book and is permissionlessly reapable
+(`cancel_order`, margin always returns to the owner). This closes the "no
+time-in-force" half of this gap. Still **absent**: order *types* — no market /
+IOC / FOK / post-only. Every order is still a single-shot-per-round limit price;
+what changed is that an unfilled one no longer has to be resubmitted by hand.
 
-### 2.4 Partial fills are discarded, not carried over — partial
+### 2.4 Partial fills carry over across rounds — DONE (resting orders, Stage B)
 
-`settle_fill/processor.rs:186-191` decrements `remaining` then unconditionally
-marks the order `Consumed`; `start_auction` zeroes the slab. An order rationed at
-the marginal tick loses its unfilled remainder permanently. No GTC, no requeue.
+> **Status: DONE.** `settle_fill` now re-arms an order that doesn't fully fill
+> instead of discarding it. See `docs/design-decisions.md` DDR-2/DDR-3 for the
+> design (the roll-gate change and the moving-tick-window interaction) and
+> `docs/plan.md` §3 for the implementation. Covered by
+> `tests/integration-tests/tests/resting_orders.rs`.
+
+An order rationed at the marginal tick (or unfilled entirely) is no longer
+consumed: if `fill == order.remaining` (fully filled) or the order has expired,
+it's marked `Consumed` and leaves the book as before; otherwise it re-arms
+`Resting` with its reduced `remaining` and a reset fold-time prefix, and the next
+round's `process_chunk` folds it again automatically — no resubmission, and the
+total filled quantity across rounds conserves exactly
+(`resting_orders.rs::partial_fill_rests_then_completes_conserving`). A
+reduce-only order is the one exception: it always force-`Consumed`s rather than
+resting, so it can never drift a position's exposure across an intervening
+`liquidate`/funding update (DDR-3 correction #1). Margin for the carried
+leftover is held against a fixed `worst_price` snapshotted at submit, so it
+stays stable even as the oracle-anchored tick window recenters between rounds
+(`state/order.rs::Order.worst_price`); a resting order whose price the window
+recenters past is folded at the boundary tick if it's now marketable, or left
+parked (exempt from the completeness gate) if the market moved away from it
+(`classify_resting_fold`, DDR-3).
 
 ### 2.5 Remove-from-group for cross margin — DONE
 
@@ -254,9 +279,11 @@ MakerQuote v2 — see `known-issues.md` §3.)
    initial-margin buffer + per-position notional cap, full `initialize_market`
    validation, reduce-only (Market v8 / OrderSlab v3). Remaining sub-item: a
    max-open-interest cap (§1.2).
-2. **Position management** (§2.1, §2.3, §2.4, §2.6, §2.7) — explicit close/reduce
-   instruction + richer order types (reduce-only §2.2 and cross-margin
-   remove-from-group §2.5 are done).
+2. **Position management** (§2.1, §2.6, §2.7) — explicit close/reduce
+   instruction + minimum order size + batch cancel (reduce-only §2.2,
+   cross-margin remove-from-group §2.5, and partial-fill carry-over §2.4 are
+   done; §2.3 order-type TIF/expiry is done, order *types* beyond a resting
+   limit remain absent).
 3. **Admin lifecycle** (§3) — update-params, pause, set-oracle.
 4. **Treasury** (§4) — insurance seed/withdraw + protocol-fee withdrawal.
 5. **Depth & pricing** (§5, §6) — partial liquidation, unified mark, EMA/TWAP.
