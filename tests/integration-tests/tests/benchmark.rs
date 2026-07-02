@@ -26,9 +26,9 @@ const TX_CU_LIMIT: u64 = 1_400_000;
 /// Per-account write-lock CU budget per block (Solana scheduler).
 const ACCOUNT_BLOCK_CU: u64 = 12_000_000;
 /// Stage A per-shard slab capacity. A shard is created by `init_shard` via a single CPI
-/// `CreateAccount`, which the runtime caps at 10_240 bytes — so at `ORDER_LEN = 88` a
-/// shard holds at most ~115 orders; the plan (§0.3) sizes it at 90 to stay within one
-/// create through all stages (`ORDER_LEN` grows to ~112 by C1). Throughput scales by
+/// `CreateAccount`, which the runtime caps at 10_240 bytes — so at the current
+/// `ORDER_LEN = 112` (Stage C1) a shard holds at most 90 orders; the plan (§0.3) fixed
+/// the cap at 90 to stay within one create through all stages. Throughput scales by
 /// running `num_slab_shards` of these in parallel.
 const SLAB_CAP: u32 = 90;
 
@@ -91,6 +91,32 @@ fn measure_finalize_cu(num_ticks: u32) -> u64 {
     ctx.finalize_clear(&pdas).compute_units_consumed
 }
 
+/// Measure finalize_clear CU with `num_shards` shards passed, each holding a folded
+/// order, at the max tick count. This isolates the Design-Z (DDR-1) per-shard
+/// completeness scan: finalize scans every shard it is passed (`all_active_orders_
+/// accumulated`, an O(capacity) loop per shard) on top of the O(ticks) discovery pass.
+/// The delta vs the 1-shard finalize is the price of proving completeness across K
+/// shards in one tx — the thing that grows with K·SLAB_CAP.
+fn measure_finalize_sharded_cu(num_shards: u16) -> u64 {
+    let mut ctx = TestContext::new();
+    ctx.market_num_slab_shards = num_shards;
+    let pdas = ctx.init_market(1, 256, SLAB_CAP);
+    let price = 128u64; // mid-window
+                        // One taker buy into EVERY shard (so finalize must scan all K), plus one maker sell
+                        // to actually cross (ask auction). Each shard is then folded.
+    for shard in 0..num_shards {
+        let t = ctx.new_funded_signer();
+        ctx.submit_order_to_shard(&pdas, &t, SIDE_BUY, price, 5, shard);
+    }
+    let s = ctx.new_funded_signer();
+    ctx.post_maker_order(&pdas, &s, SIDE_SELL, price, 5);
+    for shard in 0..num_shards {
+        ctx.process_chunk_shard(&pdas, shard, 0, SLAB_CAP);
+    }
+    ctx.process_maker_quote(&pdas, &s.pubkey());
+    ctx.finalize_clear(&pdas).compute_units_consumed
+}
+
 /// Measure settle_fill CU (includes the marginal-tick cumulative scan).
 fn measure_settle_cu() -> u64 {
     let mut ctx = TestContext::new();
@@ -145,6 +171,14 @@ fn benchmark_cu_profile() {
         .map(|&t| (t, measure_finalize_cu(t)))
         .collect();
     let (max_ticks, max_finalize_cu) = *finalize.last().unwrap();
+
+    // --- finalize_clear: CU vs shard count (the Design-Z per-shard completeness scan
+    // at max ticks). Isolates the O(K·capacity) shard scan on top of the O(ticks) pass. ---
+    let finalize_sharded: Vec<(u16, u64)> = [1u16, 8, 16]
+        .iter()
+        .map(|&k| (k, measure_finalize_sharded_cu(k)))
+        .collect();
+    let (max_shards, max_shards_finalize_cu) = *finalize_sharded.last().unwrap();
 
     // --- settle_fill ---
     let settle_cu = measure_settle_cu();
@@ -224,6 +258,39 @@ limit, so the discovery pass fits comfortably in one tx across the whole tick ra
         TX_CU_LIMIT
     );
 
+    let _ = writeln!(
+        r,
+        "## finalize_clear — CU vs shard count (Design-Z completeness scan)\n"
+    );
+    let _ = writeln!(
+        r,
+        "At 256 ticks, passing K shards (each folded). On top of the O(ticks) discovery \
+pass, finalize scans every shard it is passed (`all_active_orders_accumulated`, an \
+O(capacity) loop per shard) to prove completeness in one tx (DDR-1). This is the cost \
+that grows with K·SLAB_CAP.\n"
+    );
+    let _ = writeln!(r, "| shards passed | CU |");
+    let _ = writeln!(r, "|---|---|");
+    for (k, cu) in &finalize_sharded {
+        let _ = writeln!(r, "| {} | {} |", k, cu);
+    }
+    let _ = writeln!(
+        r,
+        "\nAt the dev target of {} shards × {} cap, finalize uses ~{} CU — {:.1}% of the \
+{} CU/tx limit. The per-shard scan adds ~{} CU/shard on top of the ~{} CU tick pass, so \
+finalize stays a single tx well under the limit at the dev target; K·SLAB_CAP is the \
+cost to watch as shard count grows (DDR-1 re-review trigger: chunked finalize past \
+~40 shards).\n",
+        max_shards,
+        SLAB_CAP,
+        max_shards_finalize_cu,
+        100.0 * max_shards_finalize_cu as f64 / TX_CU_LIMIT as f64,
+        TX_CU_LIMIT,
+        (max_shards_finalize_cu.saturating_sub(finalize_sharded[0].1))
+            / (max_shards.saturating_sub(1)).max(1) as u64,
+        finalize_sharded[0].1,
+    );
+
     let _ = writeln!(r, "## settle_fill — CU\n");
     let _ = writeln!(
         r,
@@ -236,8 +303,8 @@ the marginal-tick cumulative scan. Measured: **{} CU**.\n",
     let _ = writeln!(
         r,
         "Solana caps a CPI-created/grown account at **10_240 bytes** per instruction \
-(`MAX_PERMITTED_DATA_INCREASE`). At `ORDER_LEN = 88` one OrderSlab account tops out near \
-**115 orders**, which is why the pre-shard design was capped at 128 and could not reach \
+(`MAX_PERMITTED_DATA_INCREASE`). At `ORDER_LEN = 112` (Stage C1) one OrderSlab account tops out near \
+**90 orders**, which is why the pre-shard design was capped at 128 and could not reach \
 \"thousands of orders\". **Stage A removes this by sharding**: the slab is split into \
 `num_slab_shards` independent shard accounts (`init_shard`), each sized at `SLAB_CAP` \
 (90 orders, kept within one CPI `CreateAccount` through every stage). N shards ⇒ N·SLAB_CAP \
@@ -306,6 +373,10 @@ work is warranted is exactly what these numbers are meant to decide.\n"
     assert!(
         max_finalize_cu < TX_CU_LIMIT,
         "finalize at max ticks must fit one tx"
+    );
+    assert!(
+        max_shards_finalize_cu < TX_CU_LIMIT,
+        "finalize at max shards must fit one tx"
     );
     assert!(settle_cu < TX_CU_LIMIT, "settle must fit one tx");
     assert!(per_order > 0, "fold cost must be measurable");
