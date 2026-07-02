@@ -588,6 +588,27 @@ never to absorb.
 
 `apps/web/src/vendor/tempo-client.d.mts` · `apps/web/src/lib/tempo-client.ts`.
 
+### 2.8 Stage-B marketable-fill is only unit-tested, never validated on a live chain — [design]
+
+> **Status: ⛔ DEFERRED (blocked on a devnet run).** Not a known defect — a
+> **coverage gap** flagged during the DDR-3 code reviews. Track here so it isn't
+> forgotten.
+
+Stage B lets a resting order carry across rounds; when the oracle-anchored tick
+window recenters past a fixed-price order, `classify_resting_fold` folds a
+*marketable* order at the boundary tick so it fills (DDR-3). The **park/no-wedge**
+half is fully tested (LiteSVM: passive orders skip, don't block finalize, and fold
+once the window returns). The **fill** half — a marketable order actually executing
+against a live counterparty *after* a recenter — is only proven at the unit level
+(`classify_resting_fold` fill-tick correctness + fold-then-settle with no
+counterparty), **not** end-to-end, because the maker-quote book is zero-anchored and
+a maker+recenter fill test is brittle in LiteSVM.
+
+**To close:** deploy `feat/sharded-book` to devnet, place a resting order, let the
+window move through its price, and confirm it fills at the clearing price with
+correct margin/position (`classify_resting_fold` in `program/src/state/market.rs`;
+`settle_fill` re-lock path). See DDR-3 in `docs/design-decisions.md`.
+
 ---
 
 ## 3. Dead / redundant code
