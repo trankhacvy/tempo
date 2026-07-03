@@ -33,8 +33,9 @@ const MAX_ORDERS_PER_TRADER: u32 = 8;
 /// sell clears at ≤ the histogram window top; so reserving `worst_qty · worst_price
 /// · initial_bps` and locking it now means `settle_fill` only ever *releases* — it
 /// can never revert for lack of collateral (which would wedge the round). A
-/// `reduce_only` order reserves only the portion that would open new exposure, so a
-/// close is never blocked.
+/// `reduce_only` order reserves the same full worst-case margin as any normal order
+/// (DDR-3 Correction-2 item 3 — see below); its `reduce_only` byte instead forces
+/// `Consumed` at settle so it never re-arms `Resting`.
 pub fn process_submit_order(
     program_id: &Address,
     accounts: &[AccountView],

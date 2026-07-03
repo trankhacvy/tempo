@@ -35,8 +35,8 @@ keypair for automation — never enable it against mainnet.
 ## Generated client
 
 The Codama client is bundled into `src/vendor/tempo-client.mjs` via esbuild
-(`pnpm bundle-client`, run automatically on `predev`/`prebuild`), mirroring `apps/bots`. Types
-come from `src/vendor/tempo-client.d.mts`.
+(`pnpm bundle-client`, run automatically on `predev`/`prebuild`). Types come from
+`src/vendor/tempo-client.d.mts`.
 
 ### Important: account decoding
 
@@ -55,18 +55,19 @@ actually clear. Three steps:
 
 ### 1. Create (or point at) a devnet SOL/USD market
 
-Use the `apps/bots` devnet scripts (they print the addresses you need). From the repo root:
+Provisioning now goes through the Rust `tempo-sim` package (`crates/sim/` — see its own
+README for full config), not a TypeScript bots package. From the repo root:
 
 ```bash
-# Build the shared client bundle the bots import.
-pnpm --filter @tempo/bots exec tsx src/devnet-create-market.ts
+export TEMPO_RPC_URL=https://api.devnet.solana.com
+export TEMPO_SIM_MASTER_KEYPAIR=./keys/master.json   # a funded devnet keypair
+export TEMPO_SIM_MAINT_BPS=0                         # 0 = clearing-only; >0 = full money path
+cargo run -p tempo-sim --bin tempo-sim-provision
 ```
 
-It prints `MARKET=<pubkey>` — the Market PDA to put in `NEXT_PUBLIC_TEMPO_MARKET`. For the
-collateral money path, the `apps/bots` devnet money scripts (e.g.
-`src/devnet-money-e2e.ts`) provision the collateral mint, the program vault token account, and
-your token account; note those addresses for the `.env.local` values below. Everything is
-devnet-only.
+This is idempotent (safe to re-run) and writes `sim-artifact.json`, whose `market`,
+`collateral_mint`, and `vault_token_account` fields are the addresses you need for
+`.env.local` below. Everything is devnet-only.
 
 ### 2. Configure `.env.local`
 
@@ -77,19 +78,23 @@ cp apps/web/.env.example apps/web/.env.local
 ```
 
 - `NEXT_PUBLIC_SOLANA_RPC_URL` — devnet RPC (default `https://api.devnet.solana.com`).
-- `NEXT_PUBLIC_TEMPO_MARKET` — the `MARKET=` address from step 1.
-- `NEXT_PUBLIC_COLLATERAL_MINT`, `NEXT_PUBLIC_VAULT_TOKEN_ACCOUNT`,
-  `NEXT_PUBLIC_USER_TOKEN_ACCOUNT` — the collateral wiring (required to deposit / withdraw).
+- `NEXT_PUBLIC_TEMPO_MARKET` — the `market` address from `sim-artifact.json` (step 1).
+- `NEXT_PUBLIC_COLLATERAL_MINT`, `NEXT_PUBLIC_VAULT_TOKEN_ACCOUNT` — the `collateral_mint`
+  and `vault_token_account` fields from `sim-artifact.json` (only present when
+  `TEMPO_SIM_MAINT_BPS > 0`, i.e. the money path was provisioned).
+- `NEXT_PUBLIC_USER_TOKEN_ACCOUNT` — the connecting wallet's own token account for the
+  collateral mint (its associated token account); create it with standard SPL tooling if
+  it doesn't exist yet.
 - `NEXT_PUBLIC_USE_BURNER` / `NEXT_PUBLIC_BURNER_SECRET` — optional dev-only in-page signer.
 
 ### 3. Run the crank so orders clear and fill
 
 Submitted orders only clear when someone runs the permissionless crank (ACCUMULATE → DISCOVER
-→ SETTLE). Run the crank daemon against the same market so the auction advances and fills land
+→ SETTLE). Run the keeper against the same market so the auction advances and fills land
 (and show up in the Activity feed):
 
 ```bash
-pnpm --filter @tempo/bots crank
+just keeper   # or: cargo run -p tempo-keeper
 ```
 
 Then start the web app:

@@ -26,8 +26,9 @@ missing party (**traders**) plus a one-shot **provisioner**.
   liquidations. Fastest path to a live UI, lowest risk.
 - **Phase B (money path):** `TEMPO_SIM_MAINT_BPS>0`. Adds a fake-USDC collateral mint,
   vault, per-agent deposits, positions, PnL, and liquidations (the `reckless` persona
-  builds toward liquidation). Validate the unit scaling (see plan.md §2) with one
-  hand-opened position before scaling the fleet.
+  builds toward liquidation). Validate the unit scaling (see
+  `docs/risk-model.md §1`, the single-base-unit assumption) with one hand-opened
+  position before scaling the fleet.
 
 ## Local run
 

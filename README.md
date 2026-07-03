@@ -12,6 +12,11 @@ Docs (`docs/`), in reading order:
 - [`system-design.md`](docs/system-design.md) — architecture, account model, instruction set
 - [`risk-model.md`](docs/risk-model.md) — the perpetuals money and risk layer
 
+Reference docs: [`verification.md`](docs/verification.md) (invariant → test matrix),
+[`known-issues.md`](docs/known-issues.md) / [`missing-features.md`](docs/missing-features.md)
+(current gaps), [`design-decisions.md`](docs/design-decisions.md) (dated design rationale),
+[`plan.md`](docs/plan.md) (the sharding/resting-order/pipelining scaling plan).
+
 ## How it works
 
 Each market repeats this cycle every auction round:
@@ -32,6 +37,16 @@ stateDiagram-v2
 - **Settle** — each trader pulls their own fill; positions update, funding accrues
 
 The histogram is fixed-size (O(ticks), not O(orders)), so clearing cost is independent of book depth and decomposes across many cheap transactions.
+
+On top of this, the order book is sharded across several independent accounts so
+submission and settlement run in parallel (each shard is folded into the one shared
+histogram); an order that only partially fills carries forward into the next round
+instead of being discarded; and submission is always-open — an order placed mid-round
+simply joins the next one rather than being rejected. Market makers post a standing
+ladder of price levels through a separate `MakerQuote` book instead of one-shot orders,
+so maker and taker flow clear as two independent auctions (bid: makers-buy vs
+takers-sell; ask: takers-buy vs makers-sell) rather than one combined cross. See
+`tempo-clearing-protocol.md` and `docs/design-decisions.md` for the full reasoning.
 
 ## System architecture
 
@@ -62,9 +77,11 @@ graph TD
 |---|---|
 | `program/` | Pinocchio on-chain program — clearing engine + perpetuals money/risk layer |
 | `tests/integration-tests/` | LiteSVM end-to-end + property tests |
+| `trident-tests/` | Transaction-level fuzzing (Trident), excluded from the main workspace |
 | `clients/typescript/` | Codama-generated TypeScript SDK (`just generate-clients`) |
 | `idl/tempo_program.json` | Codama IDL (written by `program/build.rs`) |
-| `crates/` | Rust off-chain services (see below) |
+| `crates/` | Rust off-chain services (see below), including `crates/sim` — the devnet simulation package |
+| `apps/web/` | Next.js devnet trading dApp — demo/testing UI, not a production client |
 | `docs/` | Design docs + benchmark artifacts |
 | `ops/` | Docker, Compose, systemd, CI |
 
@@ -88,7 +105,7 @@ graph TD
 ```bash
 # On-chain program
 just build             # cargo-build-sbf → target/deploy/tempo_program.so
-just unit-test         # clearing math + state serde (77 tests)
+just unit-test         # clearing math + state serde (201 tests, 2 ignored)
 just integration-test  # LiteSVM end-to-end suite (needs a built .so)
 just benchmark         # CU profile → docs/bench/cu_report.md
 
@@ -128,14 +145,27 @@ just liq
 **Working today:**
 
 - The **clearing engine** — dual auction (bid + ask), three-phase ACCUMULATE → DISCOVER → SETTLE, auction lifecycle, CPI events
+- **Scaling**: the order book is sharded across independent accounts for parallel
+  submission/settlement, unfilled orders carry forward as resting orders instead of
+  being discarded, and submission is always-open (no dead time between rounds); a
+  separate `MakerQuote` book lets market makers post a standing ladder instead of
+  one-shot orders (`docs/plan.md`, `docs/design-decisions.md`)
 - The **money/risk layer** (`docs/risk-model.md`) — SPL collateral custody, deposit/withdraw, oracle-priced funding and liquidation, insurance fund, open-interest tracking, socialized-loss/ADL, hard solvency gate, per-slot price brake, oracle soft-stale fallback, overflow-safe notional math, cross-margin
-- **Verification** — LiteSVM end-to-end suites including randomized multi-round and liquidation stress tests, property fuzzes, and formal proofs (`cargo kani`)
+- **Verification** — LiteSVM end-to-end suites including randomized multi-round and liquidation stress tests, property fuzzes, and formal proofs (`cargo kani`); see `docs/verification.md` for the full invariant → test matrix
 - **Off-chain Rust stack** — keeper, market maker, liquidator, read API — all smoke-tested on live devnet
 - **Deployed to devnet** at `8gpzMDNnKNz422jW3hs54TRmZK2H5uEwgfEQbjWAwnJD`; the money path and full auction lifecycle are exercised against the real Pyth feed. In-place account migration handles layout upgrades.
 
 **Still open before mainnet:**
 
-- **Throughput benchmark** — measuring max orders per auction under Solana's per-account write-lock budget and whether histogram sharding is needed (`system-design.md §7`, `docs/bench/`)
+- **Round-processing overlap** — the order-book sharding and throughput questions
+  raised in `system-design.md §7` are now measured, not open (`docs/bench/cu_report.md`:
+  16 shards × 90-order cap ⇒ ~160,542 CU finalize, 11.5% of the 1.4M CU/tx cap). What
+  remains is true overlap between rounds (processing round N+1 while round N is still
+  settling) — designed but deliberately not built, gated behind a benchmark showing
+  it's actually needed (`docs/known-issues.md §2.14`)
+- **Stage-B marketable-fill on a live chain** — the resting-order fill-after-recenter
+  path is proven at the unit level, not yet end-to-end against a live counterparty on
+  devnet (`docs/known-issues.md §2.13`)
 - **Dual-auction end-to-end on devnet** — implemented and tested in LiteSVM; not yet driven fully on live devnet
 - **Indexer + web UI** — deferred; API history endpoints return 501 until the indexer lands
 - **Economic hardening** — batch-perp funding stability, true OI-netted PnL (see `docs/risk-model.md`)

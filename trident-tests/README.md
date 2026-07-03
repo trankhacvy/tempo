@@ -1,4 +1,4 @@
-# Tempo Trident fuzz target (P4.3 / P6.5)
+# Tempo Trident fuzz target
 
 Transaction-level fuzzing of the Tempo program with [Trident](https://github.com/Ackee-Blockchain/trident),
 using the **trident-svm** execution backend (PR #27 enabled `get_sysvar` for

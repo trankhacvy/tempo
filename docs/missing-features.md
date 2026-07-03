@@ -11,35 +11,35 @@ and end-to-end**. What is missing is the trading/risk/admin layer that turns
 a clearing engine into an operable exchange. Items are grouped by area; each notes
 where the gap lives in code.
 
-Status tags: ✅ **DONE** (built) · 🟡 **partial** (exists but incomplete) ·
-⬜ **absent** (nothing exists yet).
+Status tags: **DONE** (built) · **partial** (exists but incomplete) ·
+**absent** (nothing exists yet).
 
 ### Status at a glance
 
 | Item                                              | Status        | Note                                                                                  |
 | ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
-| 1.1 collateral reservation at submit              | ✅ done        | `Order.reserved_margin`; rejected at submit (`InsufficientCollateral`)                |
-| 1.2 position cap + initial-margin buffer          | 🟡 partial     | `initial_margin_bps` + `max_position_notional` done; **max-OI cap still absent**       |
-| 1.3 `initialize_market` param validation          | ✅ done        | structural + fee + risk-config bounds in `data.rs` `TryFrom`                          |
-| 2.1 close / reduce-position instruction           | ⬜ absent      | only exit is an opposing order into the next auction                                  |
-| 2.2 reduce-only flag                              | ✅ done        | margin-reservation scope only (does not enforce non-flip at settle)                   |
-| 2.3 order types beyond resting limit              | 🟡 partial     | GTC/GTT expiry (`expires_at_auction`) shipped with resting orders; still no market / IOC / FOK / post-only |
-| 2.4 partial-fill carry-over                       | ✅ done        | resting orders (Stage B): unfilled/partial remainder re-arms `Resting` and carries to the next round        |
-| 2.5 remove-from-group for cross margin            | ✅ done        | `RemovePositionFromMargin` (disc 28) + compacting `remove_member`                     |
-| 2.6 minimum order size / notional                 | ⬜ absent      | only `quantity != 0`; dust flooding possible                                          |
-| 2.7 cancel-all / batch cancel / expiry            | ⬜ absent      | only single-order `cancel_order`                                                      |
-| 3.1 update-market / set-risk-params               | ⬜ absent      | params fixed at init (only `migrate_market` rewrites brake/stale-window)              |
-| 3.2 pause / halt / resume                         | ⬜ absent      | `MarketPaused` error exists but is referenced nowhere                                 |
-| 3.3 set-oracle / repoint feed                     | ⬜ absent      | oracle bound once at init                                                             |
-| 3.4 close-market / delist / authority transfer    | ⬜ absent      | markets can't be wound down; no authority transfer                                    |
-| 4.1 insurance seed / withdraw                     | ⬜ absent      | no admin seed/harvest; only outflow is `finalize_clear` crank fee                     |
-| 4.2 insurance segregation                         | 🟡 partial     | bookkeeping `u64` shares the vault token account; invariant tested off-chain only     |
-| 5.1 EMA / TWAP                                     | ⬜ absent      | spot price only; Pyth `ema_price` ignored                                             |
-| 5.2 unified mark price                            | 🟡 partial     | funding = clearing midpoint, liquidation = raw oracle — two definitions               |
-| 6.1 partial liquidation                           | ⬜ absent      | `liquidate` zeroes the whole position                                                 |
-| 6.2 keeper-reward floor                           | 🟡 partial     | penalty caps to equity; most cranks unincentivized                                    |
-| 7.1 maker collateral check at quote time          | ⬜ absent      | unbacked ladders can move the clearing price + drain insurance                        |
-| 7.2 inventory / skew management                   | ⬜ absent      | by design — static quote; re-quoting is the maker's off-chain job                     |
+| 1.1 collateral reservation at submit              | done        | `Order.reserved_margin`; rejected at submit (`InsufficientCollateral`)                |
+| 1.2 position cap + initial-margin buffer          | partial     | `initial_margin_bps` + `max_position_notional` done; **max-OI cap still absent**       |
+| 1.3 `initialize_market` param validation          | done        | structural + fee + risk-config bounds in `data.rs` `TryFrom`                          |
+| 2.1 close / reduce-position instruction           | absent      | only exit is an opposing order into the next auction                                  |
+| 2.2 reduce-only flag                              | done        | margin-reservation scope only (does not enforce non-flip at settle)                   |
+| 2.3 order types beyond resting limit              | partial     | GTC/GTT expiry (`expires_at_auction`) shipped with resting orders; still no market / IOC / FOK / post-only |
+| 2.4 partial-fill carry-over                       | done        | resting orders (Stage B): unfilled/partial remainder re-arms `Resting` and carries to the next round        |
+| 2.5 remove-from-group for cross margin            | done        | `RemovePositionFromMargin` (disc 28) + compacting `remove_member`                     |
+| 2.6 minimum order size / notional                 | absent      | only `quantity != 0`; dust flooding possible                                          |
+| 2.7 cancel-all / batch cancel / expiry            | absent      | only single-order `cancel_order`                                                      |
+| 3.1 update-market / set-risk-params               | absent      | params fixed at init (only `migrate_market` rewrites brake/stale-window)              |
+| 3.2 pause / halt / resume                         | absent      | `MarketPaused` error exists but is referenced nowhere                                 |
+| 3.3 set-oracle / repoint feed                     | absent      | oracle bound once at init                                                             |
+| 3.4 close-market / delist / authority transfer    | absent      | markets can't be wound down; no authority transfer                                    |
+| 4.1 insurance seed / withdraw                     | absent      | no admin seed/harvest; only outflow is `finalize_clear` crank fee                     |
+| 4.2 insurance segregation                         | partial     | bookkeeping `u64` shares the vault token account; invariant tested off-chain only     |
+| 5.1 EMA / TWAP                                     | absent      | spot price only; Pyth `ema_price` ignored                                             |
+| 5.2 unified mark price                            | partial     | funding = clearing midpoint, liquidation = raw oracle — two definitions               |
+| 6.1 partial liquidation                           | absent      | `liquidate` zeroes the whole position                                                 |
+| 6.2 keeper-reward floor                           | partial     | penalty caps to equity; most cranks unincentivized                                    |
+| 7.1 maker collateral check at quote time          | absent      | unbacked ladders can move the clearing price + drain insurance                        |
+| 7.2 inventory / skew management                   | absent      | by design — static quote; re-quoting is the maker's off-chain job                     |
 
 ---
 

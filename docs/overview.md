@@ -103,11 +103,14 @@ all detailed in `risk-model.md`.
 
 - **Liquidity is the real-world risk.** A perps venue needs traders on both sides;
   bootstrapping that is a separate challenge from the mechanism itself.
-- **Throughput has open questions.** How many orders one auction can clear per block —
-  given Solana's per-account write-lock budget — is a measured number, not a guarantee
-  (`system-design.md §7`).
-- **Some perp mechanics need more validation.** Batch-perp funding stability and the
-  dual-auction simulation are areas still being hardened before mainnet
+- **Throughput is measured, with one piece still open.** Sharding the order book bounds
+  the histogram write contention that used to be the open question — see
+  `system-design.md §7` and `docs/bench/cu_report.md` for the numbers. What's still open
+  is true round-*processing* overlap (clearing two rounds at once), deliberately
+  deferred until a benchmark shows it's actually needed.
+- **Some perp mechanics need more validation.** Funding, mark price, liquidation, and
+  insurance are implemented and tested; batch-perp funding-rate stability specifically,
+  and the dual-auction simulation, are the two areas still being hardened before mainnet
   (`tempo-clearing-protocol.md §6`, `risk-model.md`).
 
 The clearing arithmetic is implemented, tested, and hostile-trigger-resistant. The

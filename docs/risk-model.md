@@ -46,8 +46,8 @@ invariant `long == short` after a balanced round.
 scaled by elapsed time into a monotonic funding index, clamped to a per-period cap. Each
 position settles funding lazily against the index delta, paid out of realized PnL.
 
-> 🟡 Batch-perp funding stability is unproven — the per-period cap is the safety rail;
-> this is an area to simulate further before mainnet.
+> Batch-perp funding stability is not yet proven — the per-period cap is the safety rail
+> today; this remains an area to simulate further before mainnet.
 
 ## 4. Mark price and the per-slot price brake
 

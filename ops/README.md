@@ -1,8 +1,8 @@
 # `ops/` — deploy & operations
 
-Production-grade running of the Tempo off-chain services (Phase 3, build-plan §2.11).
-Everything here is **devnet-first** and **secret-free in git**: keypairs and RPC
-endpoints arrive at runtime only.
+Production-grade running of the Tempo off-chain services. Everything here is
+**devnet-first** and **secret-free in git**: keypairs and RPC endpoints arrive at
+runtime only.
 
 ## Layout
 

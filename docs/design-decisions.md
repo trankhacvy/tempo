@@ -7,9 +7,10 @@ later. Newest first.
 
 ## DDR-4 — Stage C1 always-open submission: `arm_auction_id` with `<=` eligibility (counter-free)
 
-**Status:** decided 2026-07-02 · implemented on `feat/sharded-book` (Stage C1) · `Order` `ORDER_LEN`
-104→112, `OrderSlabHeader` VERSION 5→6. Deviates from the written plan (`docs/plan.md` §4.1 / C1.4),
-which predates Design Z — recorded here so the deviation is deliberate and reviewable.
+**Status:** decided 2026-07-02 · implemented (Stage C1), merged to `main` in the sharded-book PR
+(`84d70a0`) · `Order` `ORDER_LEN` 104→112, `OrderSlabHeader` VERSION 5→6. Deviates from the written
+plan (`docs/plan.md` §4.1 / C1.4), which predates Design Z — recorded here so the deviation is
+deliberate and reviewable.
 
 ### Context / the problem
 
@@ -75,8 +76,9 @@ next `Collect` sooner) is a scheduling optimization, not correctness, and is als
 
 ## DDR-3 — Resting orders vs. the moving tick window (marketable-fill / passive-park)
 
-**Status:** decided 2026-07-02 · to be implemented on `feat/sharded-book` (Stage B fix batch) ·
-fixes the two blockers from the high-effort code review of commit `5c6c63c`.
+**Status:** decided 2026-07-02 · implemented (Stage B fix batch), merged to `main` in the
+sharded-book PR (`84d70a0`) · fixes the two blockers from the high-effort code review of commit
+`5c6c63c`.
 
 ### Context / the problem
 
@@ -214,8 +216,9 @@ incomplete. Resolved in the follow-up batch:
 
 ## DDR-2 — Stage B resting orders: the roll gate + the partial-fill margin split
 
-**Status:** decided 2026-07-01 · implemented on `feat/sharded-book` (Stage B) · `OrderSlabHeader`
-VERSION 4→5, `Order` `ORDER_LEN` 88→104 · resolves the DDR-1 Stage-B re-review trigger.
+**Status:** decided 2026-07-01 · implemented (Stage B), merged to `main` in the sharded-book PR
+(`84d70a0`) · `OrderSlabHeader` VERSION 4→5, `Order` `ORDER_LEN` 88→104 · resolves the DDR-1
+Stage-B re-review trigger.
 
 ### Context / the problem
 
@@ -275,8 +278,9 @@ censorship guarantee is unchanged. Pinned by
 
 ## DDR-1 — Stage A shard completeness: drop the counter (Design Z)
 
-**Status:** decided 2026-07-01 · implemented on `feat/sharded-book` in commit `a499114`
-(Market VERSION 10→11) · **flagged for re-review** (triggers below).
+**Status:** decided 2026-07-01 · implemented in commit `a499114` (Market VERSION 10→11), merged to
+`main` in the sharded-book PR (`84d70a0`) · **flagged for re-review** (triggers below; one has
+since been resolved — see the note at the end of the trigger list).
 
 ### Context / the problem
 
@@ -342,6 +346,7 @@ The first implementation added an **aggregate counter** on the `Market` account
 - finalize CU gets tight as `num_slab_shards · cap` grows.
 - **Stage B (resting orders)** changes the fold/roll model (orders re-fold each round) — confirm
   the authoritative per-shard finalize scan still holds and that carried-over Resting orders are
-  re-counted correctly.
+  re-counted correctly. **Resolved by DDR-2** — see its "DDR-1 re-review trigger — resolved"
+  section.
 - A future benchmark shows `Market`-write-on-submit (Design X) was actually acceptable and the
   extra finalize accounts aren't worth it (unlikely, but measure).
