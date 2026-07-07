@@ -59,6 +59,13 @@ simply gets `MissingSettleAccounts` and must add the account.
 whenever a settle releases a reservation (a fully-consuming settle), not on
 every zero-fill settle."
 
+**Closed (SDK):** `SettleMoney::for_order_owner` (`crates/sdk/src/ix.rs`) now
+derives and attaches the owner's mint-scoped ledger (+ position + vault)
+unconditionally on money-path markets — the accounts are deterministic PDAs that
+`submit_order` already required to exist, so a fully-consuming settle can never
+fail `MissingSettleAccounts` from a client omission. Covered by
+`settle_builder_always_attaches_ledger`.
+
 ### 2.12 Devnet client bundle drift after the sharding layout bump — [design] · operational
 
 `Market` is now **VERSION 11** and `InitializeMarketData::LEN` is **131

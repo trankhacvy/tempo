@@ -22,7 +22,7 @@ Status tags: **DONE** (built) · **partial** (exists but incomplete) ·
 | 1.2 position cap + initial-margin buffer          | partial     | `initial_margin_bps` + `max_position_notional` done; **max-OI cap still absent**       |
 | 1.3 `initialize_market` param validation          | done        | structural + fee + risk-config bounds in `data.rs` `TryFrom`                          |
 | 2.1 close / reduce-position instruction           | absent      | only exit is an opposing order into the next auction                                  |
-| 2.2 reduce-only flag                              | done        | margin-reservation scope only (does not enforce non-flip at settle)                   |
+| 2.2 reduce-only flag                              | done        | forces `Consumed` at settle; reserves FULL worst-case margin (DDR-3 Correction-2)     |
 | 2.3 order types beyond resting limit              | partial     | GTC/GTT expiry (`expires_at_auction`) shipped with resting orders; still no market / IOC / FOK / post-only |
 | 2.4 partial-fill carry-over                       | done        | resting orders (Stage B): unfilled/partial remainder re-arms `Resting` and carries to the next round        |
 | 2.5 remove-from-group for cross margin            | done        | `RemovePositionFromMargin` (disc 28) + compacting `remove_member`                     |
@@ -39,7 +39,7 @@ Status tags: **DONE** (built) · **partial** (exists but incomplete) ·
 | 6.1 partial liquidation                           | absent      | `liquidate` zeroes the whole position                                                 |
 | 6.2 keeper-reward floor                           | partial     | penalty caps to equity; most cranks unincentivized                                    |
 | 7.1 maker collateral check at quote time          | absent      | unbacked ladders can move the clearing price + drain insurance                        |
-| 7.2 inventory / skew management                   | absent      | by design — static quote; re-quoting is the maker's off-chain job                     |
+| 7.2 inventory / skew management                   | won't build | closed by design — static quote; re-quoting is the maker's off-chain job              |
 
 ---
 
@@ -61,12 +61,15 @@ collateral (which would wedge the round). An under-collateralized order is
 rejected cleanly **at submit** (`InsufficientCollateral`). The reservation rides
 on `Order.reserved_margin` and is released by `cancel_order` and `settle_fill`.
 
-A **reduce-only** flag (`SubmitOrderData.reduce_only`, see §2.2) reserves only the
-portion that would open new exposure, so closing a fully-margined position is
-never blocked. (Note: in a wide, non-oracle-anchored tick window a sell's
-worst-case reservation can sit well above its limit-price margin; production
-markets use a tight oracle-anchored window, so the over-reservation is small and
-operator-tunable.)
+A **reduce-only** flag (`SubmitOrderData.reduce_only`, see §2.2) reserves the same
+**full worst-case margin** as any normal order (DDR-3 Correction-2 item 3 —
+reduce-only cannot be perfectly honored in a batch auction, since the fill is fixed
+at fold but the position at settle can move, so it opens a *collateralized*
+position instead of discounting the reservation); its sole remaining job is
+forcing `Consumed` at settle so the order never rests across rounds. (Note: in a
+wide, non-oracle-anchored tick window a sell's worst-case reservation can sit well
+above its limit-price margin; production markets use a tight oracle-anchored
+window, so the over-reservation is small and operator-tunable.)
 
 ### 1.2 Position cap + initial-margin buffer — DONE (max-OI cap deferred)
 
@@ -85,7 +88,8 @@ check) — a clean follow-up, not a wedge risk.
 
 Validation lives in `initialize_market/data.rs` (`TryFrom`). It rejects the
 structural and fee params (`tick_size == 0`, `num_ticks ∉ (0, 256]`,
-`orders_per_auction_cap ∉ (0, 128]`, `|maker/taker_fee_bps| > 1000`,
+`orders_per_auction_cap ∉ (0, 90]` (the 10,240-byte single-`CreateAccount` ceiling
+at `ORDER_LEN = 112` — `MAX_ORDERS_PER_AUCTION_CAP`), `|maker/taker_fee_bps| > 1000`,
 `integrator_share_bps > 10_000`, `max_price_move_bps_per_slot > 10_000`) and now
 the **risk** config: a market is either a no-money-path clearing benchmark (every
 risk bps zero) or a money market with `maintenance_margin_bps ∈ (0, 5000]`,
@@ -104,16 +108,21 @@ The only way to exit is to submit an opposing order into the next auction and
 wait for a cross. If the book is one-sided you are stuck. There is no
 direct user-initiated close/flatten at oracle mark.
 
-### 2.2 Reduce-only flag — DONE (margin-reservation scope)
+### 2.2 Reduce-only flag — DONE (settle-consume scope; reserves FULL margin)
 
-`submit_order/data.rs` now carries a trailing `reduce_only` byte. It governs the
-**margin reservation** (§1.1): a reduce-only order against an opposite position
-reserves only the portion that would open new exposure (computed against the
-position size minus the trader's already-resting same-side quantity), so a close
-is never blocked by the worst-case reservation. Note it does NOT yet *enforce*
-non-flipping at settle (the auction's matched volume must always settle to
-conserve OI); the bind-time accounting guarantees a reduce-only set can only
-reduce, never flip without reserving for it.
+`submit_order/data.rs` carries a trailing `reduce_only` byte. Since DDR-3
+Correction-2 item 3 it **no longer discounts the margin reservation**: a
+reduce-only order reserves the same full worst-case initial margin as any normal
+order (`submit_order/processor.rs` — the same-side headroom is still scanned for
+anti-spam accounting but explicitly discarded, `let _ = already_same_side`).
+Rationale: reduce-only cannot be perfectly honored in a batch auction — the fill
+quantity is fixed at fold, but the position at settle can have moved (liquidation,
+funding, other fills), so the order may open against intent; clamping the fill at
+settle would break OI conservation (Correction #1). The only safe path is to let
+it open a *collateralized* position. The flag's sole remaining job is forcing
+`Consumed` at settle (never re-armed `Resting`), so a reduce-only order can never
+carry across rounds into exposure the market gapped it into. Covered by
+`tests/integration-tests/tests/pretrade_safety.rs::reduce_only_reserves_full_margin_no_discount`.
 
 ### 2.3 No order types beyond a resting limit — partial
 
@@ -265,11 +274,14 @@ folds into the histogram and moves the clearing price for everyone, then an
 under-margined fill produces a shortfall absorbed by insurance at settle. This is
 both a price-manipulation and an insurance-drain vector.
 
-### 7.2 No inventory / skew management — absent (by design)
+### 7.2 No inventory / skew management — CLOSED: won't build (by design)
 
-The quote is static between explicit `update_*` calls; re-quoting is the maker's
-off-chain job. (The old `sync_spread_ticks` placeholder hook was removed in
-MakerQuote v2 — see `known-issues.md` §3.)
+Closed as a deliberate design decision, not open debt. The quote is static between
+explicit `update_*` calls; re-quoting is the maker's off-chain job (the reference
+`crates/mm-bot` `strategy::build_quote` already does oracle-anchored,
+inventory-skewed ladders). On-chain auto-skew would add state and CU to the fold
+path for something the off-chain loop does better. (The old `sync_spread_ticks`
+placeholder hook was removed in MakerQuote v2 — see `known-issues.md` §3.)
 
 ---
 
