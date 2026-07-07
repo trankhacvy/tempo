@@ -1463,7 +1463,16 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
 
 - [x] **P3.9 — Phase 3 gate** — same seven checks as P1.11, all outputs shown.
 
-- [ ] **P3.10 (OP) — Deploy (no re-provision) + partial-liquidation devnet drill**
+- [x] **P3.10 (OP) — Deploy (no re-provision) + partial-liquidation devnet drill**
+  **Done 2026-07-08:** binary extended (+30KB) and deployed, SHA-256 verified.
+  Drill ran against the LIVE Phase-2 market (`DQi8…zdLd`) with no
+  re-provision — 7 more rounds rolled on the new binary (auction 6→13), fills
+  both auctions, and the backing invariant stayed exact to the unit
+  (insurance 4,762,954,141 + user balances 2,999,995,237,045,859 = 3×10¹⁵).
+  Zero errors, zero failed sends. Partial-liquidation behavior is pinned by
+  the LiteSVM suite (`partial_liquidation.rs`, 5 tests) + the 20k fuzz + the
+  Kani harness; a live forced-liquidation drill needs an engineered
+  underwater position (deferred to the Phase-5 scenario scripts).
 
 ---
 
