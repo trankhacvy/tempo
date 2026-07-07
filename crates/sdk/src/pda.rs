@@ -76,14 +76,17 @@ pub fn margin_account(owner: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"margin", owner.as_ref()], &TEMPO_PROGRAM_ID)
 }
 
-// TODO(known-issues §4.9): multi-quote — currently one PDA per maker per market.
-// Supporting multiple concurrent ladders requires adding a `quote_id: u8` to the
-// seeds: `[b"maker_quote", market, maker, &[quote_id]]`. This is a program-level
-// change (new PDA seeds, new instruction variant, migration). Until then, run
-// multiple mm-bot instances with different keypairs for wider depth coverage.
-pub fn maker_quote(market: &Pubkey, maker: &Pubkey) -> (Pubkey, u8) {
+/// Multi-quote seeds (known-issues §4.9, MakerQuote v4): `quote_index` is the
+/// 4th seed, so one maker may run up to `MAX_QUOTES_PER_MAKER` concurrent
+/// ladders per market. Index 0 is the single-ladder default.
+pub fn maker_quote(market: &Pubkey, maker: &Pubkey, quote_index: u16) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[b"maker_quote", market.as_ref(), maker.as_ref()],
+        &[
+            b"maker_quote",
+            market.as_ref(),
+            maker.as_ref(),
+            &quote_index.to_le_bytes(),
+        ],
         &TEMPO_PROGRAM_ID,
     )
 }

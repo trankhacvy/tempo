@@ -381,6 +381,7 @@ pub fn encode_levels(levels: &[Level]) -> [u8; 80] {
 
 /// Create a maker's `MakerQuote` PDA (`init_maker_quote`). `delegate` may be the
 /// zero pubkey for "maker only". The bump is the `maker_quote` PDA bump.
+#[allow(clippy::too_many_arguments)]
 pub fn init_maker_quote(
     pdas: &MarketPdas,
     maker: Pubkey,
@@ -388,6 +389,7 @@ pub fn init_maker_quote(
     maker_quote_bump: u8,
     expiry_slots: u64,
     delegate: Pubkey,
+    quote_index: u16,
 ) -> Instruction {
     InitMakerQuote {
         maker,
@@ -399,11 +401,15 @@ pub fn init_maker_quote(
         maker_quote_bump,
         expiry_slots,
         delegate: delegate.to_bytes(),
+        quote_index,
     })
 }
 
 /// Overwrite a maker quote's whole ladder (`update_maker_quote_levels`). Valid
 /// only in the `Collect` phase; `sequence` must strictly exceed the on-chain one.
+/// `user_collateral` is the MAKER's mint-scoped ledger — REQUIRED on a money-path
+/// market (the ladder's worst-case reservation is delta-locked there, §7.1);
+/// pass `None` only on a clearing-only market.
 #[allow(clippy::too_many_arguments)]
 pub fn update_maker_quote_levels(
     pdas: &MarketPdas,
@@ -413,11 +419,13 @@ pub fn update_maker_quote_levels(
     mid_tick: u32,
     bids: &[Level],
     asks: &[Level],
+    user_collateral: Option<Pubkey>,
 ) -> Instruction {
     UpdateMakerQuoteLevels {
         writer,
         market: pdas.market,
         maker_quote,
+        user_collateral,
     }
     .instruction(UpdateMakerQuoteLevelsInstructionArgs {
         sequence,
@@ -431,16 +439,20 @@ pub fn update_maker_quote_levels(
 
 /// Deactivate a maker quote (`clear_maker_quote`); `sequence` must strictly
 /// exceed the on-chain one.
+/// `user_collateral` is the MAKER's ledger (the standing reservation releases
+/// there); required whenever the quote carries a reservation.
 pub fn clear_maker_quote(
     pdas: &MarketPdas,
     writer: Pubkey,
     maker_quote: Pubkey,
     sequence: u64,
+    user_collateral: Option<Pubkey>,
 ) -> Instruction {
     ClearMakerQuote {
         writer,
         market: pdas.market,
         maker_quote,
+        user_collateral,
     }
     .instruction(ClearMakerQuoteInstructionArgs { sequence })
 }
@@ -784,9 +796,9 @@ mod tests {
     fn test_maker_quote_and_position_wrappers() {
         let pdas = MarketPdas::derive(Pubkey::new_unique());
         let maker = Pubkey::new_unique();
-        let (mq, mq_bump) = crate::pda::maker_quote(&pdas.market, &maker);
+        let (mq, mq_bump) = crate::pda::maker_quote(&pdas.market, &maker, 0);
 
-        let init = init_maker_quote(&pdas, maker, mq, mq_bump, 0, Pubkey::default());
+        let init = init_maker_quote(&pdas, maker, mq, mq_bump, 0, Pubkey::default(), 0);
         assert_eq!(init.data[0], INIT_MAKER_QUOTE_DISCRIMINATOR);
         assert_eq!(init.accounts.len(), 4);
 
@@ -798,12 +810,18 @@ mod tests {
             offset: 1,
             size: 100,
         }];
-        let upd = update_maker_quote_levels(&pdas, maker, mq, 7, 33, &bids, &asks);
+        // §7.1: the ledger rides as a Codama-optional account — None emits the
+        // program-id sentinel, keeping the account count stable at 4.
+        let ledger = Some(crate::pda::user_collateral(&maker, &Pubkey::new_unique()).0);
+        let upd = update_maker_quote_levels(&pdas, maker, mq, 7, 33, &bids, &asks, ledger);
         assert_eq!(upd.data[0], UPDATE_MAKER_QUOTE_LEVELS_DISCRIMINATOR);
-        assert_eq!(upd.accounts.len(), 3);
+        assert_eq!(upd.accounts.len(), 4);
 
-        let clr = clear_maker_quote(&pdas, maker, mq, 8);
+        let clr = clear_maker_quote(&pdas, maker, mq, 8, None);
         assert_eq!(clr.data[0], CLEAR_MAKER_QUOTE_DISCRIMINATOR);
+        // A trailing None optional is DROPPED by the generated Rust builder
+        // (the program accepts both the absent form and the TS client's
+        // program-id sentinel form).
         assert_eq!(clr.accounts.len(), 3);
 
         let ip = init_position(&pdas, maker, maker);

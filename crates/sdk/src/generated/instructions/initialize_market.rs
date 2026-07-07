@@ -130,6 +130,10 @@ pub struct InitializeMarketInstructionArgs {
     pub initial_margin_bps: u16,
     pub max_position_notional: u128,
     pub num_slab_shards: u16,
+    pub min_order_notional: u64,
+    pub max_open_interest: u128,
+    pub liquidation_reward_floor: u64,
+    pub liquidation_close_buffer_bps: u16,
 }
 
 impl InitializeMarketInstructionArgs {
@@ -181,6 +185,10 @@ pub struct InitializeMarketBuilder {
     initial_margin_bps: Option<u16>,
     max_position_notional: Option<u128>,
     num_slab_shards: Option<u16>,
+    min_order_notional: Option<u64>,
+    max_open_interest: Option<u128>,
+    liquidation_reward_floor: Option<u64>,
+    liquidation_close_buffer_bps: Option<u16>,
     __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
@@ -338,6 +346,26 @@ impl InitializeMarketBuilder {
         self.num_slab_shards = Some(num_slab_shards);
         self
     }
+    #[inline(always)]
+    pub fn min_order_notional(&mut self, min_order_notional: u64) -> &mut Self {
+        self.min_order_notional = Some(min_order_notional);
+        self
+    }
+    #[inline(always)]
+    pub fn max_open_interest(&mut self, max_open_interest: u128) -> &mut Self {
+        self.max_open_interest = Some(max_open_interest);
+        self
+    }
+    #[inline(always)]
+    pub fn liquidation_reward_floor(&mut self, liquidation_reward_floor: u64) -> &mut Self {
+        self.liquidation_reward_floor = Some(liquidation_reward_floor);
+        self
+    }
+    #[inline(always)]
+    pub fn liquidation_close_buffer_bps(&mut self, liquidation_close_buffer_bps: u16) -> &mut Self {
+        self.liquidation_close_buffer_bps = Some(liquidation_close_buffer_bps);
+        self
+    }
     /// Add an additional account to the instruction.
     #[inline(always)]
     pub fn add_remaining_account(&mut self, account: solana_instruction::AccountMeta) -> &mut Self {
@@ -433,6 +461,22 @@ impl InitializeMarketBuilder {
                 .num_slab_shards
                 .clone()
                 .expect("num_slab_shards is not set"),
+            min_order_notional: self
+                .min_order_notional
+                .clone()
+                .expect("min_order_notional is not set"),
+            max_open_interest: self
+                .max_open_interest
+                .clone()
+                .expect("max_open_interest is not set"),
+            liquidation_reward_floor: self
+                .liquidation_reward_floor
+                .clone()
+                .expect("liquidation_reward_floor is not set"),
+            liquidation_close_buffer_bps: self
+                .liquidation_close_buffer_bps
+                .clone()
+                .expect("liquidation_close_buffer_bps is not set"),
         };
 
         accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
@@ -653,6 +697,10 @@ impl<'a, 'b> InitializeMarketCpiBuilder<'a, 'b> {
             initial_margin_bps: None,
             max_position_notional: None,
             num_slab_shards: None,
+            min_order_notional: None,
+            max_open_interest: None,
+            liquidation_reward_floor: None,
+            liquidation_close_buffer_bps: None,
             __remaining_accounts: Vec::new(),
         });
         Self { instruction }
@@ -818,6 +866,26 @@ impl<'a, 'b> InitializeMarketCpiBuilder<'a, 'b> {
         self.instruction.num_slab_shards = Some(num_slab_shards);
         self
     }
+    #[inline(always)]
+    pub fn min_order_notional(&mut self, min_order_notional: u64) -> &mut Self {
+        self.instruction.min_order_notional = Some(min_order_notional);
+        self
+    }
+    #[inline(always)]
+    pub fn max_open_interest(&mut self, max_open_interest: u128) -> &mut Self {
+        self.instruction.max_open_interest = Some(max_open_interest);
+        self
+    }
+    #[inline(always)]
+    pub fn liquidation_reward_floor(&mut self, liquidation_reward_floor: u64) -> &mut Self {
+        self.instruction.liquidation_reward_floor = Some(liquidation_reward_floor);
+        self
+    }
+    #[inline(always)]
+    pub fn liquidation_close_buffer_bps(&mut self, liquidation_close_buffer_bps: u16) -> &mut Self {
+        self.instruction.liquidation_close_buffer_bps = Some(liquidation_close_buffer_bps);
+        self
+    }
     /// Add an additional account to the instruction.
     #[inline(always)]
     pub fn add_remaining_account(
@@ -948,6 +1016,26 @@ impl<'a, 'b> InitializeMarketCpiBuilder<'a, 'b> {
                 .num_slab_shards
                 .clone()
                 .expect("num_slab_shards is not set"),
+            min_order_notional: self
+                .instruction
+                .min_order_notional
+                .clone()
+                .expect("min_order_notional is not set"),
+            max_open_interest: self
+                .instruction
+                .max_open_interest
+                .clone()
+                .expect("max_open_interest is not set"),
+            liquidation_reward_floor: self
+                .instruction
+                .liquidation_reward_floor
+                .clone()
+                .expect("liquidation_reward_floor is not set"),
+            liquidation_close_buffer_bps: self
+                .instruction
+                .liquidation_close_buffer_bps
+                .clone()
+                .expect("liquidation_close_buffer_bps is not set"),
         };
         let instruction = InitializeMarketCpi {
             __program: self.instruction.__program,
@@ -1021,6 +1109,10 @@ struct InitializeMarketCpiBuilderInstruction<'a, 'b> {
     initial_margin_bps: Option<u16>,
     max_position_notional: Option<u128>,
     num_slab_shards: Option<u16>,
+    min_order_notional: Option<u64>,
+    max_open_interest: Option<u128>,
+    liquidation_reward_floor: Option<u64>,
+    liquidation_close_buffer_bps: Option<u16>,
     /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
     __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }

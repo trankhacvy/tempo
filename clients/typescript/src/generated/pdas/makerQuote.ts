@@ -9,6 +9,7 @@
 import {
   getAddressEncoder,
   getProgramDerivedAddress,
+  getU16Encoder,
   getUtf8Encoder,
   type Address,
   type ProgramDerivedAddress,
@@ -17,6 +18,7 @@ import {
 export type MakerQuoteSeeds = {
   market: Address;
   maker: Address;
+  quoteIndex: number;
 };
 
 export async function findMakerQuotePda(
@@ -32,6 +34,7 @@ export async function findMakerQuotePda(
       getUtf8Encoder().encode("maker_quote"),
       getAddressEncoder().encode(seeds.market),
       getAddressEncoder().encode(seeds.maker),
+      getU16Encoder().encode(seeds.quoteIndex),
     ],
   });
 }

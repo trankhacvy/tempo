@@ -31,7 +31,10 @@ fn position_key(pdas: &MarketPdas, owner: &Pubkey) -> Pubkey {
 fn money_setup(
     ctx: &mut TestContext,
     pdas: &MarketPdas,
-) -> (solana_sdk::signature::Keypair, solana_sdk::signature::Keypair) {
+) -> (
+    solana_sdk::signature::Keypair,
+    solana_sdk::signature::Keypair,
+) {
     let mint = ctx.create_mint();
     let (vault_authority, _) = ctx.vault_authority_pda();
     let vault_ta = ctx.create_token_account(&mint, &vault_authority);
@@ -110,7 +113,10 @@ fn recentered_window_fills_marketable_resting_sell_against_live_buy() {
     // Clearing tick is the boundary tick 0 → price = the new window floor, which
     // is ≥ the sell's limit (it sells BETTER than it asked — the market moved
     // through it, never below its limit).
-    assert_eq!(cr.bid_clearing_price, 199_680, "cleared at the window floor");
+    assert_eq!(
+        cr.bid_clearing_price, 199_680,
+        "cleared at the window floor"
+    );
     assert!(
         cr.bid_clearing_price >= 100_000,
         "a marketable sell never fills below its limit"
@@ -123,7 +129,10 @@ fn recentered_window_fills_marketable_resting_sell_against_live_buy() {
         .into_iter()
         .find(|r| r.order_id == o)
         .unwrap();
-    assert_eq!(rec.status, STATUS_CONSUMED, "fully filled → leaves the book");
+    assert_eq!(
+        rec.status, STATUS_CONSUMED,
+        "fully filled → leaves the book"
+    );
     assert_eq!(rec.remaining, 0);
 
     ctx.settle_maker_quote(&pdas, &maker.pubkey());
@@ -164,7 +173,10 @@ fn recentered_window_fills_marketable_resting_buy_against_live_ask() {
     // In-window resting BUY @ 100_000, qty 5, GTC.
     let o = ctx.submit_order(&pdas, &buyer, SIDE_BUY, 100_000, 5);
     let locked_at_submit = ctx.user_collateral(&buyer.pubkey()).locked;
-    assert!(locked_at_submit > 0, "the resting buy locked margin at submit");
+    assert!(
+        locked_at_submit > 0,
+        "the resting buy locked margin at submit"
+    );
 
     // Round 1: zero fill → re-rests.
     run_zero_fill_round(&mut ctx, &pdas, o, &buyer.pubkey());
@@ -190,7 +202,10 @@ fn recentered_window_fills_marketable_resting_buy_against_live_ask() {
     assert_eq!(cr.ask_matched_volume, 5, "ask auction crossed the full 5");
     // Uniform price = the maker's tick (32): 49_680 + 320 = 50_000 — far below
     // the buy's 100_000 limit (it buys BETTER than it bid).
-    assert_eq!(cr.ask_clearing_price, 50_000, "cleared at the maker's price");
+    assert_eq!(
+        cr.ask_clearing_price, 50_000,
+        "cleared at the maker's price"
+    );
     assert!(
         cr.ask_clearing_price <= 100_000,
         "a marketable buy never fills above its limit"
@@ -203,7 +218,10 @@ fn recentered_window_fills_marketable_resting_buy_against_live_ask() {
         .into_iter()
         .find(|r| r.order_id == o)
         .unwrap();
-    assert_eq!(rec.status, STATUS_CONSUMED, "fully filled → leaves the book");
+    assert_eq!(
+        rec.status, STATUS_CONSUMED,
+        "fully filled → leaves the book"
+    );
     assert_eq!(rec.remaining, 0);
 
     ctx.settle_maker_quote(&pdas, &maker.pubkey());

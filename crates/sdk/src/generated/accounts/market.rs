@@ -51,6 +51,14 @@ pub struct Market {
     pub max_position_notional_le: [u8; 16],
     pub num_slab_shards_le: [u8; 2],
     pub shards_ready_le: [u8; 2],
+    pub paused: u8,
+    pub min_order_notional_le: [u8; 8],
+    pub max_open_interest_le: [u8; 16],
+    pub liquidation_reward_floor_le: [u8; 8],
+    pub liquidation_close_buffer_bps_le: [u8; 2],
+    pub pending_kind: u8,
+    pub pending_effective_slot_le: [u8; 8],
+    pub pending_payload: [u8; 64],
 }
 
 pub const MARKET_DISCRIMINATOR: u8 = 1;

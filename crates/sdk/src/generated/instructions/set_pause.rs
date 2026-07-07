@@ -8,50 +8,48 @@
 use borsh::BorshDeserialize;
 use borsh::BorshSerialize;
 
-pub const CLEAR_MAKER_QUOTE_DISCRIMINATOR: u8 = 19;
+pub const SET_PAUSE_DISCRIMINATOR: u8 = 32;
 
 /// Accounts.
 #[derive(Debug)]
-pub struct ClearMakerQuote {
-    /// Maker or its delegate
-    pub writer: solana_address::Address,
-    /// Market (decrements active count)
+pub struct SetPause {
+    /// Market authority
+    pub authority: solana_address::Address,
+    /// Market to pause/resume
     pub market: solana_address::Address,
-    /// MakerQuote to clear
-    pub maker_quote: solana_address::Address,
-    /// (Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation
-    pub user_collateral: Option<solana_address::Address>,
+    /// Event authority PDA for CPI event emission
+    pub event_authority: solana_address::Address,
+    /// Tempo program, for self-CPI event emission
+    pub tempo_program: solana_address::Address,
 }
 
-impl ClearMakerQuote {
-    pub fn instruction(
-        &self,
-        args: ClearMakerQuoteInstructionArgs,
-    ) -> solana_instruction::Instruction {
+impl SetPause {
+    pub fn instruction(&self, args: SetPauseInstructionArgs) -> solana_instruction::Instruction {
         self.instruction_with_remaining_accounts(args, &[])
     }
     #[allow(clippy::arithmetic_side_effects)]
     #[allow(clippy::vec_init_then_push)]
     pub fn instruction_with_remaining_accounts(
         &self,
-        args: ClearMakerQuoteInstructionArgs,
+        args: SetPauseInstructionArgs,
         remaining_accounts: &[solana_instruction::AccountMeta],
     ) -> solana_instruction::Instruction {
         let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.writer,
+            self.authority,
             true,
         ));
         accounts.push(solana_instruction::AccountMeta::new(self.market, false));
-        accounts.push(solana_instruction::AccountMeta::new(
-            self.maker_quote,
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.event_authority,
             false,
         ));
-        if let Some(user_collateral) = self.user_collateral {
-            accounts.push(solana_instruction::AccountMeta::new(user_collateral, false));
-        }
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            self.tempo_program,
+            false,
+        ));
         accounts.extend_from_slice(remaining_accounts);
-        let mut data = ClearMakerQuoteInstructionData::new().try_to_vec().unwrap();
+        let mut data = SetPauseInstructionData::new().try_to_vec().unwrap();
         let mut args = args.try_to_vec().unwrap();
         data.append(&mut args);
 
@@ -64,13 +62,13 @@ impl ClearMakerQuote {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
-pub struct ClearMakerQuoteInstructionData {
+pub struct SetPauseInstructionData {
     discriminator: u8,
 }
 
-impl ClearMakerQuoteInstructionData {
+impl SetPauseInstructionData {
     pub fn new() -> Self {
-        Self { discriminator: 19 }
+        Self { discriminator: 32 }
     }
 
     pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
@@ -78,76 +76,72 @@ impl ClearMakerQuoteInstructionData {
     }
 }
 
-impl Default for ClearMakerQuoteInstructionData {
+impl Default for SetPauseInstructionData {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
-pub struct ClearMakerQuoteInstructionArgs {
-    pub sequence: u64,
+pub struct SetPauseInstructionArgs {
+    pub paused: u8,
 }
 
-impl ClearMakerQuoteInstructionArgs {
+impl SetPauseInstructionArgs {
     pub(crate) fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
         borsh::to_vec(self)
     }
 }
 
-/// Instruction builder for `ClearMakerQuote`.
+/// Instruction builder for `SetPause`.
 ///
 /// ### Accounts:
 ///
-///   0. `[signer]` writer
+///   0. `[signer]` authority
 ///   1. `[writable]` market
-///   2. `[writable]` maker_quote
-///   3. `[writable, optional]` user_collateral
+///   2. `[]` event_authority
+///   3. `[]` tempo_program
 #[derive(Clone, Debug, Default)]
-pub struct ClearMakerQuoteBuilder {
-    writer: Option<solana_address::Address>,
+pub struct SetPauseBuilder {
+    authority: Option<solana_address::Address>,
     market: Option<solana_address::Address>,
-    maker_quote: Option<solana_address::Address>,
-    user_collateral: Option<solana_address::Address>,
-    sequence: Option<u64>,
+    event_authority: Option<solana_address::Address>,
+    tempo_program: Option<solana_address::Address>,
+    paused: Option<u8>,
     __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
-impl ClearMakerQuoteBuilder {
+impl SetPauseBuilder {
     pub fn new() -> Self {
         Self::default()
     }
-    /// Maker or its delegate
+    /// Market authority
     #[inline(always)]
-    pub fn writer(&mut self, writer: solana_address::Address) -> &mut Self {
-        self.writer = Some(writer);
+    pub fn authority(&mut self, authority: solana_address::Address) -> &mut Self {
+        self.authority = Some(authority);
         self
     }
-    /// Market (decrements active count)
+    /// Market to pause/resume
     #[inline(always)]
     pub fn market(&mut self, market: solana_address::Address) -> &mut Self {
         self.market = Some(market);
         self
     }
-    /// MakerQuote to clear
+    /// Event authority PDA for CPI event emission
     #[inline(always)]
-    pub fn maker_quote(&mut self, maker_quote: solana_address::Address) -> &mut Self {
-        self.maker_quote = Some(maker_quote);
+    pub fn event_authority(&mut self, event_authority: solana_address::Address) -> &mut Self {
+        self.event_authority = Some(event_authority);
         self
     }
-    /// `[optional account]`
-    /// (Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation
+    /// Tempo program, for self-CPI event emission
     #[inline(always)]
-    pub fn user_collateral(
-        &mut self,
-        user_collateral: Option<solana_address::Address>,
-    ) -> &mut Self {
-        self.user_collateral = user_collateral;
+    pub fn tempo_program(&mut self, tempo_program: solana_address::Address) -> &mut Self {
+        self.tempo_program = Some(tempo_program);
         self
     }
     #[inline(always)]
-    pub fn sequence(&mut self, sequence: u64) -> &mut Self {
-        self.sequence = Some(sequence);
+    pub fn paused(&mut self, paused: u8) -> &mut Self {
+        self.paused = Some(paused);
         self
     }
     /// Add an additional account to the instruction.
@@ -167,60 +161,60 @@ impl ClearMakerQuoteBuilder {
     }
     #[allow(clippy::clone_on_copy)]
     pub fn instruction(&self) -> solana_instruction::Instruction {
-        let accounts = ClearMakerQuote {
-            writer: self.writer.expect("writer is not set"),
+        let accounts = SetPause {
+            authority: self.authority.expect("authority is not set"),
             market: self.market.expect("market is not set"),
-            maker_quote: self.maker_quote.expect("maker_quote is not set"),
-            user_collateral: self.user_collateral,
+            event_authority: self.event_authority.expect("event_authority is not set"),
+            tempo_program: self.tempo_program.expect("tempo_program is not set"),
         };
-        let args = ClearMakerQuoteInstructionArgs {
-            sequence: self.sequence.clone().expect("sequence is not set"),
+        let args = SetPauseInstructionArgs {
+            paused: self.paused.clone().expect("paused is not set"),
         };
 
         accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
     }
 }
 
-/// `clear_maker_quote` CPI accounts.
-pub struct ClearMakerQuoteCpiAccounts<'a, 'b> {
-    /// Maker or its delegate
-    pub writer: &'b solana_account_info::AccountInfo<'a>,
-    /// Market (decrements active count)
+/// `set_pause` CPI accounts.
+pub struct SetPauseCpiAccounts<'a, 'b> {
+    /// Market authority
+    pub authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Market to pause/resume
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// MakerQuote to clear
-    pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
-    /// (Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation
-    pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    /// Event authority PDA for CPI event emission
+    pub event_authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Tempo program, for self-CPI event emission
+    pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
 }
 
-/// `clear_maker_quote` CPI instruction.
-pub struct ClearMakerQuoteCpi<'a, 'b> {
+/// `set_pause` CPI instruction.
+pub struct SetPauseCpi<'a, 'b> {
     /// The program to invoke.
     pub __program: &'b solana_account_info::AccountInfo<'a>,
-    /// Maker or its delegate
-    pub writer: &'b solana_account_info::AccountInfo<'a>,
-    /// Market (decrements active count)
+    /// Market authority
+    pub authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Market to pause/resume
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// MakerQuote to clear
-    pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
-    /// (Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation
-    pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    /// Event authority PDA for CPI event emission
+    pub event_authority: &'b solana_account_info::AccountInfo<'a>,
+    /// Tempo program, for self-CPI event emission
+    pub tempo_program: &'b solana_account_info::AccountInfo<'a>,
     /// The arguments for the instruction.
-    pub __args: ClearMakerQuoteInstructionArgs,
+    pub __args: SetPauseInstructionArgs,
 }
 
-impl<'a, 'b> ClearMakerQuoteCpi<'a, 'b> {
+impl<'a, 'b> SetPauseCpi<'a, 'b> {
     pub fn new(
         program: &'b solana_account_info::AccountInfo<'a>,
-        accounts: ClearMakerQuoteCpiAccounts<'a, 'b>,
-        args: ClearMakerQuoteInstructionArgs,
+        accounts: SetPauseCpiAccounts<'a, 'b>,
+        args: SetPauseInstructionArgs,
     ) -> Self {
         Self {
             __program: program,
-            writer: accounts.writer,
+            authority: accounts.authority,
             market: accounts.market,
-            maker_quote: accounts.maker_quote,
-            user_collateral: accounts.user_collateral,
+            event_authority: accounts.event_authority,
+            tempo_program: accounts.tempo_program,
             __args: args,
         }
     }
@@ -249,23 +243,21 @@ impl<'a, 'b> ClearMakerQuoteCpi<'a, 'b> {
     ) -> solana_program_error::ProgramResult {
         let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.writer.key,
+            *self.authority.key,
             true,
         ));
         accounts.push(solana_instruction::AccountMeta::new(
             *self.market.key,
             false,
         ));
-        accounts.push(solana_instruction::AccountMeta::new(
-            *self.maker_quote.key,
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.event_authority.key,
             false,
         ));
-        if let Some(user_collateral) = self.user_collateral {
-            accounts.push(solana_instruction::AccountMeta::new(
-                *user_collateral.key,
-                false,
-            ));
-        }
+        accounts.push(solana_instruction::AccountMeta::new_readonly(
+            *self.tempo_program.key,
+            false,
+        ));
         remaining_accounts.iter().for_each(|remaining_account| {
             accounts.push(solana_instruction::AccountMeta {
                 pubkey: *remaining_account.0.key,
@@ -273,7 +265,7 @@ impl<'a, 'b> ClearMakerQuoteCpi<'a, 'b> {
                 is_writable: remaining_account.2,
             })
         });
-        let mut data = ClearMakerQuoteInstructionData::new().try_to_vec().unwrap();
+        let mut data = SetPauseInstructionData::new().try_to_vec().unwrap();
         let mut args = self.__args.try_to_vec().unwrap();
         data.append(&mut args);
 
@@ -284,12 +276,10 @@ impl<'a, 'b> ClearMakerQuoteCpi<'a, 'b> {
         };
         let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
         account_infos.push(self.__program.clone());
-        account_infos.push(self.writer.clone());
+        account_infos.push(self.authority.clone());
         account_infos.push(self.market.clone());
-        account_infos.push(self.maker_quote.clone());
-        if let Some(user_collateral) = self.user_collateral {
-            account_infos.push(user_collateral.clone());
-        }
+        account_infos.push(self.event_authority.clone());
+        account_infos.push(self.tempo_program.clone());
         remaining_accounts
             .iter()
             .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
@@ -302,66 +292,65 @@ impl<'a, 'b> ClearMakerQuoteCpi<'a, 'b> {
     }
 }
 
-/// Instruction builder for `ClearMakerQuote` via CPI.
+/// Instruction builder for `SetPause` via CPI.
 ///
 /// ### Accounts:
 ///
-///   0. `[signer]` writer
+///   0. `[signer]` authority
 ///   1. `[writable]` market
-///   2. `[writable]` maker_quote
-///   3. `[writable, optional]` user_collateral
+///   2. `[]` event_authority
+///   3. `[]` tempo_program
 #[derive(Clone, Debug)]
-pub struct ClearMakerQuoteCpiBuilder<'a, 'b> {
-    instruction: Box<ClearMakerQuoteCpiBuilderInstruction<'a, 'b>>,
+pub struct SetPauseCpiBuilder<'a, 'b> {
+    instruction: Box<SetPauseCpiBuilderInstruction<'a, 'b>>,
 }
 
-impl<'a, 'b> ClearMakerQuoteCpiBuilder<'a, 'b> {
+impl<'a, 'b> SetPauseCpiBuilder<'a, 'b> {
     pub fn new(program: &'b solana_account_info::AccountInfo<'a>) -> Self {
-        let instruction = Box::new(ClearMakerQuoteCpiBuilderInstruction {
+        let instruction = Box::new(SetPauseCpiBuilderInstruction {
             __program: program,
-            writer: None,
+            authority: None,
             market: None,
-            maker_quote: None,
-            user_collateral: None,
-            sequence: None,
+            event_authority: None,
+            tempo_program: None,
+            paused: None,
             __remaining_accounts: Vec::new(),
         });
         Self { instruction }
     }
-    /// Maker or its delegate
+    /// Market authority
     #[inline(always)]
-    pub fn writer(&mut self, writer: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
-        self.instruction.writer = Some(writer);
+    pub fn authority(&mut self, authority: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
+        self.instruction.authority = Some(authority);
         self
     }
-    /// Market (decrements active count)
+    /// Market to pause/resume
     #[inline(always)]
     pub fn market(&mut self, market: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.market = Some(market);
         self
     }
-    /// MakerQuote to clear
+    /// Event authority PDA for CPI event emission
     #[inline(always)]
-    pub fn maker_quote(
+    pub fn event_authority(
         &mut self,
-        maker_quote: &'b solana_account_info::AccountInfo<'a>,
+        event_authority: &'b solana_account_info::AccountInfo<'a>,
     ) -> &mut Self {
-        self.instruction.maker_quote = Some(maker_quote);
+        self.instruction.event_authority = Some(event_authority);
         self
     }
-    /// `[optional account]`
-    /// (Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation
+    /// Tempo program, for self-CPI event emission
     #[inline(always)]
-    pub fn user_collateral(
+    pub fn tempo_program(
         &mut self,
-        user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+        tempo_program: &'b solana_account_info::AccountInfo<'a>,
     ) -> &mut Self {
-        self.instruction.user_collateral = user_collateral;
+        self.instruction.tempo_program = Some(tempo_program);
         self
     }
     #[inline(always)]
-    pub fn sequence(&mut self, sequence: u64) -> &mut Self {
-        self.instruction.sequence = Some(sequence);
+    pub fn paused(&mut self, paused: u8) -> &mut Self {
+        self.instruction.paused = Some(paused);
         self
     }
     /// Add an additional account to the instruction.
@@ -398,26 +387,25 @@ impl<'a, 'b> ClearMakerQuoteCpiBuilder<'a, 'b> {
     #[allow(clippy::clone_on_copy)]
     #[allow(clippy::vec_init_then_push)]
     pub fn invoke_signed(&self, signers_seeds: &[&[&[u8]]]) -> solana_program_error::ProgramResult {
-        let args = ClearMakerQuoteInstructionArgs {
-            sequence: self
-                .instruction
-                .sequence
-                .clone()
-                .expect("sequence is not set"),
+        let args = SetPauseInstructionArgs {
+            paused: self.instruction.paused.clone().expect("paused is not set"),
         };
-        let instruction = ClearMakerQuoteCpi {
+        let instruction = SetPauseCpi {
             __program: self.instruction.__program,
 
-            writer: self.instruction.writer.expect("writer is not set"),
+            authority: self.instruction.authority.expect("authority is not set"),
 
             market: self.instruction.market.expect("market is not set"),
 
-            maker_quote: self
+            event_authority: self
                 .instruction
-                .maker_quote
-                .expect("maker_quote is not set"),
+                .event_authority
+                .expect("event_authority is not set"),
 
-            user_collateral: self.instruction.user_collateral,
+            tempo_program: self
+                .instruction
+                .tempo_program
+                .expect("tempo_program is not set"),
             __args: args,
         };
         instruction.invoke_signed_with_remaining_accounts(
@@ -428,13 +416,13 @@ impl<'a, 'b> ClearMakerQuoteCpiBuilder<'a, 'b> {
 }
 
 #[derive(Clone, Debug)]
-struct ClearMakerQuoteCpiBuilderInstruction<'a, 'b> {
+struct SetPauseCpiBuilderInstruction<'a, 'b> {
     __program: &'b solana_account_info::AccountInfo<'a>,
-    writer: Option<&'b solana_account_info::AccountInfo<'a>>,
+    authority: Option<&'b solana_account_info::AccountInfo<'a>>,
     market: Option<&'b solana_account_info::AccountInfo<'a>>,
-    maker_quote: Option<&'b solana_account_info::AccountInfo<'a>>,
-    user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
-    sequence: Option<u64>,
+    event_authority: Option<&'b solana_account_info::AccountInfo<'a>>,
+    tempo_program: Option<&'b solana_account_info::AccountInfo<'a>>,
+    paused: Option<u8>,
     /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
     __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }

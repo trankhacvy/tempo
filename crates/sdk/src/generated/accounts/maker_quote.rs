@@ -30,6 +30,9 @@ pub struct MakerQuote {
     pub ask_levels_le: [u8; 80],
     pub bid_snapshots_le: [u8; 64],
     pub ask_snapshots_le: [u8; 64],
+    pub quote_index_le: [u8; 2],
+    pub reserved_margin_le: [u8; 8],
+    pub worst_price_le: [u8; 8],
 }
 
 pub const MAKER_QUOTE_DISCRIMINATOR: u8 = 8;
@@ -42,11 +45,13 @@ impl MakerQuote {
     ///   0. `MakerQuote::PREFIX`
     ///   1. market (`Address`)
     ///   2. maker (`Address`)
+    ///   3. quote_index (`u16`)
     pub const PREFIX: &'static [u8] = "maker_quote".as_bytes();
 
     pub fn create_pda(
         market: Address,
         maker: Address,
+        quote_index: u16,
         bump: u8,
     ) -> Result<solana_address::Address, solana_address::error::AddressError> {
         solana_address::Address::create_program_address(
@@ -54,15 +59,25 @@ impl MakerQuote {
                 "maker_quote".as_bytes(),
                 market.as_ref(),
                 maker.as_ref(),
+                quote_index.to_string().as_ref(),
                 &[bump],
             ],
             &crate::TEMPO_PROGRAM_ID,
         )
     }
 
-    pub fn find_pda(market: &Address, maker: &Address) -> (solana_address::Address, u8) {
+    pub fn find_pda(
+        market: &Address,
+        maker: &Address,
+        quote_index: u16,
+    ) -> (solana_address::Address, u8) {
         solana_address::Address::find_program_address(
-            &["maker_quote".as_bytes(), market.as_ref(), maker.as_ref()],
+            &[
+                "maker_quote".as_bytes(),
+                market.as_ref(),
+                maker.as_ref(),
+                quote_index.to_string().as_ref(),
+            ],
             &crate::TEMPO_PROGRAM_ID,
         )
     }

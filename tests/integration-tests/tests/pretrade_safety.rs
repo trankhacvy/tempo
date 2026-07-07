@@ -187,3 +187,46 @@ fn reduce_only_reserves_full_margin_no_discount() {
         "a reduce-only order locks its full worst-case initial margin (no ~0 discount)"
     );
 }
+
+/// Minimum order notional (missing-features §2.6, plan.md §2.3): dust orders and
+/// dust maker levels are rejected with `OrderBelowMinimum`; a zero minimum
+/// disables the check (back-compat).
+#[test]
+fn dust_orders_and_levels_rejected_below_min_notional() {
+    let mut ctx = TestContext::new();
+    ctx.market_min_order_notional = 1_000;
+    let pdas = ctx.init_market(10, 64, 16); // genesis window floor = 10
+
+    let trader = ctx.new_funded_signer();
+    // 5 lots @ 40 = 200 notional < 1000 → rejected (Custom 29).
+    assert!(
+        ctx.try_submit_order(&pdas, &trader, SIDE_BUY, 40, 5)
+            .is_err(),
+        "a dust order must be rejected"
+    );
+    // 30 lots @ 40 = 1200 ≥ 1000 → accepted.
+    ctx.submit_order(&pdas, &trader, SIDE_BUY, 40, 30);
+    assert_eq!(ctx.order_slab(&pdas).count, 1, "non-dust order rested");
+
+    // Maker levels: sized levels are priced conservatively at the WINDOW FLOOR
+    // (10), so a 50-lot level = 500 < 1000 → rejected; 120 lots = 1200 → ok.
+    let maker = ctx.new_funded_signer();
+    ctx.init_maker_quote(&pdas, &maker, None, 0);
+    assert!(
+        ctx.try_update_maker_quote_levels(&pdas, &maker, 1, 32, &[(0, 50)], &[])
+            .is_err(),
+        "a dust maker level must be rejected"
+    );
+    ctx.try_update_maker_quote_levels(&pdas, &maker, 2, 32, &[(0, 120)], &[])
+        .expect("a non-dust level posts");
+}
+
+/// min_order_notional == 0 disables the check entirely (the pre-v12 behaviour).
+#[test]
+fn zero_min_notional_accepts_everything() {
+    let mut ctx = TestContext::new();
+    let pdas = ctx.init_market(10, 64, 16);
+    let trader = ctx.new_funded_signer();
+    ctx.submit_order(&pdas, &trader, SIDE_BUY, 10, 1); // 10-notional dust is fine
+    assert_eq!(ctx.order_slab(&pdas).count, 1);
+}

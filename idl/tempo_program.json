@@ -5217,8 +5217,9 @@
           },
           {
             "docs": [
-              "The MAKER's mint-scoped collateral ledger (reservation delta-locked here)"
+              "(Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only"
             ],
+            "isOptional": true,
             "isSigner": false,
             "isWritable": true,
             "kind": "instructionAccountNode",
@@ -5350,8 +5351,9 @@
           },
           {
             "docs": [
-              "The MAKER's ledger (the standing reservation is released here)"
+              "(Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation"
             ],
+            "isOptional": true,
             "isSigner": false,
             "isWritable": true,
             "kind": "instructionAccountNode",

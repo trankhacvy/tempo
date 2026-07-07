@@ -19,6 +19,8 @@ pub struct UpdateMakerQuoteLevels {
     pub market: solana_address::Address,
     /// MakerQuote to update
     pub maker_quote: solana_address::Address,
+    /// (Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only
+    pub user_collateral: Option<solana_address::Address>,
 }
 
 impl UpdateMakerQuoteLevels {
@@ -35,7 +37,7 @@ impl UpdateMakerQuoteLevels {
         args: UpdateMakerQuoteLevelsInstructionArgs,
         remaining_accounts: &[solana_instruction::AccountMeta],
     ) -> solana_instruction::Instruction {
-        let mut accounts = Vec::with_capacity(3 + remaining_accounts.len());
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.writer,
             true,
@@ -48,6 +50,9 @@ impl UpdateMakerQuoteLevels {
             self.maker_quote,
             false,
         ));
+        if let Some(user_collateral) = self.user_collateral {
+            accounts.push(solana_instruction::AccountMeta::new(user_collateral, false));
+        }
         accounts.extend_from_slice(remaining_accounts);
         let mut data = UpdateMakerQuoteLevelsInstructionData::new()
             .try_to_vec()
@@ -107,11 +112,13 @@ impl UpdateMakerQuoteLevelsInstructionArgs {
 ///   0. `[signer]` writer
 ///   1. `[]` market
 ///   2. `[writable]` maker_quote
+///   3. `[writable, optional]` user_collateral
 #[derive(Clone, Debug, Default)]
 pub struct UpdateMakerQuoteLevelsBuilder {
     writer: Option<solana_address::Address>,
     market: Option<solana_address::Address>,
     maker_quote: Option<solana_address::Address>,
+    user_collateral: Option<solana_address::Address>,
     sequence: Option<u64>,
     mid_tick: Option<u32>,
     num_bids: Option<u8>,
@@ -141,6 +148,16 @@ impl UpdateMakerQuoteLevelsBuilder {
     #[inline(always)]
     pub fn maker_quote(&mut self, maker_quote: solana_address::Address) -> &mut Self {
         self.maker_quote = Some(maker_quote);
+        self
+    }
+    /// `[optional account]`
+    /// (Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only
+    #[inline(always)]
+    pub fn user_collateral(
+        &mut self,
+        user_collateral: Option<solana_address::Address>,
+    ) -> &mut Self {
+        self.user_collateral = user_collateral;
         self
     }
     #[inline(always)]
@@ -194,6 +211,7 @@ impl UpdateMakerQuoteLevelsBuilder {
             writer: self.writer.expect("writer is not set"),
             market: self.market.expect("market is not set"),
             maker_quote: self.maker_quote.expect("maker_quote is not set"),
+            user_collateral: self.user_collateral,
         };
         let args = UpdateMakerQuoteLevelsInstructionArgs {
             sequence: self.sequence.clone().expect("sequence is not set"),
@@ -216,6 +234,8 @@ pub struct UpdateMakerQuoteLevelsCpiAccounts<'a, 'b> {
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// MakerQuote to update
     pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    /// (Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only
+    pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
 }
 
 /// `update_maker_quote_levels` CPI instruction.
@@ -228,6 +248,8 @@ pub struct UpdateMakerQuoteLevelsCpi<'a, 'b> {
     pub market: &'b solana_account_info::AccountInfo<'a>,
     /// MakerQuote to update
     pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
+    /// (Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only
+    pub user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
     /// The arguments for the instruction.
     pub __args: UpdateMakerQuoteLevelsInstructionArgs,
 }
@@ -243,6 +265,7 @@ impl<'a, 'b> UpdateMakerQuoteLevelsCpi<'a, 'b> {
             writer: accounts.writer,
             market: accounts.market,
             maker_quote: accounts.maker_quote,
+            user_collateral: accounts.user_collateral,
             __args: args,
         }
     }
@@ -269,7 +292,7 @@ impl<'a, 'b> UpdateMakerQuoteLevelsCpi<'a, 'b> {
         signers_seeds: &[&[&[u8]]],
         remaining_accounts: &[(&'b solana_account_info::AccountInfo<'a>, bool, bool)],
     ) -> solana_program_error::ProgramResult {
-        let mut accounts = Vec::with_capacity(3 + remaining_accounts.len());
+        let mut accounts = Vec::with_capacity(4 + remaining_accounts.len());
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             *self.writer.key,
             true,
@@ -282,6 +305,12 @@ impl<'a, 'b> UpdateMakerQuoteLevelsCpi<'a, 'b> {
             *self.maker_quote.key,
             false,
         ));
+        if let Some(user_collateral) = self.user_collateral {
+            accounts.push(solana_instruction::AccountMeta::new(
+                *user_collateral.key,
+                false,
+            ));
+        }
         remaining_accounts.iter().for_each(|remaining_account| {
             accounts.push(solana_instruction::AccountMeta {
                 pubkey: *remaining_account.0.key,
@@ -300,11 +329,14 @@ impl<'a, 'b> UpdateMakerQuoteLevelsCpi<'a, 'b> {
             accounts,
             data,
         };
-        let mut account_infos = Vec::with_capacity(4 + remaining_accounts.len());
+        let mut account_infos = Vec::with_capacity(5 + remaining_accounts.len());
         account_infos.push(self.__program.clone());
         account_infos.push(self.writer.clone());
         account_infos.push(self.market.clone());
         account_infos.push(self.maker_quote.clone());
+        if let Some(user_collateral) = self.user_collateral {
+            account_infos.push(user_collateral.clone());
+        }
         remaining_accounts
             .iter()
             .for_each(|remaining_account| account_infos.push(remaining_account.0.clone()));
@@ -324,6 +356,7 @@ impl<'a, 'b> UpdateMakerQuoteLevelsCpi<'a, 'b> {
 ///   0. `[signer]` writer
 ///   1. `[]` market
 ///   2. `[writable]` maker_quote
+///   3. `[writable, optional]` user_collateral
 #[derive(Clone, Debug)]
 pub struct UpdateMakerQuoteLevelsCpiBuilder<'a, 'b> {
     instruction: Box<UpdateMakerQuoteLevelsCpiBuilderInstruction<'a, 'b>>,
@@ -336,6 +369,7 @@ impl<'a, 'b> UpdateMakerQuoteLevelsCpiBuilder<'a, 'b> {
             writer: None,
             market: None,
             maker_quote: None,
+            user_collateral: None,
             sequence: None,
             mid_tick: None,
             num_bids: None,
@@ -365,6 +399,16 @@ impl<'a, 'b> UpdateMakerQuoteLevelsCpiBuilder<'a, 'b> {
         maker_quote: &'b solana_account_info::AccountInfo<'a>,
     ) -> &mut Self {
         self.instruction.maker_quote = Some(maker_quote);
+        self
+    }
+    /// `[optional account]`
+    /// (Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only
+    #[inline(always)]
+    pub fn user_collateral(
+        &mut self,
+        user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
+    ) -> &mut Self {
+        self.instruction.user_collateral = user_collateral;
         self
     }
     #[inline(always)]
@@ -474,6 +518,8 @@ impl<'a, 'b> UpdateMakerQuoteLevelsCpiBuilder<'a, 'b> {
                 .instruction
                 .maker_quote
                 .expect("maker_quote is not set"),
+
+            user_collateral: self.instruction.user_collateral,
             __args: args,
         };
         instruction.invoke_signed_with_remaining_accounts(
@@ -489,6 +535,7 @@ struct UpdateMakerQuoteLevelsCpiBuilderInstruction<'a, 'b> {
     writer: Option<&'b solana_account_info::AccountInfo<'a>>,
     market: Option<&'b solana_account_info::AccountInfo<'a>>,
     maker_quote: Option<&'b solana_account_info::AccountInfo<'a>>,
+    user_collateral: Option<&'b solana_account_info::AccountInfo<'a>>,
     sequence: Option<u64>,
     mid_tick: Option<u32>,
     num_bids: Option<u8>,

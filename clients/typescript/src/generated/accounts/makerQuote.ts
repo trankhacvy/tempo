@@ -62,6 +62,9 @@ export type MakerQuote = {
   askLevelsLe: Array<number>;
   bidSnapshotsLe: Array<number>;
   askSnapshotsLe: Array<number>;
+  quoteIndexLe: Array<number>;
+  reservedMarginLe: Array<number>;
+  worstPriceLe: Array<number>;
 };
 
 export type MakerQuoteArgs = {
@@ -84,6 +87,9 @@ export type MakerQuoteArgs = {
   askLevelsLe: Array<number>;
   bidSnapshotsLe: Array<number>;
   askSnapshotsLe: Array<number>;
+  quoteIndexLe: Array<number>;
+  reservedMarginLe: Array<number>;
+  worstPriceLe: Array<number>;
 };
 
 /** Gets the encoder for {@link MakerQuoteArgs} account data. */
@@ -109,6 +115,9 @@ export function getMakerQuoteEncoder(): FixedSizeEncoder<MakerQuoteArgs> {
       ["askLevelsLe", getArrayEncoder(getU8Encoder(), { size: 80 })],
       ["bidSnapshotsLe", getArrayEncoder(getU8Encoder(), { size: 64 })],
       ["askSnapshotsLe", getArrayEncoder(getU8Encoder(), { size: 64 })],
+      ["quoteIndexLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
+      ["reservedMarginLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
+      ["worstPriceLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
     ]),
     (value) => ({
       ...value,
@@ -139,6 +148,9 @@ export function getMakerQuoteDecoder(): FixedSizeDecoder<MakerQuote> {
     ["askLevelsLe", getArrayDecoder(getU8Decoder(), { size: 80 })],
     ["bidSnapshotsLe", getArrayDecoder(getU8Decoder(), { size: 64 })],
     ["askSnapshotsLe", getArrayDecoder(getU8Decoder(), { size: 64 })],
+    ["quoteIndexLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
+    ["reservedMarginLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
+    ["worstPriceLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
   ]);
 }
 

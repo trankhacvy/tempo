@@ -90,6 +90,10 @@ pub struct ProvisionConfig {
     pub maint_bps: u16,
     pub initial_bps: u16,
     pub penalty_bps: u16,
+    /// Taker fee (signed bps). Defaults to 10 on a money market so the insurance
+    /// pool self-seeds from the first taker settle (P0.6 drill follow-up);
+    /// 0 on a clearing-only market.
+    pub taker_fee_bps: i16,
     pub max_price_move_bps_per_slot: u16,
     pub soft_stale_slots: u64,
     // money path
@@ -119,6 +123,11 @@ impl ProvisionConfig {
         } else {
             env_parse::<u16>("TEMPO_SIM_PENALTY_BPS", 100)
         };
+        let taker_fee_bps = if maint_bps == 0 {
+            0
+        } else {
+            env_parse::<i16>("TEMPO_SIM_TAKER_FEE_BPS", 10)
+        };
         Ok(Self {
             rpc_url: common.rpc_url.clone(),
             commitment: common.commitment.clone(),
@@ -143,6 +152,7 @@ impl ProvisionConfig {
             maint_bps,
             initial_bps,
             penalty_bps,
+            taker_fee_bps,
             max_price_move_bps_per_slot: env_parse("TEMPO_SIM_MAX_PRICE_MOVE_BPS", 0),
             soft_stale_slots: env_parse("TEMPO_SIM_SOFT_STALE_SLOTS", 0),
             collateral_decimals: env_parse("TEMPO_SIM_COLLATERAL_DECIMALS", 6),
@@ -179,6 +189,7 @@ mod tests {
             maint_bps: 0,
             initial_bps: 0,
             penalty_bps: 0,
+            taker_fee_bps: 0,
             max_price_move_bps_per_slot: 0,
             soft_stale_slots: 0,
             collateral_decimals: 6,

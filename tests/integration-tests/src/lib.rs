@@ -79,6 +79,7 @@ const IX_REMOVE_POSITION_FROM_MARGIN: u8 = 28;
 const IX_CLOSE_MAKER_QUOTE: u8 = 29;
 const IX_INIT_SHARD: u8 = 30;
 const IX_RESET_SHARD: u8 = 31;
+const IX_SET_PAUSE: u8 = 32;
 
 /// One cross-margin member as supplied to `withdraw_cross` / `liquidate_cross`
 /// (known-issues §2.4): a `Live` member is a `(position, market, oracle)` triple;
@@ -394,6 +395,9 @@ pub struct TestContext {
     pub market_initial_margin_bps: Option<u16>,
     /// Per-position notional cap written at init; defaults to 0 (disabled).
     pub market_max_position_notional: u128,
+    /// Minimum order notional written at init (missing-features §2.6); defaults
+    /// to 0 (disabled). Set before `init_market` for anti-dust tests.
+    pub market_min_order_notional: u64,
     /// Number of `OrderSlab` shards a market is created with (Stage A sharding);
     /// defaults to 1 (single-shard path). Set before `init_market` for multi-shard tests.
     pub market_num_slab_shards: u16,
@@ -469,6 +473,7 @@ impl TestContext {
             market_soft_stale_slots: 0,
             market_initial_margin_bps: None,
             market_max_position_notional: 0,
+            market_min_order_notional: 0,
             market_num_slab_shards: 1,
             market_collateral_mint: None,
             vault_mint: None,
@@ -587,7 +592,7 @@ impl TestContext {
             )
         };
 
-        let mut data = Vec::with_capacity(1 + 131);
+        let mut data = Vec::with_capacity(1 + 165);
         data.push(IX_INITIALIZE_MARKET);
         data.push(pdas.market_bump);
         data.push(pdas.histogram_bump);
@@ -609,6 +614,12 @@ impl TestContext {
         data.extend_from_slice(&self.market_max_position_notional.to_le_bytes());
         // Stage A sharding: number of OrderSlab shards (created below via init_shard).
         data.extend_from_slice(&num_slab_shards.to_le_bytes());
+        // v12 tail: min-notional + OI cap + reward floor + close buffer
+        // (all but min-notional default 0 = disabled in the harness for now).
+        data.extend_from_slice(&self.market_min_order_notional.to_le_bytes());
+        data.extend_from_slice(&0u128.to_le_bytes());
+        data.extend_from_slice(&0u64.to_le_bytes());
+        data.extend_from_slice(&0u16.to_le_bytes());
 
         // initialize_market no longer creates the slab (shards are made one-per-tx by
         // init_shard), so there is no `order_slab` account here.
@@ -1515,8 +1526,15 @@ impl TestContext {
 
     /// Derive a MakerQuote PDA for `(market, maker)`.
     pub fn maker_quote_pda(&self, pdas: &MarketPdas, maker: &Pubkey) -> (Pubkey, u8) {
+        // MakerQuote v4 (§4.9): quote_index is the 4th seed; the harness uses a
+        // single ladder per maker, index 0.
         Pubkey::find_program_address(
-            &[b"maker_quote", pdas.market.as_ref(), maker.as_ref()],
+            &[
+                b"maker_quote",
+                pdas.market.as_ref(),
+                maker.as_ref(),
+                &0u16.to_le_bytes(),
+            ],
             &TEMPO_PROGRAM_ID,
         )
     }
@@ -1530,11 +1548,13 @@ impl TestContext {
         expiry_slots: u64,
     ) -> Pubkey {
         let (quote, bump) = self.maker_quote_pda(pdas, &maker.pubkey());
-        let mut data = Vec::with_capacity(1 + 41);
+        let mut data = Vec::with_capacity(1 + 43);
         data.push(IX_INIT_MAKER_QUOTE);
         data.push(bump);
         data.extend_from_slice(&expiry_slots.to_le_bytes());
         data.extend_from_slice(delegate.unwrap_or_default().as_ref());
+        // MakerQuote v4: quote_index (the harness single-ladder default, 0).
+        data.extend_from_slice(&0u16.to_le_bytes());
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
             accounts: vec![
@@ -1617,16 +1637,123 @@ impl TestContext {
         data.push(asks.len() as u8);
         data.extend_from_slice(&bid_region);
         data.extend_from_slice(&ask_region);
+        let mut accounts = vec![
+            AccountMeta::new_readonly(maker.pubkey(), true),
+            AccountMeta::new_readonly(pdas.market, false),
+            AccountMeta::new(quote, false),
+        ];
+        // Quote-time margin (§7.1): a money-path market delta-locks the ladder's
+        // reservation in the MAKER's ledger; clearing-only markets omit it.
+        if self.market_maint_bps > 0 {
+            let (uc, _) = self.collateral_pda(&maker.pubkey());
+            accounts.push(AccountMeta::new(uc, false));
+        }
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(maker.pubkey(), true),
-                AccountMeta::new_readonly(pdas.market, false),
-                AccountMeta::new(quote, false),
-            ],
+            accounts,
             data,
         };
         self.send(ix, &[maker]).expect("update_maker_quote_levels")
+    }
+
+    /// Raw-result variant of [`TestContext::update_maker_quote_levels`] for
+    /// rejection tests (unbacked ladders, dust levels, pause).
+    pub fn try_update_maker_quote_levels(
+        &mut self,
+        pdas: &MarketPdas,
+        maker: &Keypair,
+        sequence: u64,
+        mid_tick: u32,
+        bids: &[(u16, u64)],
+        asks: &[(u16, u64)],
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.try_update_maker_quote_levels_with_ledger(
+            pdas,
+            maker,
+            sequence,
+            mid_tick,
+            bids,
+            asks,
+            if self.market_maint_bps > 0 {
+                Some(self.collateral_pda(&maker.pubkey()).0)
+            } else {
+                None
+            },
+        )
+    }
+
+    /// Levels update with an EXPLICIT ledger account (or none) — lets adversarial
+    /// tests substitute a foreign ledger (§7.1: must be rejected).
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_update_maker_quote_levels_with_ledger(
+        &mut self,
+        pdas: &MarketPdas,
+        maker: &Keypair,
+        sequence: u64,
+        mid_tick: u32,
+        bids: &[(u16, u64)],
+        asks: &[(u16, u64)],
+        ledger: Option<Pubkey>,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let (quote, _) = self.maker_quote_pda(pdas, &maker.pubkey());
+        let mut bid_region = [0u8; 80];
+        let mut ask_region = [0u8; 80];
+        for (i, (o, s)) in bids.iter().enumerate() {
+            bid_region[i * 10..i * 10 + 2].copy_from_slice(&o.to_le_bytes());
+            bid_region[i * 10 + 2..i * 10 + 10].copy_from_slice(&s.to_le_bytes());
+        }
+        for (i, (o, s)) in asks.iter().enumerate() {
+            ask_region[i * 10..i * 10 + 2].copy_from_slice(&o.to_le_bytes());
+            ask_region[i * 10 + 2..i * 10 + 10].copy_from_slice(&s.to_le_bytes());
+        }
+        let mut data = Vec::with_capacity(1 + 174);
+        data.push(IX_UPDATE_MAKER_QUOTE_LEVELS);
+        data.extend_from_slice(&sequence.to_le_bytes());
+        data.extend_from_slice(&mid_tick.to_le_bytes());
+        data.push(bids.len() as u8);
+        data.push(asks.len() as u8);
+        data.extend_from_slice(&bid_region);
+        data.extend_from_slice(&ask_region);
+        let mut accounts = vec![
+            AccountMeta::new_readonly(maker.pubkey(), true),
+            AccountMeta::new_readonly(pdas.market, false),
+            AccountMeta::new(quote, false),
+        ];
+        if let Some(uc) = ledger {
+            accounts.push(AccountMeta::new(uc, false));
+        }
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts,
+            data,
+        };
+        self.send(ix, &[maker])
+    }
+
+    /// Raw-result variant of [`TestContext::init_maker_quote`] (pause tests).
+    pub fn try_init_maker_quote(
+        &mut self,
+        pdas: &MarketPdas,
+        maker: &Keypair,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let (quote, bump) = self.maker_quote_pda(pdas, &maker.pubkey());
+        let mut data = Vec::with_capacity(1 + 43);
+        data.push(IX_INIT_MAKER_QUOTE);
+        data.push(bump);
+        data.extend_from_slice(&0u64.to_le_bytes());
+        data.extend_from_slice(Pubkey::default().as_ref());
+        data.extend_from_slice(&0u16.to_le_bytes());
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(maker.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+                AccountMeta::new(quote, false),
+                AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+            ],
+            data,
+        };
+        self.send(ix, &[maker])
     }
 
     /// ClearMakerQuote signed by the maker (zero ladder + deactivate); raw result.
@@ -1640,13 +1767,20 @@ impl TestContext {
         let mut data = Vec::with_capacity(1 + 8);
         data.push(IX_CLEAR_MAKER_QUOTE);
         data.extend_from_slice(&sequence.to_le_bytes());
+        let mut accounts = vec![
+            AccountMeta::new_readonly(maker.pubkey(), true),
+            AccountMeta::new(pdas.market, false),
+            AccountMeta::new(quote, false),
+        ];
+        // §7.1: the standing reservation (money-path markets) releases into the
+        // maker's ledger; clearing-only markets omit it.
+        if self.market_maint_bps > 0 {
+            let (uc, _) = self.collateral_pda(&maker.pubkey());
+            accounts.push(AccountMeta::new(uc, false));
+        }
         let ix = Instruction {
             program_id: TEMPO_PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(maker.pubkey(), true),
-                AccountMeta::new(pdas.market, false),
-                AccountMeta::new(quote, false),
-            ],
+            accounts,
             data,
         };
         self.send(ix, &[maker])
@@ -2581,8 +2715,10 @@ impl TestContext {
     pub fn downgrade_market_to_v4(&mut self, market: &Pubkey) {
         let mut acct = self.svm.get_account(market).expect("market exists");
         // v4 → current appended region: v5 risk block (98) + v7 window_floor (8) +
-        // v8 initial_margin_bps/max_position_notional (18) = 124.
-        let new_len = acct.data.len() - 124;
+        // v8 initial_margin_bps/max_position_notional (18) + v10/v11 sharding (4)
+        // + v12 operability block (108) = 236 — mirrors the program's
+        // MARKET_APPENDED_LEN (this superseded path is synthetic-test-only).
+        let new_len = acct.data.len() - 236;
         acct.data.truncate(new_len);
         acct.data[1] = 4;
         self.svm
@@ -2649,6 +2785,46 @@ impl TestContext {
     ) -> TransactionMetadata {
         self.try_migrate_market(pdas, max_price_move_bps, soft_stale_slots)
             .expect("migrate_market")
+    }
+
+    /// SetPause (missing-features §3.2) signed by an arbitrary keypair (pass the
+    /// recorded market authority for the happy path, a stranger for rejection).
+    pub fn try_set_pause_signed(
+        &mut self,
+        pdas: &MarketPdas,
+        signer: &Keypair,
+        paused: u8,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(signer.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+                AccountMeta::new_readonly(self.event_authority, false),
+                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            ],
+            data: vec![IX_SET_PAUSE, paused],
+        };
+        self.send(ix, &[signer])
+    }
+
+    /// The keypair recorded as this market's authority at init (for tests that
+    /// need to sign authority-gated instructions with custom data).
+    pub fn market_authority_keypair(&self, pdas: &MarketPdas) -> Option<Keypair> {
+        self.market_authority
+            .get(&pdas.market)
+            .map(|k| k.insecure_clone())
+    }
+
+    /// SetPause with the market's recorded authority.
+    pub fn set_pause(&mut self, pdas: &MarketPdas, paused: u8) -> TransactionMetadata {
+        let authority = self
+            .market_authority
+            .get(&pdas.market)
+            .expect("authority recorded")
+            .insecure_clone();
+        self.try_set_pause_signed(pdas, &authority, paused)
+            .expect("set_pause")
     }
 
     pub fn try_migrate_position(

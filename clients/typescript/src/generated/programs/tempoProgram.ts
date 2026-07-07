@@ -71,7 +71,7 @@ import {
   getForceResetInstructionAsync,
   getInitCollateralInstruction,
   getInitializeMarketInstructionAsync,
-  getInitMakerQuoteInstructionAsync,
+  getInitMakerQuoteInstruction,
   getInitMarginAccountInstruction,
   getInitPositionInstructionAsync,
   getInitShardInstruction,
@@ -85,6 +85,8 @@ import {
   getReadOracleInstruction,
   getRemovePositionFromMarginInstruction,
   getResetShardInstruction,
+  getSeedInsuranceInstruction,
+  getSetPauseInstruction,
   getSettleFillInstructionAsync,
   getSettleMakerQuoteInstructionAsync,
   getStartAuctionInstructionAsync,
@@ -117,6 +119,8 @@ import {
   parseReadOracleInstruction,
   parseRemovePositionFromMarginInstruction,
   parseResetShardInstruction,
+  parseSeedInsuranceInstruction,
+  parseSetPauseInstruction,
   parseSettleFillInstruction,
   parseSettleMakerQuoteInstruction,
   parseStartAuctionInstruction,
@@ -135,7 +139,7 @@ import {
   type ForceResetAsyncInput,
   type InitCollateralInput,
   type InitializeMarketAsyncInput,
-  type InitMakerQuoteAsyncInput,
+  type InitMakerQuoteInput,
   type InitMarginAccountInput,
   type InitPositionAsyncInput,
   type InitShardInput,
@@ -167,6 +171,8 @@ import {
   type ParsedReadOracleInstruction,
   type ParsedRemovePositionFromMarginInstruction,
   type ParsedResetShardInstruction,
+  type ParsedSeedInsuranceInstruction,
+  type ParsedSetPauseInstruction,
   type ParsedSettleFillInstruction,
   type ParsedSettleMakerQuoteInstruction,
   type ParsedStartAuctionInstruction,
@@ -181,6 +187,8 @@ import {
   type ReadOracleInput,
   type RemovePositionFromMarginInput,
   type ResetShardInput,
+  type SeedInsuranceInput,
+  type SetPauseInput,
   type SettleFillAsyncInput,
   type SettleMakerQuoteAsyncInput,
   type StartAuctionAsyncInput,
@@ -285,6 +293,8 @@ export enum TempoProgramInstruction {
   CloseMakerQuote,
   InitShard,
   ResetShard,
+  SetPause,
+  SeedInsurance,
 }
 
 export function identifyTempoProgramInstruction(
@@ -386,6 +396,12 @@ export function identifyTempoProgramInstruction(
   }
   if (containsBytes(data, getU8Encoder().encode(31), 0)) {
     return TempoProgramInstruction.ResetShard;
+  }
+  if (containsBytes(data, getU8Encoder().encode(32), 0)) {
+    return TempoProgramInstruction.SetPause;
+  }
+  if (containsBytes(data, getU8Encoder().encode(40), 0)) {
+    return TempoProgramInstruction.SeedInsurance;
   }
   throw new SolanaError(
     SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
@@ -491,7 +507,13 @@ export type ParsedTempoProgramInstruction<
     } & ParsedInitShardInstruction<TProgram>)
   | ({
       instructionType: TempoProgramInstruction.ResetShard;
-    } & ParsedResetShardInstruction<TProgram>);
+    } & ParsedResetShardInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.SetPause;
+    } & ParsedSetPauseInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.SeedInsurance;
+    } & ParsedSeedInsuranceInstruction<TProgram>);
 
 export function parseTempoProgramInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
@@ -722,6 +744,20 @@ export function parseTempoProgramInstruction<TProgram extends string>(
         ...parseResetShardInstruction(instruction),
       };
     }
+    case TempoProgramInstruction.SetPause: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.SetPause,
+        ...parseSetPauseInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.SeedInsurance: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.SeedInsurance,
+        ...parseSeedInsuranceInstruction(instruction),
+      };
+    }
     default:
       throw new SolanaError(
         SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
@@ -824,8 +860,8 @@ export type TempoProgramPluginInstructions = {
   ) => ReturnType<typeof getForceResetInstructionAsync> &
     SelfPlanAndSendFunctions;
   initMakerQuote: (
-    input: InitMakerQuoteAsyncInput,
-  ) => ReturnType<typeof getInitMakerQuoteInstructionAsync> &
+    input: InitMakerQuoteInput,
+  ) => ReturnType<typeof getInitMakerQuoteInstruction> &
     SelfPlanAndSendFunctions;
   updateMakerQuoteMid: (
     input: UpdateMakerQuoteMidInput,
@@ -885,6 +921,13 @@ export type TempoProgramPluginInstructions = {
   resetShard: (
     input: ResetShardInput,
   ) => ReturnType<typeof getResetShardInstruction> & SelfPlanAndSendFunctions;
+  setPause: (
+    input: SetPauseInput,
+  ) => ReturnType<typeof getSetPauseInstruction> & SelfPlanAndSendFunctions;
+  seedInsurance: (
+    input: SeedInsuranceInput,
+  ) => ReturnType<typeof getSeedInsuranceInstruction> &
+    SelfPlanAndSendFunctions;
 };
 
 export type TempoProgramPluginPdas = {
@@ -1012,7 +1055,7 @@ export function tempoProgramProgram() {
           initMakerQuote: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getInitMakerQuoteInstructionAsync(input),
+              getInitMakerQuoteInstruction(input),
             ),
           updateMakerQuoteMid: (input) =>
             addSelfPlanAndSendFunctions(
@@ -1085,6 +1128,13 @@ export function tempoProgramProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getResetShardInstruction(input),
+            ),
+          setPause: (input) =>
+            addSelfPlanAndSendFunctions(client, getSetPauseInstruction(input)),
+          seedInsurance: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSeedInsuranceInstruction(input),
             ),
         },
         pdas: {

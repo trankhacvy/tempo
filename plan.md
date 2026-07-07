@@ -1233,7 +1233,7 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
 
 ### 9.2 Phase 1 — Safety release (Market v12 + MakerQuote v4)
 
-- [ ] **P1.1 — `Market` v12 append block** (§2.1)
+- [x] **P1.1 — `Market` v12 append block** (§2.1)
   Eight new fields appended (`paused` … `pending_payload`), `DATA_LEN` +
   `assert_no_padding!` `+108`, `to_bytes_inner` extended in order, `VERSION = 12`
   with house-style doc comment, `new()` zero-inits, `le_field!` accessors,
@@ -1244,26 +1244,26 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   `max_open_interest`, `liquidation_reward_floor`, `liquidation_close_buffer_bps`,
   `pending_*` — output with test names shown.
 
-- [ ] **P1.2 — `initialize_market` data → 165 bytes** (§2.1)
+- [x] **P1.2 — `initialize_market` data → 165 bytes** (§2.1)
   Four appended wire fields + bounds (`buffer ≤ 10000`; buffer requires money path),
   threaded through `Market::new`.
   **Done when:** `initialize_market` data tests pass including a new test asserting
   `InitializeMarketData::LEN == 165` and the two new rejection cases — output shown.
 
-- [ ] **P1.3 — IDL + clients for the new init fields** (§2.1)
+- [x] **P1.3 — IDL + clients for the new init fields** (§2.1)
   `definition.rs` InitializeMarket variant gains the four fields; regenerate.
   **Done when:** `just generate-clients` exits 0 AND
   `grep -c "minOrderNotional" idl/tempo_program.json` prints ≥ 1 AND `git status
   --short` shows `idl/`, `clients/`, `crates/sdk/src/generated/` diffs — all shown.
 
-- [ ] **P1.4 — `SetPause` (disc 32)** (§2.2)
+- [x] **P1.4 — `SetPause` (disc 32)** (§2.2)
   Full house wiring (§0.1 checklist): instruction dir, `impl_instructions.rs`,
   `instructions/mod.rs`, discriminator + `TryFrom`, entrypoint arm, Codama variant,
   `MarketPauseChangedEvent` (event disc 10), unknown-bits rejection in `data.rs`.
   **Done when:** `cargo test --features idl` passes (incl. a discriminator-routing
   test for 32) — summary line shown.
 
-- [ ] **P1.5 — Pause guards + tests** (§2.2)
+- [x] **P1.5 — Pause guards + tests** (§2.2)
   `require_not_paused(PAUSE_INTAKE)` in `submit_order`, `init_maker_quote`,
   `update_maker_quote_mid`, `update_maker_quote_levels`; `PAUSE_ROLL` in
   `start_auction`. LiteSVM tests: paused submit/quote-write reject `Custom(2)`;
@@ -1271,24 +1271,24 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   `PAUSE_ROLL` parks the market quiescent.
   **Done when:** `just integration-test` shows the new pause tests passing by name.
 
-- [ ] **P1.6 — Minimum order notional** (§2.3)
+- [x] **P1.6 — Minimum order notional** (§2.3)
   Submit check (u128 compare, `OrderBelowMinimum`/29) + per-level maker check priced
   at the window floor.
   **Done when:** tests pass showing: dust order rejected `Custom(29)`, dust maker
   level rejected, `min_order_notional == 0` accepts all — names + summary shown.
 
-- [ ] **P1.7 — `MakerQuote` v4 layout + seeds** (§2.4.1)
+- [x] **P1.7 — `MakerQuote` v4 layout + seeds** (§2.4.1)
   Append `quote_index_le`/`reserved_margin_le`/`worst_price_le`, `VERSION = 4`,
   4-seed set (`+ quote_index_le`), `MAX_QUOTES_PER_MAKER = 4`, accessors, `new()`
   takes `quote_index`.
   **Done when:** state tests pass incl. roundtrip asserting `bytes[1] == 4` and a
   seeds test proving two quote_index values derive different addresses — shown.
 
-- [ ] **P1.8 — `ladder_reservation` in `margin.rs`** (§2.4.2)
+- [x] **P1.8 — `ladder_reservation` in `margin.rs`** (§2.4.2)
   Pure fn + unit tests (rounds up; empty ladder → 0; saturating sum).
   **Done when:** `cargo test --features idl margin` shows the new tests green.
 
-- [ ] **P1.9 — Maker margin wiring across the five instructions** (§2.4.3–§2.4.6)
+- [x] **P1.9 — Maker margin wiring across the five instructions** (§2.4.3–§2.4.6)
   `init_maker_quote` (+`quote_index`, LEN 43, `[Seed; 5]`), `update_maker_quote_levels`
   (+maker ledger account, delta lock/release, owner check),
   `clear_maker_quote` (+ledger, release via `release_order_reservation`),
@@ -1303,13 +1303,13 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   (index 0/1) fold + settle independently; foreign-ledger substitution rejected;
   reservation unchanged after repeated mid moves.
 
-- [ ] **P1.10 — SDK + mm-bot lockstep** (§2.4.7)
+- [x] **P1.10 — SDK + mm-bot lockstep** (§2.4.7)
   `crates/sdk/src/pda.rs` maker-quote PDA takes `quote_index`; ix builders add the
   ledger + `quote_index`; mm-bot deposits before quoting, treats
   `InsufficientCollateral` on levels as ladder-shrink, defaults `quote_index 0`.
   **Done when:** `cargo test -p tempo-sdk -p tempo-mm-bot` passes — summary shown.
 
-- [ ] **P1.11 — Phase 1 gate**
+- [x] **P1.11 — Phase 1 gate**
   **Done when (all outputs shown):** `cargo fmt --check` exit 0 ·
   `cd program && cargo clippy --all-targets -- -D warnings` exit 0 ·
   `cargo test --features idl` all green · `cd program && cargo-build-sbf` exit 0 ·

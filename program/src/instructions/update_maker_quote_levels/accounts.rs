@@ -41,6 +41,8 @@ impl<'a> TryFrom<&'a [AccountView]> for UpdateMakerQuoteLevelsAccounts<'a> {
         // Optional maker ledger (present on money-path markets only).
         let user_collateral = match rest {
             [] => None,
+            // Codama emits the program id as the "omitted optional" sentinel.
+            [uc] if uc.address() == &crate::ID => None,
             [uc] => {
                 verify_writable(uc, true)?;
                 verify_current_program_account(uc)?;

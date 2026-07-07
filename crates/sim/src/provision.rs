@@ -253,7 +253,11 @@ fn ensure_market(
         maintenance_margin_bps: cfg.maint_bps,
         liquidation_penalty_bps: cfg.penalty_bps,
         maker_fee_bps: 0,
-        taker_fee_bps: 0,
+        // P0.6 devnet-drill follow-up: a zero-fee fresh market has an empty
+        // insurance pool, and the FIRST profitable maker settle deadlocks
+        // (InsuranceInsolvent). A small taker fee self-seeds the pool from the
+        // very first taker settle (which the keeper runs before quote settles).
+        taker_fee_bps: cfg.taker_fee_bps,
         integrator_share_bps: 0,
         crank_fee: 0,
         collateral_mint: mint.map(|m| m.to_bytes()).unwrap_or_default(),
@@ -261,6 +265,11 @@ fn ensure_market(
         soft_stale_slots: cfg.soft_stale_slots,
         initial_margin_bps: cfg.initial_bps,
         max_position_notional: 0,
+        // v12 operability fields (plan.md §2.1): defaults off for the sim.
+        min_order_notional: 0,
+        max_open_interest: 0,
+        liquidation_reward_floor: 0,
+        liquidation_close_buffer_bps: 0,
     });
     spl::send(rpc, &[master, market_seed], &[ix])?;
     tracing::info!(market = %pdas.market, money = cfg.is_money_market(), "provisioner: market created");

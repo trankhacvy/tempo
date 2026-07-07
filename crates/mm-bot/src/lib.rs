@@ -56,9 +56,9 @@ impl MmCtx {
         strategy: MmStrategyConfig,
         expiry_slots: u64,
     ) -> Self {
-        // See known-issues §4.9: one quote PDA per maker per market. Interim workaround:
-        // run multiple instances with different keypairs for wider depth.
-        let (maker_quote, maker_quote_bump) = pda::maker_quote(&pdas.market, &maker.pubkey());
+        // MakerQuote v4 (§4.9): quote_index is the 4th seed; the mm-bot runs one
+        // ladder per market at index 0 (raise via multiple MmCtx's for depth).
+        let (maker_quote, maker_quote_bump) = pda::maker_quote(&pdas.market, &maker.pubkey(), 0);
         Self {
             client,
             maker,
@@ -162,6 +162,7 @@ async fn tick(
             ctx.maker_quote_bump,
             ctx.expiry_slots,
             Pubkey::default(),
+            0, // quote_index (§4.9)
         );
         match ctx.client.send(&ctx.maker, &[init_quote]).await {
             Ok(sig) => tracing::info!(%sig, "tick: init_maker_quote ok"),
@@ -249,6 +250,13 @@ async fn post_quote(
     let next_seq = on_chain_seq + 1;
 
     let started = std::time::Instant::now();
+    // Quote-time margin (§7.1): on a money-path market the ladder's worst-case
+    // reservation is delta-locked in the maker's mint-scoped ledger. An
+    // InsufficientCollateral rejection here means the ladder is too big for the
+    // maker's free balance — deposit more or shrink the ladder.
+    let ledger = ctx
+        .collateral_mint
+        .map(|mint| pda::user_collateral(&ctx.maker.pubkey(), &mint).0);
     let ix = ix::update_maker_quote_levels(
         &ctx.pdas,
         ctx.maker.pubkey(),
@@ -257,6 +265,7 @@ async fn post_quote(
         quote.mid_tick,
         &quote.bids,
         &quote.asks,
+        ledger,
     );
     let posted = match ctx.client.send(&ctx.maker, &[ix]).await {
         Ok(_) => {

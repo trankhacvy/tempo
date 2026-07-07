@@ -53,6 +53,8 @@ export type UpdateMakerQuoteLevelsInstruction<
   TAccountWriter extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountMakerQuote extends string | AccountMeta<string> = string,
+  TAccountUserCollateral extends string | AccountMeta<string> | undefined =
+    undefined,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -68,6 +70,13 @@ export type UpdateMakerQuoteLevelsInstruction<
       TAccountMakerQuote extends string
         ? WritableAccount<TAccountMakerQuote>
         : TAccountMakerQuote,
+      ...(TAccountUserCollateral extends undefined
+        ? []
+        : [
+            TAccountUserCollateral extends string
+              ? WritableAccount<TAccountUserCollateral>
+              : TAccountUserCollateral,
+          ]),
       ...TRemainingAccounts,
     ]
   >;
@@ -135,6 +144,7 @@ export type UpdateMakerQuoteLevelsInput<
   TAccountWriter extends string = string,
   TAccountMarket extends string = string,
   TAccountMakerQuote extends string = string,
+  TAccountUserCollateral extends string = string,
 > = {
   /** Maker or its delegate */
   writer: TransactionSigner<TAccountWriter>;
@@ -142,6 +152,8 @@ export type UpdateMakerQuoteLevelsInput<
   market: Address<TAccountMarket>;
   /** MakerQuote to update */
   makerQuote: Address<TAccountMakerQuote>;
+  /** (Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only */
+  userCollateral?: Address<TAccountUserCollateral>;
   sequence: UpdateMakerQuoteLevelsInstructionDataArgs["sequence"];
   midTick: UpdateMakerQuoteLevelsInstructionDataArgs["midTick"];
   numBids: UpdateMakerQuoteLevelsInstructionDataArgs["numBids"];
@@ -154,19 +166,22 @@ export function getUpdateMakerQuoteLevelsInstruction<
   TAccountWriter extends string,
   TAccountMarket extends string,
   TAccountMakerQuote extends string,
+  TAccountUserCollateral extends string,
   TProgramAddress extends Address = typeof TEMPO_PROGRAM_PROGRAM_ADDRESS,
 >(
   input: UpdateMakerQuoteLevelsInput<
     TAccountWriter,
     TAccountMarket,
-    TAccountMakerQuote
+    TAccountMakerQuote,
+    TAccountUserCollateral
   >,
   config?: { programAddress?: TProgramAddress },
 ): UpdateMakerQuoteLevelsInstruction<
   TProgramAddress,
   TAccountWriter,
   TAccountMarket,
-  TAccountMakerQuote
+  TAccountMakerQuote,
+  TAccountUserCollateral
 > {
   // Program address.
   const programAddress =
@@ -177,6 +192,7 @@ export function getUpdateMakerQuoteLevelsInstruction<
     writer: { value: input.writer ?? null, isWritable: false },
     market: { value: input.market ?? null, isWritable: false },
     makerQuote: { value: input.makerQuote ?? null, isWritable: true },
+    userCollateral: { value: input.userCollateral ?? null, isWritable: true },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -192,7 +208,8 @@ export function getUpdateMakerQuoteLevelsInstruction<
       getAccountMeta("writer", accounts.writer),
       getAccountMeta("market", accounts.market),
       getAccountMeta("makerQuote", accounts.makerQuote),
-    ],
+      getAccountMeta("userCollateral", accounts.userCollateral),
+    ].filter(<T>(x: T | undefined): x is T => x !== undefined),
     data: getUpdateMakerQuoteLevelsInstructionDataEncoder().encode(
       args as UpdateMakerQuoteLevelsInstructionDataArgs,
     ),
@@ -201,7 +218,8 @@ export function getUpdateMakerQuoteLevelsInstruction<
     TProgramAddress,
     TAccountWriter,
     TAccountMarket,
-    TAccountMakerQuote
+    TAccountMakerQuote,
+    TAccountUserCollateral
   >);
 }
 
@@ -217,6 +235,8 @@ export type ParsedUpdateMakerQuoteLevelsInstruction<
     market: TAccountMetas[1];
     /** MakerQuote to update */
     makerQuote: TAccountMetas[2];
+    /** (Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only */
+    userCollateral?: TAccountMetas[3] | undefined;
   };
   data: UpdateMakerQuoteLevelsInstructionData;
 };
@@ -244,12 +264,19 @@ export function parseUpdateMakerQuoteLevelsInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  let optionalAccountsRemaining = instruction.accounts.length - 3;
+  const getNextOptionalAccount = () => {
+    if (optionalAccountsRemaining === 0) return undefined;
+    optionalAccountsRemaining -= 1;
+    return getNextAccount();
+  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       writer: getNextAccount(),
       market: getNextAccount(),
       makerQuote: getNextAccount(),
+      userCollateral: getNextOptionalAccount(),
     },
     data: getUpdateMakerQuoteLevelsInstructionDataDecoder().decode(
       instruction.data,

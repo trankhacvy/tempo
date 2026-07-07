@@ -12,6 +12,8 @@ import {
   getArrayEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
@@ -37,11 +39,9 @@ import {
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
-  getAddressFromResolvedInstructionAccount,
   getResolvedInstructionAccountAsProgramDerivedAddress,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { findMakerQuotePda } from "../pdas";
 import { TEMPO_PROGRAM_PROGRAM_ADDRESS } from "../programs";
 
 export const INIT_MAKER_QUOTE_DISCRIMINATOR = 16;
@@ -84,12 +84,14 @@ export type InitMakerQuoteInstructionData = {
   makerQuoteBump: number;
   expirySlots: bigint;
   delegate: Array<number>;
+  quoteIndex: number;
 };
 
 export type InitMakerQuoteInstructionDataArgs = {
   makerQuoteBump: number;
   expirySlots: number | bigint;
   delegate: Array<number>;
+  quoteIndex: number;
 };
 
 export function getInitMakerQuoteInstructionDataEncoder(): FixedSizeEncoder<InitMakerQuoteInstructionDataArgs> {
@@ -99,6 +101,7 @@ export function getInitMakerQuoteInstructionDataEncoder(): FixedSizeEncoder<Init
       ["makerQuoteBump", getU8Encoder()],
       ["expirySlots", getU64Encoder()],
       ["delegate", getArrayEncoder(getU8Encoder(), { size: 32 })],
+      ["quoteIndex", getU16Encoder()],
     ]),
     (value) => ({ ...value, discriminator: INIT_MAKER_QUOTE_DISCRIMINATOR }),
   );
@@ -110,6 +113,7 @@ export function getInitMakerQuoteInstructionDataDecoder(): FixedSizeDecoder<Init
     ["makerQuoteBump", getU8Decoder()],
     ["expirySlots", getU64Decoder()],
     ["delegate", getArrayDecoder(getU8Decoder(), { size: 32 })],
+    ["quoteIndex", getU16Decoder()],
   ]);
 }
 
@@ -123,112 +127,6 @@ export function getInitMakerQuoteInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type InitMakerQuoteAsyncInput<
-  TAccountMaker extends string = string,
-  TAccountMarket extends string = string,
-  TAccountMakerQuote extends string = string,
-  TAccountSystemProgram extends string = string,
-> = {
-  /** Maker (pays rent, owns the quote) */
-  maker: TransactionSigner<TAccountMaker>;
-  /** Market the quote belongs to */
-  market: Address<TAccountMarket>;
-  /** MakerQuote PDA to create */
-  makerQuote?: ProgramDerivedAddress<TAccountMakerQuote>;
-  /** System program */
-  systemProgram?: Address<TAccountSystemProgram>;
-  makerQuoteBump?: InitMakerQuoteInstructionDataArgs["makerQuoteBump"];
-  expirySlots: InitMakerQuoteInstructionDataArgs["expirySlots"];
-  delegate: InitMakerQuoteInstructionDataArgs["delegate"];
-};
-
-export async function getInitMakerQuoteInstructionAsync<
-  TAccountMaker extends string,
-  TAccountMarket extends string,
-  TAccountMakerQuote extends string,
-  TAccountSystemProgram extends string,
-  TProgramAddress extends Address = typeof TEMPO_PROGRAM_PROGRAM_ADDRESS,
->(
-  input: InitMakerQuoteAsyncInput<
-    TAccountMaker,
-    TAccountMarket,
-    TAccountMakerQuote,
-    TAccountSystemProgram
-  >,
-  config?: { programAddress?: TProgramAddress },
-): Promise<
-  InitMakerQuoteInstruction<
-    TProgramAddress,
-    TAccountMaker,
-    TAccountMarket,
-    TAccountMakerQuote,
-    TAccountSystemProgram
-  >
-> {
-  // Program address.
-  const programAddress =
-    config?.programAddress ?? TEMPO_PROGRAM_PROGRAM_ADDRESS;
-
-  // Original accounts.
-  const originalAccounts = {
-    maker: { value: input.maker ?? null, isWritable: true },
-    market: { value: input.market ?? null, isWritable: true },
-    makerQuote: { value: input.makerQuote ?? null, isWritable: true },
-    systemProgram: { value: input.systemProgram ?? null, isWritable: false },
-  };
-  const accounts = originalAccounts as Record<
-    keyof typeof originalAccounts,
-    ResolvedInstructionAccount
-  >;
-
-  // Original args.
-  const args = { ...input };
-
-  // Resolve default values.
-  if (!accounts.makerQuote.value) {
-    accounts.makerQuote.value = await findMakerQuotePda({
-      market: getAddressFromResolvedInstructionAccount(
-        "market",
-        accounts.market.value,
-      ),
-      maker: getAddressFromResolvedInstructionAccount(
-        "maker",
-        accounts.maker.value,
-      ),
-    });
-  }
-  if (!accounts.systemProgram.value) {
-    accounts.systemProgram.value =
-      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
-  }
-  if (!args.makerQuoteBump) {
-    args.makerQuoteBump = getResolvedInstructionAccountAsProgramDerivedAddress(
-      "makerQuote",
-      accounts.makerQuote.value,
-    )[1];
-  }
-
-  const getAccountMeta = getAccountMetaFactory(programAddress, "omitted");
-  return Object.freeze({
-    accounts: [
-      getAccountMeta("maker", accounts.maker),
-      getAccountMeta("market", accounts.market),
-      getAccountMeta("makerQuote", accounts.makerQuote),
-      getAccountMeta("systemProgram", accounts.systemProgram),
-    ],
-    data: getInitMakerQuoteInstructionDataEncoder().encode(
-      args as InitMakerQuoteInstructionDataArgs,
-    ),
-    programAddress,
-  } as InitMakerQuoteInstruction<
-    TProgramAddress,
-    TAccountMaker,
-    TAccountMarket,
-    TAccountMakerQuote,
-    TAccountSystemProgram
-  >);
-}
-
 export type InitMakerQuoteInput<
   TAccountMaker extends string = string,
   TAccountMarket extends string = string,
@@ -239,13 +137,14 @@ export type InitMakerQuoteInput<
   maker: TransactionSigner<TAccountMaker>;
   /** Market the quote belongs to */
   market: Address<TAccountMarket>;
-  /** MakerQuote PDA to create */
+  /** MakerQuote PDA to create (client resolves [b"maker_quote", market, maker, quote_index] — §4.9 multi-quote seeds) */
   makerQuote: ProgramDerivedAddress<TAccountMakerQuote>;
   /** System program */
   systemProgram?: Address<TAccountSystemProgram>;
   makerQuoteBump?: InitMakerQuoteInstructionDataArgs["makerQuoteBump"];
   expirySlots: InitMakerQuoteInstructionDataArgs["expirySlots"];
   delegate: InitMakerQuoteInstructionDataArgs["delegate"];
+  quoteIndex: InitMakerQuoteInstructionDataArgs["quoteIndex"];
 };
 
 export function getInitMakerQuoteInstruction<
@@ -331,7 +230,7 @@ export type ParsedInitMakerQuoteInstruction<
     maker: TAccountMetas[0];
     /** Market the quote belongs to */
     market: TAccountMetas[1];
-    /** MakerQuote PDA to create */
+    /** MakerQuote PDA to create (client resolves [b"maker_quote", market, maker, quote_index] — §4.9 multi-quote seeds) */
     makerQuote: TAccountMetas[2];
     /** System program */
     systemProgram: TAccountMetas[3];

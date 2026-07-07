@@ -613,8 +613,9 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "maker_quote", docs = "MakerQuote to update", writable))]
     #[codama(account(
         name = "user_collateral",
-        docs = "The MAKER's mint-scoped collateral ledger (reservation delta-locked here)",
-        writable
+        docs = "(Optional) the MAKER's mint-scoped collateral ledger (reservation delta-locked here); REQUIRED on a money-path market, omitted on clearing-only",
+        writable,
+        optional
     ))]
     UpdateMakerQuoteLevels {
         /// Monotonic nonce (must strictly increase)
@@ -638,8 +639,9 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "maker_quote", docs = "MakerQuote to clear", writable))]
     #[codama(account(
         name = "user_collateral",
-        docs = "The MAKER's ledger (the standing reservation is released here)",
-        writable
+        docs = "(Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation",
+        writable,
+        optional
     ))]
     ClearMakerQuote {
         /// Monotonic nonce (must strictly increase)

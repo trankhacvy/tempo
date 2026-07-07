@@ -158,6 +158,13 @@ fn cross_margin_withdraw_respects_combined_health_and_completeness() {
     ctx.settle_maker_quote(&pdas, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas, sell_id, &seller.pubkey());
 
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation 32). Roll and clear it so the rest of this test measures
+    // health without a standing ladder lock — exercising the release path.
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &owner, 2)
+        .expect("clear releases the ladder reservation");
+
     // Establish the market's effective risk price (30).
     ctx.set_oracle(&oracle, 30, -8);
     ctx.update_funding(&pdas, &oracle);
@@ -205,8 +212,11 @@ fn cross_margin_liquidation_draws_from_shared_balance_and_conserves() {
     let owner = ctx.new_funded_signer();
     ctx.init_collateral(&owner);
     let owner_ta = ctx.create_token_account(&mint, &owner.pubkey());
-    ctx.mint_to(&mint, &owner_ta, 20);
-    ctx.deposit(&owner, &vault_ta, &owner_ta, 20);
+    // 20 for the test's economics + 32 headroom for the ladder's standing
+    // reservation (§7.1: 10 lots · window top 64 · 5%); the 32 is withdrawn
+    // back once the quote is cleared below, restoring the original balance.
+    ctx.mint_to(&mint, &owner_ta, 52);
+    ctx.deposit(&owner, &vault_ta, &owner_ta, 52);
     let position = ctx.init_position(&pdas, &owner);
     ctx.init_margin_account(&owner);
     ctx.add_position_to_margin(&pdas, &owner, &position)
@@ -232,6 +242,14 @@ fn cross_margin_liquidation_draws_from_shared_balance_and_conserves() {
     ctx.finalize_clear(&pdas);
     ctx.settle_maker_quote(&pdas, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas, sell_id, &seller.pubkey());
+
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation 32). Roll and clear it so the rest of this test measures
+    // health without a standing ladder lock — exercising the release path.
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &owner, 2)
+        .expect("clear releases the ladder reservation");
+    ctx.withdraw(&owner, &vault_ta, &owner_ta, 32); // back to the original 20
 
     // Effective price drops to 29: combined equity (20 - 10 loss = 10) < maintenance
     // (10*29*5% = 14) → the account is liquidatable.
@@ -369,6 +387,14 @@ fn cross_withdraw_cannot_drain_isolated_locked_margin() {
     ctx.finalize_clear(&pdas);
     ctx.settle_maker_quote(&pdas, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas, sell_id, &seller.pubkey());
+
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation 32). Roll and clear it so the rest of this test measures
+    // health without a standing ladder lock — exercising the release path.
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &owner, 2)
+        .expect("clear releases the ladder reservation");
+
     assert_eq!(
         ctx.user_collateral(&owner.pubkey()).locked,
         15,
@@ -443,8 +469,11 @@ fn cross_liquidation_not_delayed_by_brake() {
     let owner = ctx.new_funded_signer();
     ctx.init_collateral(&owner);
     let owner_ta = ctx.create_token_account(&mint, &owner.pubkey());
-    ctx.mint_to(&mint, &owner_ta, 20);
-    ctx.deposit(&owner, &vault_ta, &owner_ta, 20);
+    // 20 for the test's economics + 32 headroom for the ladder's standing
+    // reservation (§7.1: 10 lots · window top 64 · 5%); the 32 is withdrawn
+    // back once the quote is cleared below, restoring the original balance.
+    ctx.mint_to(&mint, &owner_ta, 52);
+    ctx.deposit(&owner, &vault_ta, &owner_ta, 52);
     let position = ctx.init_position(&pdas, &owner);
     ctx.init_margin_account(&owner);
     ctx.add_position_to_margin(&pdas, &owner, &position)
@@ -470,6 +499,14 @@ fn cross_liquidation_not_delayed_by_brake() {
     ctx.finalize_clear(&pdas);
     ctx.settle_maker_quote(&pdas, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas, sell_id, &seller.pubkey());
+
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation 32). Roll and clear it so the rest of this test measures
+    // health without a standing ladder lock — exercising the release path.
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &owner, 2)
+        .expect("clear releases the ladder reservation");
+    ctx.withdraw(&owner, &vault_ta, &owner_ta, 32); // back to the original 20
 
     // Establish the braked effective price at 30 (healthy: equity 20 ≥ maint 15).
     ctx.set_oracle(&oracle, 30, -8);
@@ -544,6 +581,13 @@ fn cross_withdraw_not_inflated_by_brake() {
     ctx.finalize_clear(&pdas);
     ctx.settle_maker_quote(&pdas, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas, sell_id, &seller.pubkey());
+
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation 32). Roll and clear it so the rest of this test measures
+    // health without a standing ladder lock — exercising the release path.
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &owner, 2)
+        .expect("clear releases the ladder reservation");
 
     // Braked effective price at 30 (loss 0 → at the braked mark the owner could
     // withdraw down to maintenance 15, i.e. 85 out — what the old code allowed).
@@ -620,6 +664,13 @@ fn cross_withdraw_accepts_flat_member_as_bare_single() {
     ctx.settle_maker_quote(&pdas_a, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas_a, sell_id, &seller.pubkey());
 
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation 32). Roll and clear it so the rest of this test measures
+    // health without a standing ladder lock — exercising the release path.
+    ctx.start_auction(&pdas_a);
+    ctx.try_clear_maker_quote(&pdas_a, &owner, 2)
+        .expect("clear releases the ladder reservation");
+
     // Only market A is cranked. Market B is deliberately never given an effective
     // price — a flat leg must not require its market/oracle.
     ctx.set_oracle(&oracle, 30, -8);
@@ -671,8 +722,11 @@ fn cross_liquidation_accepts_flat_member_as_bare_single() {
     let owner = ctx.new_funded_signer();
     ctx.init_collateral(&owner);
     let owner_ta = ctx.create_token_account(&mint, &owner.pubkey());
-    ctx.mint_to(&mint, &owner_ta, 20);
-    ctx.deposit(&owner, &vault_ta, &owner_ta, 20);
+    // 20 for the test's economics + 32 headroom for the ladder's standing
+    // reservation (§7.1: 10 lots · window top 64 · 5%); the 32 is withdrawn
+    // back once the quote is cleared below, restoring the original balance.
+    ctx.mint_to(&mint, &owner_ta, 52);
+    ctx.deposit(&owner, &vault_ta, &owner_ta, 52);
     let pos_a = ctx.init_position(&pdas_a, &owner);
     let pos_b = ctx.init_position(&pdas_b, &owner);
     ctx.init_margin_account(&owner);
@@ -701,6 +755,14 @@ fn cross_liquidation_accepts_flat_member_as_bare_single() {
     ctx.finalize_clear(&pdas_a);
     ctx.settle_maker_quote(&pdas_a, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas_a, sell_id, &seller.pubkey());
+
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation 32). Roll and clear it so the rest of this test measures
+    // health without a standing ladder lock — exercising the release path.
+    ctx.start_auction(&pdas_a);
+    ctx.try_clear_maker_quote(&pdas_a, &owner, 2)
+        .expect("clear releases the ladder reservation");
+    ctx.withdraw(&owner, &vault_ta, &owner_ta, 32); // back to the original 20
 
     // Crash to 29: combined equity (20 - 10) = 10 < maintenance (10*29*5% = 14).
     // Only A is cranked; the flat B leg needs no market/oracle.

@@ -29,6 +29,8 @@ export * from "./processMakerQuote";
 export * from "./readOracle";
 export * from "./removePositionFromMargin";
 export * from "./resetShard";
+export * from "./seedInsurance";
+export * from "./setPause";
 export * from "./settleFill";
 export * from "./settleMakerQuote";
 export * from "./startAuction";

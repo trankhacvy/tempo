@@ -48,6 +48,8 @@ export type ClearMakerQuoteInstruction<
   TAccountWriter extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountMakerQuote extends string | AccountMeta<string> = string,
+  TAccountUserCollateral extends string | AccountMeta<string> | undefined =
+    undefined,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -63,6 +65,13 @@ export type ClearMakerQuoteInstruction<
       TAccountMakerQuote extends string
         ? WritableAccount<TAccountMakerQuote>
         : TAccountMakerQuote,
+      ...(TAccountUserCollateral extends undefined
+        ? []
+        : [
+            TAccountUserCollateral extends string
+              ? WritableAccount<TAccountUserCollateral>
+              : TAccountUserCollateral,
+          ]),
       ...TRemainingAccounts,
     ]
   >;
@@ -105,6 +114,7 @@ export type ClearMakerQuoteInput<
   TAccountWriter extends string = string,
   TAccountMarket extends string = string,
   TAccountMakerQuote extends string = string,
+  TAccountUserCollateral extends string = string,
 > = {
   /** Maker or its delegate */
   writer: TransactionSigner<TAccountWriter>;
@@ -112,6 +122,8 @@ export type ClearMakerQuoteInput<
   market: Address<TAccountMarket>;
   /** MakerQuote to clear */
   makerQuote: Address<TAccountMakerQuote>;
+  /** (Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation */
+  userCollateral?: Address<TAccountUserCollateral>;
   sequence: ClearMakerQuoteInstructionDataArgs["sequence"];
 };
 
@@ -119,19 +131,22 @@ export function getClearMakerQuoteInstruction<
   TAccountWriter extends string,
   TAccountMarket extends string,
   TAccountMakerQuote extends string,
+  TAccountUserCollateral extends string,
   TProgramAddress extends Address = typeof TEMPO_PROGRAM_PROGRAM_ADDRESS,
 >(
   input: ClearMakerQuoteInput<
     TAccountWriter,
     TAccountMarket,
-    TAccountMakerQuote
+    TAccountMakerQuote,
+    TAccountUserCollateral
   >,
   config?: { programAddress?: TProgramAddress },
 ): ClearMakerQuoteInstruction<
   TProgramAddress,
   TAccountWriter,
   TAccountMarket,
-  TAccountMakerQuote
+  TAccountMakerQuote,
+  TAccountUserCollateral
 > {
   // Program address.
   const programAddress =
@@ -142,6 +157,7 @@ export function getClearMakerQuoteInstruction<
     writer: { value: input.writer ?? null, isWritable: false },
     market: { value: input.market ?? null, isWritable: true },
     makerQuote: { value: input.makerQuote ?? null, isWritable: true },
+    userCollateral: { value: input.userCollateral ?? null, isWritable: true },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -157,7 +173,8 @@ export function getClearMakerQuoteInstruction<
       getAccountMeta("writer", accounts.writer),
       getAccountMeta("market", accounts.market),
       getAccountMeta("makerQuote", accounts.makerQuote),
-    ],
+      getAccountMeta("userCollateral", accounts.userCollateral),
+    ].filter(<T>(x: T | undefined): x is T => x !== undefined),
     data: getClearMakerQuoteInstructionDataEncoder().encode(
       args as ClearMakerQuoteInstructionDataArgs,
     ),
@@ -166,7 +183,8 @@ export function getClearMakerQuoteInstruction<
     TProgramAddress,
     TAccountWriter,
     TAccountMarket,
-    TAccountMakerQuote
+    TAccountMakerQuote,
+    TAccountUserCollateral
   >);
 }
 
@@ -182,6 +200,8 @@ export type ParsedClearMakerQuoteInstruction<
     market: TAccountMetas[1];
     /** MakerQuote to clear */
     makerQuote: TAccountMetas[2];
+    /** (Optional) the MAKER's ledger (the standing reservation is released here); required iff the quote carries a reservation */
+    userCollateral?: TAccountMetas[3] | undefined;
   };
   data: ClearMakerQuoteInstructionData;
 };
@@ -209,12 +229,19 @@ export function parseClearMakerQuoteInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  let optionalAccountsRemaining = instruction.accounts.length - 3;
+  const getNextOptionalAccount = () => {
+    if (optionalAccountsRemaining === 0) return undefined;
+    optionalAccountsRemaining -= 1;
+    return getNextAccount();
+  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       writer: getNextAccount(),
       market: getNextAccount(),
       makerQuote: getNextAccount(),
+      userCollateral: getNextOptionalAccount(),
     },
     data: getClearMakerQuoteInstructionDataDecoder().decode(instruction.data),
   };

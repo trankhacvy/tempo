@@ -131,6 +131,10 @@ export type InitializeMarketInstructionData = {
   initialMarginBps: number;
   maxPositionNotional: bigint;
   numSlabShards: number;
+  minOrderNotional: bigint;
+  maxOpenInterest: bigint;
+  liquidationRewardFloor: bigint;
+  liquidationCloseBufferBps: number;
 };
 
 export type InitializeMarketInstructionDataArgs = {
@@ -153,6 +157,10 @@ export type InitializeMarketInstructionDataArgs = {
   initialMarginBps: number;
   maxPositionNotional: number | bigint;
   numSlabShards: number;
+  minOrderNotional: number | bigint;
+  maxOpenInterest: number | bigint;
+  liquidationRewardFloor: number | bigint;
+  liquidationCloseBufferBps: number;
 };
 
 export function getInitializeMarketInstructionDataEncoder(): FixedSizeEncoder<InitializeMarketInstructionDataArgs> {
@@ -178,6 +186,10 @@ export function getInitializeMarketInstructionDataEncoder(): FixedSizeEncoder<In
       ["initialMarginBps", getU16Encoder()],
       ["maxPositionNotional", getU128Encoder()],
       ["numSlabShards", getU16Encoder()],
+      ["minOrderNotional", getU64Encoder()],
+      ["maxOpenInterest", getU128Encoder()],
+      ["liquidationRewardFloor", getU64Encoder()],
+      ["liquidationCloseBufferBps", getU16Encoder()],
     ]),
     (value) => ({ ...value, discriminator: INITIALIZE_MARKET_DISCRIMINATOR }),
   );
@@ -205,6 +217,10 @@ export function getInitializeMarketInstructionDataDecoder(): FixedSizeDecoder<In
     ["initialMarginBps", getU16Decoder()],
     ["maxPositionNotional", getU128Decoder()],
     ["numSlabShards", getU16Decoder()],
+    ["minOrderNotional", getU64Decoder()],
+    ["maxOpenInterest", getU128Decoder()],
+    ["liquidationRewardFloor", getU64Decoder()],
+    ["liquidationCloseBufferBps", getU16Decoder()],
   ]);
 }
 
@@ -266,6 +282,10 @@ export type InitializeMarketAsyncInput<
   initialMarginBps: InitializeMarketInstructionDataArgs["initialMarginBps"];
   maxPositionNotional: InitializeMarketInstructionDataArgs["maxPositionNotional"];
   numSlabShards: InitializeMarketInstructionDataArgs["numSlabShards"];
+  minOrderNotional: InitializeMarketInstructionDataArgs["minOrderNotional"];
+  maxOpenInterest: InitializeMarketInstructionDataArgs["maxOpenInterest"];
+  liquidationRewardFloor: InitializeMarketInstructionDataArgs["liquidationRewardFloor"];
+  liquidationCloseBufferBps: InitializeMarketInstructionDataArgs["liquidationCloseBufferBps"];
 };
 
 export async function getInitializeMarketInstructionAsync<
@@ -443,6 +463,10 @@ export type InitializeMarketInput<
   initialMarginBps: InitializeMarketInstructionDataArgs["initialMarginBps"];
   maxPositionNotional: InitializeMarketInstructionDataArgs["maxPositionNotional"];
   numSlabShards: InitializeMarketInstructionDataArgs["numSlabShards"];
+  minOrderNotional: InitializeMarketInstructionDataArgs["minOrderNotional"];
+  maxOpenInterest: InitializeMarketInstructionDataArgs["maxOpenInterest"];
+  liquidationRewardFloor: InitializeMarketInstructionDataArgs["liquidationRewardFloor"];
+  liquidationCloseBufferBps: InitializeMarketInstructionDataArgs["liquidationCloseBufferBps"];
 };
 
 export function getInitializeMarketInstruction<

@@ -67,6 +67,13 @@ fn liquidate_underwater_long() {
     ctx.settle_maker_quote(&pdas, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas, sell_id, &seller.pubkey());
 
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation 10·window_top(32)·5% = 16). Roll and clear it so the
+    // liquidation math below sees only the position margin.
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &owner, 2)
+        .expect("clear releases the ladder reservation");
+
     let p = ctx.position(&position);
     assert_eq!(p.size, 10, "long 10");
     assert_eq!(p.entry_price, 30);

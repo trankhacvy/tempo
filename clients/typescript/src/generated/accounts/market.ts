@@ -83,6 +83,14 @@ export type Market = {
   maxPositionNotionalLe: Array<number>;
   numSlabShardsLe: Array<number>;
   shardsReadyLe: Array<number>;
+  paused: number;
+  minOrderNotionalLe: Array<number>;
+  maxOpenInterestLe: Array<number>;
+  liquidationRewardFloorLe: Array<number>;
+  liquidationCloseBufferBpsLe: Array<number>;
+  pendingKind: number;
+  pendingEffectiveSlotLe: Array<number>;
+  pendingPayload: Array<number>;
 };
 
 export type MarketArgs = {
@@ -126,6 +134,14 @@ export type MarketArgs = {
   maxPositionNotionalLe: Array<number>;
   numSlabShardsLe: Array<number>;
   shardsReadyLe: Array<number>;
+  paused: number;
+  minOrderNotionalLe: Array<number>;
+  maxOpenInterestLe: Array<number>;
+  liquidationRewardFloorLe: Array<number>;
+  liquidationCloseBufferBpsLe: Array<number>;
+  pendingKind: number;
+  pendingEffectiveSlotLe: Array<number>;
+  pendingPayload: Array<number>;
 };
 
 /** Gets the encoder for {@link MarketArgs} account data. */
@@ -175,6 +191,20 @@ export function getMarketEncoder(): FixedSizeEncoder<MarketArgs> {
       ["maxPositionNotionalLe", getArrayEncoder(getU8Encoder(), { size: 16 })],
       ["numSlabShardsLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
       ["shardsReadyLe", getArrayEncoder(getU8Encoder(), { size: 2 })],
+      ["paused", getU8Encoder()],
+      ["minOrderNotionalLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
+      ["maxOpenInterestLe", getArrayEncoder(getU8Encoder(), { size: 16 })],
+      [
+        "liquidationRewardFloorLe",
+        getArrayEncoder(getU8Encoder(), { size: 8 }),
+      ],
+      [
+        "liquidationCloseBufferBpsLe",
+        getArrayEncoder(getU8Encoder(), { size: 2 }),
+      ],
+      ["pendingKind", getU8Encoder()],
+      ["pendingEffectiveSlotLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
+      ["pendingPayload", getArrayEncoder(getU8Encoder(), { size: 64 })],
     ]),
     (value) => ({
       ...value,
@@ -226,6 +256,17 @@ export function getMarketDecoder(): FixedSizeDecoder<Market> {
     ["maxPositionNotionalLe", getArrayDecoder(getU8Decoder(), { size: 16 })],
     ["numSlabShardsLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
     ["shardsReadyLe", getArrayDecoder(getU8Decoder(), { size: 2 })],
+    ["paused", getU8Decoder()],
+    ["minOrderNotionalLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
+    ["maxOpenInterestLe", getArrayDecoder(getU8Decoder(), { size: 16 })],
+    ["liquidationRewardFloorLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
+    [
+      "liquidationCloseBufferBpsLe",
+      getArrayDecoder(getU8Decoder(), { size: 2 }),
+    ],
+    ["pendingKind", getU8Decoder()],
+    ["pendingEffectiveSlotLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
+    ["pendingPayload", getArrayDecoder(getU8Decoder(), { size: 64 })],
   ]);
 }
 

@@ -147,8 +147,10 @@ fn engine_decides_and_sdk_liquidates_cross() {
     let owner = ctx.new_funded_signer();
     ctx.init_collateral(&owner);
     let owner_ta = ctx.create_token_account(&mint, &owner.pubkey());
-    ctx.mint_to(&mint, &owner_ta, 20);
-    ctx.deposit(&owner, &vault_ta, &owner_ta, 20);
+    // 20 for the test's economics + 32 headroom for the ladder's standing
+    // reservation (§7.1); withdrawn back after the quote clears below.
+    ctx.mint_to(&mint, &owner_ta, 52);
+    ctx.deposit(&owner, &vault_ta, &owner_ta, 52);
     let position = ctx.init_position(&pdas, &owner);
     ctx.init_margin_account(&owner);
     ctx.add_position_to_margin(&pdas, &owner, &position)
@@ -171,6 +173,13 @@ fn engine_decides_and_sdk_liquidates_cross() {
     ctx.finalize_clear(&pdas);
     ctx.settle_maker_quote(&pdas, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas, sell_id, &seller.pubkey());
+
+    // §7.1: roll + clear the standing ladder (reserve 32), withdraw the headroom
+    // back so the liquidation economics below match the original balance of 20.
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &owner, 2)
+        .expect("clear releases the ladder reservation");
+    ctx.withdraw(&owner, &vault_ta, &owner_ta, 32);
 
     // Crash to 29: combined equity (20 - 10) = 10 < maintenance (10*29*5% = 14).
     ctx.set_oracle(&oracle, 29, -8);

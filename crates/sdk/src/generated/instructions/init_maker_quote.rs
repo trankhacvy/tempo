@@ -17,7 +17,7 @@ pub struct InitMakerQuote {
     pub maker: solana_address::Address,
     /// Market the quote belongs to
     pub market: solana_address::Address,
-    /// MakerQuote PDA to create
+    /// MakerQuote PDA to create (client resolves [b"maker_quote", market, maker, quote_index] — §4.9 multi-quote seeds)
     pub maker_quote: solana_address::Address,
     /// System program
     pub system_program: solana_address::Address,
@@ -87,6 +87,7 @@ pub struct InitMakerQuoteInstructionArgs {
     pub maker_quote_bump: u8,
     pub expiry_slots: u64,
     pub delegate: [u8; 32],
+    pub quote_index: u16,
 }
 
 impl InitMakerQuoteInstructionArgs {
@@ -112,6 +113,7 @@ pub struct InitMakerQuoteBuilder {
     maker_quote_bump: Option<u8>,
     expiry_slots: Option<u64>,
     delegate: Option<[u8; 32]>,
+    quote_index: Option<u16>,
     __remaining_accounts: Vec<solana_instruction::AccountMeta>,
 }
 
@@ -131,7 +133,7 @@ impl InitMakerQuoteBuilder {
         self.market = Some(market);
         self
     }
-    /// MakerQuote PDA to create
+    /// MakerQuote PDA to create (client resolves [b"maker_quote", market, maker, quote_index] — §4.9 multi-quote seeds)
     #[inline(always)]
     pub fn maker_quote(&mut self, maker_quote: solana_address::Address) -> &mut Self {
         self.maker_quote = Some(maker_quote);
@@ -157,6 +159,11 @@ impl InitMakerQuoteBuilder {
     #[inline(always)]
     pub fn delegate(&mut self, delegate: [u8; 32]) -> &mut Self {
         self.delegate = Some(delegate);
+        self
+    }
+    #[inline(always)]
+    pub fn quote_index(&mut self, quote_index: u16) -> &mut Self {
+        self.quote_index = Some(quote_index);
         self
     }
     /// Add an additional account to the instruction.
@@ -191,6 +198,7 @@ impl InitMakerQuoteBuilder {
                 .expect("maker_quote_bump is not set"),
             expiry_slots: self.expiry_slots.clone().expect("expiry_slots is not set"),
             delegate: self.delegate.clone().expect("delegate is not set"),
+            quote_index: self.quote_index.clone().expect("quote_index is not set"),
         };
 
         accounts.instruction_with_remaining_accounts(args, &self.__remaining_accounts)
@@ -203,7 +211,7 @@ pub struct InitMakerQuoteCpiAccounts<'a, 'b> {
     pub maker: &'b solana_account_info::AccountInfo<'a>,
     /// Market the quote belongs to
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// MakerQuote PDA to create
+    /// MakerQuote PDA to create (client resolves [b"maker_quote", market, maker, quote_index] — §4.9 multi-quote seeds)
     pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
     /// System program
     pub system_program: &'b solana_account_info::AccountInfo<'a>,
@@ -217,7 +225,7 @@ pub struct InitMakerQuoteCpi<'a, 'b> {
     pub maker: &'b solana_account_info::AccountInfo<'a>,
     /// Market the quote belongs to
     pub market: &'b solana_account_info::AccountInfo<'a>,
-    /// MakerQuote PDA to create
+    /// MakerQuote PDA to create (client resolves [b"maker_quote", market, maker, quote_index] — §4.9 multi-quote seeds)
     pub maker_quote: &'b solana_account_info::AccountInfo<'a>,
     /// System program
     pub system_program: &'b solana_account_info::AccountInfo<'a>,
@@ -335,6 +343,7 @@ impl<'a, 'b> InitMakerQuoteCpiBuilder<'a, 'b> {
             maker_quote_bump: None,
             expiry_slots: None,
             delegate: None,
+            quote_index: None,
             __remaining_accounts: Vec::new(),
         });
         Self { instruction }
@@ -351,7 +360,7 @@ impl<'a, 'b> InitMakerQuoteCpiBuilder<'a, 'b> {
         self.instruction.market = Some(market);
         self
     }
-    /// MakerQuote PDA to create
+    /// MakerQuote PDA to create (client resolves [b"maker_quote", market, maker, quote_index] — §4.9 multi-quote seeds)
     #[inline(always)]
     pub fn maker_quote(
         &mut self,
@@ -382,6 +391,11 @@ impl<'a, 'b> InitMakerQuoteCpiBuilder<'a, 'b> {
     #[inline(always)]
     pub fn delegate(&mut self, delegate: [u8; 32]) -> &mut Self {
         self.instruction.delegate = Some(delegate);
+        self
+    }
+    #[inline(always)]
+    pub fn quote_index(&mut self, quote_index: u16) -> &mut Self {
+        self.instruction.quote_index = Some(quote_index);
         self
     }
     /// Add an additional account to the instruction.
@@ -434,6 +448,11 @@ impl<'a, 'b> InitMakerQuoteCpiBuilder<'a, 'b> {
                 .delegate
                 .clone()
                 .expect("delegate is not set"),
+            quote_index: self
+                .instruction
+                .quote_index
+                .clone()
+                .expect("quote_index is not set"),
         };
         let instruction = InitMakerQuoteCpi {
             __program: self.instruction.__program,
@@ -470,6 +489,7 @@ struct InitMakerQuoteCpiBuilderInstruction<'a, 'b> {
     maker_quote_bump: Option<u8>,
     expiry_slots: Option<u64>,
     delegate: Option<[u8; 32]>,
+    quote_index: Option<u16>,
     /// Additional instruction accounts `(AccountInfo, is_writable, is_signer)`.
     __remaining_accounts: Vec<(&'b solana_account_info::AccountInfo<'a>, bool, bool)>,
 }

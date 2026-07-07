@@ -65,7 +65,16 @@ fn conservation_full_lifecycle() {
         ctx.position(&ctx.position_pda(&pdas, &b.pubkey()).0).size,
         -10
     );
-    assert_eq!(ctx.user_collateral(&a.pubkey()).locked, 10, "A margin 10");
+    // Quote-time margin (§7.1): A's 10-lot ladder STANDS after its fill (levels
+    // are parametric — they re-fold at full size next round), so A's lock is
+    // position margin (10·20·5% = 10) + the standing ladder reservation
+    // (10 lots · window top 32 · 5% = 16). B's ladder is empty (reserve 0), so
+    // B carries only its position margin.
+    assert_eq!(
+        ctx.user_collateral(&a.pubkey()).locked,
+        10 + 16,
+        "A margin 10 + standing ladder reservation 16"
+    );
     assert_eq!(ctx.user_collateral(&b.pubkey()).locked, 10, "B margin 10");
 
     ctx.start_auction(&pdas);
@@ -84,6 +93,13 @@ fn conservation_full_lifecycle() {
     ctx.settle_maker_quote(&pdas, &b.pubkey());
     ctx.settle_fill_with_margin(&pdas, a_sell, &a.pubkey());
     ctx.settle_maker_quote(&pdas, &a.pubkey()); // zero-fill no-op (empty ladder)
+
+    // Round 2 ends with B's 10-lot ladder still standing (reserve 16). Roll and
+    // post empty ladders so both makers' standing reservations release (§7.1) —
+    // the flat-and-fully-released end state the conservation asserts below need.
+    ctx.start_auction(&pdas);
+    ctx.update_maker_quote_levels(&pdas, &a, 3, price_to_tick(tick, 25), &[], &[]);
+    ctx.update_maker_quote_levels(&pdas, &b, 3, price_to_tick(tick, 25), &[], &[]);
 
     let ua = ctx.user_collateral(&a.pubkey());
     let ub = ctx.user_collateral(&b.pubkey());
@@ -215,12 +231,13 @@ fn cannot_withdraw_locked_margin() {
     let admin = ctx.new_funded_signer();
     ctx.init_vault(&admin, &mint, &vault_ta);
 
-    // A deposits 100 and opens a long whose margin locks half of it.
+    // A deposits 200: its long's margin locks 50, and (§7.1) its 10-lot bid
+    // ladder standing-reserves another 10·128·5% = 64 at the window top.
     let a = ctx.new_funded_signer();
     ctx.init_collateral(&a);
     let a_ta = ctx.create_token_account(&mint, &a.pubkey());
-    ctx.mint_to(&mint, &a_ta, 100);
-    ctx.deposit(&a, &vault_ta, &a_ta, 100);
+    ctx.mint_to(&mint, &a_ta, 200);
+    ctx.deposit(&a, &vault_ta, &a_ta, 200);
     ctx.init_position(&pdas, &a);
 
     // The counterparty seller must also post margin on a margin-enabled market.
@@ -242,18 +259,28 @@ fn cannot_withdraw_locked_margin() {
     ctx.settle_maker_quote(&pdas, &a.pubkey()); // margin = 10*100*5% = 50
     ctx.settle_fill_with_margin(&pdas, s_sell, &seller.pubkey());
 
+    // Position margin 50 + the standing ladder reservation 64 (§7.1).
     let ua = ctx.user_collateral(&a.pubkey());
-    assert_eq!(ua.locked, 50, "half the deposit is margin");
-    assert_eq!(ua.free(), 50, "the rest is free");
+    assert_eq!(ua.locked, 50 + 64, "position margin + standing ladder");
+    assert_eq!(ua.free(), 200 - 114, "the rest is free");
+
+    // Roll and clear the quote: the ladder's standing reservation releases in
+    // full, leaving exactly the position margin locked (§7.1 release path).
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &a, 2)
+        .expect("clear releases the ladder reservation");
+    let ua = ctx.user_collateral(&a.pubkey());
+    assert_eq!(ua.locked, 50, "only the position margin remains");
+    assert_eq!(ua.free(), 150);
 
     // Cannot pull the locked margin...
     assert!(
-        ctx.try_withdraw(&a, &vault_ta, &a_ta, 60).is_err(),
+        ctx.try_withdraw(&a, &vault_ta, &a_ta, 160).is_err(),
         "withdrawing into locked margin must fail"
     );
-    // ...but the free half withdraws fine.
-    ctx.withdraw(&a, &vault_ta, &a_ta, 50);
-    assert_eq!(ctx.token_balance(&a_ta), 50, "free collateral returned");
+    // ...but the free part withdraws fine.
+    ctx.withdraw(&a, &vault_ta, &a_ta, 150);
+    assert_eq!(ctx.token_balance(&a_ta), 150, "free collateral returned");
     assert_eq!(ctx.user_collateral(&a.pubkey()).free(), 0);
     assert!(
         ctx.try_withdraw(&a, &vault_ta, &a_ta, 1).is_err(),

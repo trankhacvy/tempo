@@ -75,6 +75,12 @@ fn open_long_vs_short() -> (
     ctx.settle_maker_quote(&pdas, &owner.pubkey());
     ctx.settle_fill_with_margin(&pdas, sell_id, &seller.pubkey());
 
+    // §7.1: the owner's 10-lot ladder still stands after the fill (standing
+    // reservation). Roll and clear it so these tests see only position margin.
+    ctx.start_auction(&pdas);
+    ctx.try_clear_maker_quote(&pdas, &owner, 2)
+        .expect("clear releases the ladder reservation");
+
     (ctx, pdas, oracle, vault_ta, owner, seller, liquidator)
 }
 

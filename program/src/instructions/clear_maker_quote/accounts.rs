@@ -41,6 +41,8 @@ impl<'a> TryFrom<&'a [AccountView]> for ClearMakerQuoteAccounts<'a> {
         // Optional maker ledger (required iff the quote carries a reservation).
         let user_collateral = match rest {
             [] => None,
+            // Codama emits the program id as the "omitted optional" sentinel.
+            [uc] if uc.address() == &crate::ID => None,
             [uc] => {
                 verify_writable(uc, true)?;
                 verify_current_program_account(uc)?;
