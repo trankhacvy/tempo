@@ -1199,6 +1199,27 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
 
 - [ ] **P0.6 (OP) — Devnet re-provision on v11 + sim marketable-fill drill** (§1.1/§1.4)
   Operator: re-provision stale devnet markets, run the `crates/sim` drill.
+  **Status 2026-07-07 — re-provision DONE, drill ran and caught a real deadlock:**
+  - Deployed devnet binary verified byte-identical to the local build (SHA-256
+    match) — no deploy needed. Old market `BLpP…tvzq` confirmed stale (v9).
+  - Fresh **v11** money market provisioned: `BkAkivuJryAZM6qSFtFgmNTmyHNirszarto7PnWBvvrm`
+    (tick $0.01 × 16 ticks, maint 500 / initial 1000, 4 shards, mint `7ra8…PJcJ`,
+    keys in `./keys-drill`, artifact `./sim-artifact-drill.json`).
+  - Orchestrator drill: round 0 crossed and settled taker fills (bid $81.65 /
+    ask $81.67, OI opened) — then **deadlocked**: `settle_maker_quote` fails
+    `InsuranceInsolvent` (0x21). Root cause: zero-fee fresh market ⇒ empty
+    insurance pool ⇒ the maker's realized spread profit cannot be paid
+    (fail-closed, correct); insurance only grows from losses realized at FUTURE
+    settles, which need the roll the keeper (correctly) withholds while the
+    maker's fills are unsettled. Recurs every profitable maker round.
+  - **Consequences for this plan:** (1) `seed_insurance` (§3.5) is a
+    PREREQUISITE for any money-path devnet market, not just Phase-2 nice-to-have;
+    (2) add provisioner fee config (`TEMPO_SIM_TAKER_FEE_BPS`) so sim markets
+    self-seed insurance from round 0; (3) P5.3 `benign()` should classify 0x21
+    as blocked-retry-with-backoff (keeper sent 81 spam retries).
+  **Remaining to close:** re-run the marketable-fill observation after
+  `seed_insurance` (or a fee-seeded market) lands — rounds must roll for a
+  recenter to gap a resting order.
 
 ---
 
