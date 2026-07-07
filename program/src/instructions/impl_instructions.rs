@@ -1,6 +1,11 @@
 use crate::define_instruction;
 
+use super::accept_authority_transfer::{
+    AcceptAuthorityTransferAccounts, AcceptAuthorityTransferData,
+};
 use super::add_position_to_margin::{AddPositionToMarginAccounts, AddPositionToMarginData};
+use super::apply_risk_update::{ApplyRiskUpdateAccounts, ApplyRiskUpdateData};
+use super::apply_set_oracle::{ApplySetOracleAccounts, ApplySetOracleData};
 use super::cancel_order::{CancelOrderAccounts, CancelOrderData};
 use super::clear_maker_quote::{ClearMakerQuoteAccounts, ClearMakerQuoteData};
 use super::close_maker_quote::{CloseMakerQuoteAccounts, CloseMakerQuoteData};
@@ -20,6 +25,11 @@ use super::migrate_market::{MigrateMarketAccounts, MigrateMarketData};
 use super::migrate_position::{MigratePositionAccounts, MigratePositionData};
 use super::process_chunk::{ProcessChunkAccounts, ProcessChunkData};
 use super::process_maker_quote::{ProcessMakerQuoteAccounts, ProcessMakerQuoteData};
+use super::propose_authority_transfer::{
+    ProposeAuthorityTransferAccounts, ProposeAuthorityTransferData,
+};
+use super::propose_risk_update::{ProposeRiskUpdateAccounts, ProposeRiskUpdateData};
+use super::propose_set_oracle::{ProposeSetOracleAccounts, ProposeSetOracleData};
 use super::read_oracle::{ReadOracleAccounts, ReadOracleData};
 use super::remove_position_from_margin::{
     RemovePositionFromMarginAccounts, RemovePositionFromMarginData,
@@ -36,6 +46,7 @@ use super::update_maker_quote_levels::{
     UpdateMakerQuoteLevelsAccounts, UpdateMakerQuoteLevelsData,
 };
 use super::update_maker_quote_mid::{UpdateMakerQuoteMidAccounts, UpdateMakerQuoteMidData};
+use super::update_market_params::{UpdateMarketParamsAccounts, UpdateMarketParamsData};
 use super::withdraw::{WithdrawAccounts, WithdrawData};
 use super::withdraw_cross::{WithdrawCrossAccounts, WithdrawCrossData};
 
@@ -82,6 +93,37 @@ define_instruction!(InitCollateral, InitCollateralAccounts, InitCollateralData);
 define_instruction!(Deposit, DepositAccounts, DepositData);
 define_instruction!(SetPause, SetPauseAccounts, SetPauseData);
 define_instruction!(SeedInsurance, SeedInsuranceAccounts, SeedInsuranceData);
+define_instruction!(
+    UpdateMarketParams,
+    UpdateMarketParamsAccounts,
+    UpdateMarketParamsData
+);
+define_instruction!(
+    ProposeRiskUpdate,
+    ProposeRiskUpdateAccounts,
+    ProposeRiskUpdateData
+);
+define_instruction!(
+    ApplyRiskUpdate,
+    ApplyRiskUpdateAccounts,
+    ApplyRiskUpdateData
+);
+define_instruction!(
+    ProposeAuthorityTransfer,
+    ProposeAuthorityTransferAccounts,
+    ProposeAuthorityTransferData
+);
+define_instruction!(
+    AcceptAuthorityTransfer,
+    AcceptAuthorityTransferAccounts,
+    AcceptAuthorityTransferData
+);
+define_instruction!(
+    ProposeSetOracle,
+    ProposeSetOracleAccounts,
+    ProposeSetOracleData
+);
+define_instruction!(ApplySetOracle, ApplySetOracleAccounts, ApplySetOracleData);
 define_instruction!(Withdraw, WithdrawAccounts, WithdrawData);
 define_instruction!(LiquidateCross, LiquidateCrossAccounts, LiquidateCrossData);
 define_instruction!(WithdrawCross, WithdrawCrossAccounts, WithdrawCrossData);

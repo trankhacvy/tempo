@@ -58,6 +58,23 @@ pub fn process_withdraw(
         }
         uc.debit(amount)?;
     }
+    // Mirror into the aggregate, then FAIL-CLOSED backing gate (missing-features
+    // §4.2): tokens may only leave while the vault still covers every user
+    // balance + insurance AFTER the debit.
+    {
+        let mut v = *ix.accounts.vault;
+        let mut v_data = v.try_borrow_mut()?;
+        let vault = Vault::from_bytes_mut(&mut v_data)?;
+        crate::settle_money::apply_user_balance_delta(vault, -(amount as i128))?;
+        let vault_token = TokenAccount::from_account_view(ix.accounts.vault_token_account)?;
+        let backing_needed = vault
+            .total_user_balance()
+            .saturating_add(vault.insurance_balance() as u128)
+            .saturating_add(amount as u128); // the tokens leaving in this tx
+        if (vault_token.amount() as u128) < backing_needed {
+            return Err(TempoProgramError::VaultInvariantViolated.into());
+        }
+    }
 
     // Move tokens out of the vault (authority PDA-signed). All borrows dropped.
     let bump = [authority_bump];

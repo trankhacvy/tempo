@@ -22,11 +22,14 @@ pub fn process_init_vault(
     let collateral_mint = *ix.accounts.collateral_mint.address();
     let vault_token_account = *ix.accounts.vault_token_account.address();
 
+    // v3: the admin signer is recorded as the vault authority (gates the
+    // Phase-3 staged insurance withdraw).
     let vault = Vault::new(
         ix.data.vault_bump,
         ix.data.authority_bump,
         collateral_mint,
         vault_token_account,
+        *ix.accounts.admin.address(),
     );
     vault.validate_pda(ix.accounts.vault, program_id, ix.data.vault_bump)?;
 

@@ -1337,46 +1337,46 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
 
 ### 9.3 Phase 2 — Admin release (Vault v3)
 
-- [ ] **P2.1 — Staged-change engine on `Market`** (§3.1)
+- [x] **P2.1 — Staged-change engine on `Market`** (§3.1)
   `PENDING_*` consts, `stage_pending`/`take_pending`, `RISK_UPDATE_DELAY_SLOTS`.
   **Done when:** unit tests pass: stage→take happy path; wrong kind →
   `NoPendingUpdate`; early → `PendingDelayNotElapsed`; take clears the slot — shown.
 
-- [ ] **P2.2 — Shared config validators** (§3.2)
+- [x] **P2.2 — Shared config validators** (§3.2)
   Extract `validate_fee_config`/`validate_brake_config`/`validate_risk_config` in
   `initialize_market/data.rs`; both init and update paths call them.
   **Done when:** a property-style test asserts init and update reject the same
   out-of-bounds table — test name + pass shown.
 
-- [ ] **P2.3 — `UpdateMarketParams` (33)** (§3.2)
+- [x] **P2.3 — `UpdateMarketParams` (33)** (§3.2)
   Hot-set instruction (72-byte data), authority check, `MarketParamsUpdatedEvent`
   (disc 9), full §0.1 wiring.
   **Done when:** integration test shows a fee change applying immediately (next
   settle uses the new fee) and a non-authority caller rejected `Custom(1)` — shown.
 
-- [ ] **P2.4 — `ProposeRiskUpdate`/`ApplyRiskUpdate` (34/35)** (§3.2)
+- [x] **P2.4 — `ProposeRiskUpdate`/`ApplyRiskUpdate` (34/35)** (§3.2)
   8-byte payload, shared bounds re-validated at propose, permissionless apply.
   **Done when:** tests show: apply-before-delay `Custom(48)`; apply-wrong-kind
   `Custom(47)`; post-delay apply updates all four bps fields (read back) — shown.
 
-- [ ] **P2.5 — Authority transfer (36/37)** (§3.3)
+- [x] **P2.5 — Authority transfer (36/37)** (§3.3)
   Two-step; accept signed by the staged new authority.
   **Done when:** tests show: accept by wrong signer `Custom(1)`; happy path flips
   `market.authority` and emits `AuthorityTransferred` — shown.
 
-- [ ] **P2.6 — Set-oracle (38/39)** (§3.3)
+- [x] **P2.6 — Set-oracle (38/39)** (§3.3)
   Propose requires `PAUSE_ROLL`; apply gates: delay + paused + quiescent
   (`MarketNotQuiescent`/49) + live/fresh/confident target feed; atomic
   address+feed-id commit; `OracleRepointedEvent`.
   **Done when:** tests show all four rejection gates by error code, plus the happy
   path where `update_funding` reads the NEW feed after apply — shown.
 
-- [ ] **P2.7 — `Vault` v3 layout** (§3.4)
+- [x] **P2.7 — `Vault` v3 layout** (§3.4)
   Append `authority` + `total_user_balance_le` + `pending_withdraw_*`;
   `VERSION = 3`; `init_vault` records the admin signer as `authority`.
   **Done when:** vault roundtrip test asserts `bytes[1] == 3` + new fields — shown.
 
-- [ ] **P2.8 — User-balance aggregate wiring** (§3.4)
+- [x] **P2.8 — User-balance aggregate wiring** (§3.4)
   `settle_money::apply_user_balance_delta` + calls at every balance-changing site
   (deposit, withdraw, withdraw_cross, settle_fill, settle_maker_quote, liquidate,
   liquidate_cross, finalize_clear crank fee, integrator credit).
@@ -1384,18 +1384,18 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   LiteSVM suite, `vault.total_user_balance == Σ` scanned ledger balances — test
   name + pass shown.
 
-- [ ] **P2.9 — Fail-closed outflow gate** (§3.4)
+- [x] **P2.9 — Fail-closed outflow gate** (§3.4)
   Backing check (`VaultInvariantViolated`/51) in `withdraw` + `withdraw_cross`
   after debit, before transfer.
   **Done when:** test shows a corrupted-aggregate withdraw rejected `Custom(51)`
   and a normal withdraw passing — shown.
 
-- [ ] **P2.10 — `SeedInsurance` (40)** (§3.5)
+- [x] **P2.10 — `SeedInsurance` (40)** (§3.5)
   Permissionless donate; `InsuranceSeededEvent`; aggregate NOT touched.
   **Done when:** test shows: seeded pool → previously-clamped maker rebate now pays;
   invariant property (P2.8 test) still green — shown.
 
-- [ ] **P2.11 — Phase 2 gate** — same seven checks as P1.11, all outputs shown.
+- [x] **P2.11 — Phase 2 gate** — same seven checks as P1.11, all outputs shown.
 
 - [ ] **P2.12 (OP) — Deploy + vault re-provision + admin drill on devnet**
 

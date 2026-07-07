@@ -6,7 +6,10 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./acceptAuthorityTransfer";
 export * from "./addPositionToMargin";
+export * from "./applyRiskUpdate";
+export * from "./applySetOracle";
 export * from "./cancelOrder";
 export * from "./clearMakerQuote";
 export * from "./closeMakerQuote";
@@ -26,6 +29,9 @@ export * from "./migrateMarket";
 export * from "./migratePosition";
 export * from "./processChunk";
 export * from "./processMakerQuote";
+export * from "./proposeAuthorityTransfer";
+export * from "./proposeRiskUpdate";
+export * from "./proposeSetOracle";
 export * from "./readOracle";
 export * from "./removePositionFromMargin";
 export * from "./resetShard";
@@ -38,5 +44,6 @@ export * from "./submitOrder";
 export * from "./updateFunding";
 export * from "./updateMakerQuoteLevels";
 export * from "./updateMakerQuoteMid";
+export * from "./updateMarketParams";
 export * from "./withdraw";
 export * from "./withdrawCross";

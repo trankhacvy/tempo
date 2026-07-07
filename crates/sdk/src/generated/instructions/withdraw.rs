@@ -17,7 +17,7 @@ pub struct Withdraw {
     pub owner: solana_address::Address,
     /// Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)
     pub user_collateral: solana_address::Address,
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (aggregate updated + backing gate checked, §3.4/§4.2)
     pub vault: solana_address::Address,
     /// Vault authority PDA (signs the withdrawal)
     pub vault_authority: solana_address::Address,
@@ -48,9 +48,7 @@ impl Withdraw {
             self.user_collateral,
             false,
         ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.vault, false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.vault, false));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.vault_authority,
             false,
@@ -118,7 +116,7 @@ impl WithdrawInstructionArgs {
 ///
 ///   0. `[signer]` owner
 ///   1. `[writable]` user_collateral
-///   2. `[]` vault
+///   2. `[writable]` vault
 ///   3. `[]` vault_authority
 ///   4. `[writable]` vault_token_account
 ///   5. `[writable]` user_token_account
@@ -152,7 +150,7 @@ impl WithdrawBuilder {
         self.user_collateral = Some(user_collateral);
         self
     }
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (aggregate updated + backing gate checked, §3.4/§4.2)
     #[inline(always)]
     pub fn vault(&mut self, vault: solana_address::Address) -> &mut Self {
         self.vault = Some(vault);
@@ -237,7 +235,7 @@ pub struct WithdrawCpiAccounts<'a, 'b> {
     pub owner: &'b solana_account_info::AccountInfo<'a>,
     /// Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)
     pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (aggregate updated + backing gate checked, §3.4/§4.2)
     pub vault: &'b solana_account_info::AccountInfo<'a>,
     /// Vault authority PDA (signs the withdrawal)
     pub vault_authority: &'b solana_account_info::AccountInfo<'a>,
@@ -257,7 +255,7 @@ pub struct WithdrawCpi<'a, 'b> {
     pub owner: &'b solana_account_info::AccountInfo<'a>,
     /// Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)
     pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (aggregate updated + backing gate checked, §3.4/§4.2)
     pub vault: &'b solana_account_info::AccountInfo<'a>,
     /// Vault authority PDA (signs the withdrawal)
     pub vault_authority: &'b solana_account_info::AccountInfo<'a>,
@@ -321,10 +319,7 @@ impl<'a, 'b> WithdrawCpi<'a, 'b> {
             *self.user_collateral.key,
             false,
         ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.vault.key,
-            false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(*self.vault.key, false));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             *self.vault_authority.key,
             false,
@@ -384,7 +379,7 @@ impl<'a, 'b> WithdrawCpi<'a, 'b> {
 ///
 ///   0. `[signer]` owner
 ///   1. `[writable]` user_collateral
-///   2. `[]` vault
+///   2. `[writable]` vault
 ///   3. `[]` vault_authority
 ///   4. `[writable]` vault_token_account
 ///   5. `[writable]` user_token_account
@@ -425,7 +420,7 @@ impl<'a, 'b> WithdrawCpiBuilder<'a, 'b> {
         self.instruction.user_collateral = Some(user_collateral);
         self
     }
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (aggregate updated + backing gate checked, §3.4/§4.2)
     #[inline(always)]
     pub fn vault(&mut self, vault: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.vault = Some(vault);

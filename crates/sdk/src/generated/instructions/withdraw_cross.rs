@@ -19,7 +19,7 @@ pub struct WithdrawCross {
     pub margin_account: solana_address::Address,
     /// Shared ledger to debit
     pub user_collateral: solana_address::Address,
-    /// Per-collateral vault
+    /// Per-collateral vault (aggregate updated + backing gate, §3.4/§4.2)
     pub vault: solana_address::Address,
     /// Vault authority PDA (signs)
     pub vault_authority: solana_address::Address,
@@ -57,9 +57,7 @@ impl WithdrawCross {
             self.user_collateral,
             false,
         ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.vault, false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.vault, false));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             self.vault_authority,
             false,
@@ -129,7 +127,7 @@ impl WithdrawCrossInstructionArgs {
 ///   0. `[signer]` owner
 ///   1. `[]` margin_account
 ///   2. `[writable]` user_collateral
-///   3. `[]` vault
+///   3. `[writable]` vault
 ///   4. `[]` vault_authority
 ///   5. `[writable]` vault_token_account
 ///   6. `[writable]` user_token_account
@@ -171,7 +169,7 @@ impl WithdrawCrossBuilder {
         self.user_collateral = Some(user_collateral);
         self
     }
-    /// Per-collateral vault
+    /// Per-collateral vault (aggregate updated + backing gate, §3.4/§4.2)
     #[inline(always)]
     pub fn vault(&mut self, vault: solana_address::Address) -> &mut Self {
         self.vault = Some(vault);
@@ -265,7 +263,7 @@ pub struct WithdrawCrossCpiAccounts<'a, 'b> {
     pub margin_account: &'b solana_account_info::AccountInfo<'a>,
     /// Shared ledger to debit
     pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
-    /// Per-collateral vault
+    /// Per-collateral vault (aggregate updated + backing gate, §3.4/§4.2)
     pub vault: &'b solana_account_info::AccountInfo<'a>,
     /// Vault authority PDA (signs)
     pub vault_authority: &'b solana_account_info::AccountInfo<'a>,
@@ -287,7 +285,7 @@ pub struct WithdrawCrossCpi<'a, 'b> {
     pub margin_account: &'b solana_account_info::AccountInfo<'a>,
     /// Shared ledger to debit
     pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
-    /// Per-collateral vault
+    /// Per-collateral vault (aggregate updated + backing gate, §3.4/§4.2)
     pub vault: &'b solana_account_info::AccountInfo<'a>,
     /// Vault authority PDA (signs)
     pub vault_authority: &'b solana_account_info::AccountInfo<'a>,
@@ -356,10 +354,7 @@ impl<'a, 'b> WithdrawCrossCpi<'a, 'b> {
             *self.user_collateral.key,
             false,
         ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.vault.key,
-            false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(*self.vault.key, false));
         accounts.push(solana_instruction::AccountMeta::new_readonly(
             *self.vault_authority.key,
             false,
@@ -421,7 +416,7 @@ impl<'a, 'b> WithdrawCrossCpi<'a, 'b> {
 ///   0. `[signer]` owner
 ///   1. `[]` margin_account
 ///   2. `[writable]` user_collateral
-///   3. `[]` vault
+///   3. `[writable]` vault
 ///   4. `[]` vault_authority
 ///   5. `[writable]` vault_token_account
 ///   6. `[writable]` user_token_account
@@ -473,7 +468,7 @@ impl<'a, 'b> WithdrawCrossCpiBuilder<'a, 'b> {
         self.instruction.user_collateral = Some(user_collateral);
         self
     }
-    /// Per-collateral vault
+    /// Per-collateral vault (aggregate updated + backing gate, §3.4/§4.2)
     #[inline(always)]
     pub fn vault(&mut self, vault: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.vault = Some(vault);

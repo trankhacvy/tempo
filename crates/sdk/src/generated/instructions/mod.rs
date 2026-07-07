@@ -5,7 +5,10 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
+pub(crate) mod r#accept_authority_transfer;
 pub(crate) mod r#add_position_to_margin;
+pub(crate) mod r#apply_risk_update;
+pub(crate) mod r#apply_set_oracle;
 pub(crate) mod r#cancel_order;
 pub(crate) mod r#clear_maker_quote;
 pub(crate) mod r#close_maker_quote;
@@ -25,6 +28,9 @@ pub(crate) mod r#migrate_market;
 pub(crate) mod r#migrate_position;
 pub(crate) mod r#process_chunk;
 pub(crate) mod r#process_maker_quote;
+pub(crate) mod r#propose_authority_transfer;
+pub(crate) mod r#propose_risk_update;
+pub(crate) mod r#propose_set_oracle;
 pub(crate) mod r#read_oracle;
 pub(crate) mod r#remove_position_from_margin;
 pub(crate) mod r#reset_shard;
@@ -37,10 +43,14 @@ pub(crate) mod r#submit_order;
 pub(crate) mod r#update_funding;
 pub(crate) mod r#update_maker_quote_levels;
 pub(crate) mod r#update_maker_quote_mid;
+pub(crate) mod r#update_market_params;
 pub(crate) mod r#withdraw;
 pub(crate) mod r#withdraw_cross;
 
+pub use self::r#accept_authority_transfer::*;
 pub use self::r#add_position_to_margin::*;
+pub use self::r#apply_risk_update::*;
+pub use self::r#apply_set_oracle::*;
 pub use self::r#cancel_order::*;
 pub use self::r#clear_maker_quote::*;
 pub use self::r#close_maker_quote::*;
@@ -60,6 +70,9 @@ pub use self::r#migrate_market::*;
 pub use self::r#migrate_position::*;
 pub use self::r#process_chunk::*;
 pub use self::r#process_maker_quote::*;
+pub use self::r#propose_authority_transfer::*;
+pub use self::r#propose_risk_update::*;
+pub use self::r#propose_set_oracle::*;
 pub use self::r#read_oracle::*;
 pub use self::r#remove_position_from_margin::*;
 pub use self::r#reset_shard::*;
@@ -72,5 +85,6 @@ pub use self::r#submit_order::*;
 pub use self::r#update_funding::*;
 pub use self::r#update_maker_quote_levels::*;
 pub use self::r#update_maker_quote_mid::*;
+pub use self::r#update_market_params::*;
 pub use self::r#withdraw::*;
 pub use self::r#withdraw_cross::*;

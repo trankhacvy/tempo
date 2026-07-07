@@ -436,7 +436,8 @@ pub enum TempoProgramInstruction {
     ))]
     #[codama(account(
         name = "vault",
-        docs = "Per-collateral vault (pass the mint-derived PDA)"
+        docs = "Per-collateral vault (the total_user_balance aggregate is updated, §3.4)",
+        writable
     ))]
     #[codama(account(
         name = "vault_token_account",
@@ -463,7 +464,8 @@ pub enum TempoProgramInstruction {
     ))]
     #[codama(account(
         name = "vault",
-        docs = "Per-collateral vault (pass the mint-derived PDA)"
+        docs = "Per-collateral vault (aggregate updated + backing gate checked, §3.4/§4.2)",
+        writable
     ))]
     #[codama(account(
         name = "vault_authority",
@@ -727,7 +729,11 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "owner", docs = "Withdrawing owner", signer))]
     #[codama(account(name = "margin_account", docs = "Owner's group (member set)"))]
     #[codama(account(name = "user_collateral", docs = "Shared ledger to debit", writable))]
-    #[codama(account(name = "vault", docs = "Per-collateral vault"))]
+    #[codama(account(
+        name = "vault",
+        docs = "Per-collateral vault (aggregate updated + backing gate, §3.4/§4.2)",
+        writable
+    ))]
     #[codama(account(name = "vault_authority", docs = "Vault authority PDA (signs)"))]
     #[codama(account(
         name = "vault_token_account",
@@ -879,6 +885,132 @@ pub enum TempoProgramInstruction {
         /// New pause bitflags (0 = fully resumed; unknown bits rejected)
         paused: u8,
     } = 32,
+
+    /// Authority: update the HOT market parameter set (plan.md §3.2) — every
+    /// field is read at use-time, so a change applies from the next operation
+    /// and can never strand in-flight state. Risk-class params go through the
+    /// staged propose/apply path; structural params are never changeable.
+    #[codama(account(name = "authority", docs = "Market authority", signer))]
+    #[codama(account(name = "market", docs = "Market to retune", writable))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    UpdateMarketParams {
+        /// Maker fee, signed bps (negative = rebate; |x| ≤ 1000)
+        maker_fee_bps: i16,
+        /// Taker fee, signed bps (negative = rebate; |x| ≤ 1000)
+        taker_fee_bps: i16,
+        /// Integrator share of positive fees, bps (≤ 10_000)
+        integrator_share_bps: u16,
+        /// Flat finalize-clear crank fee
+        crank_fee: u64,
+        /// Per-slot effective-price move cap, bps (0 = brake off)
+        max_price_move_bps_per_slot: u16,
+        /// Soft-stale oracle window, slots (0 = disabled)
+        soft_stale_slots: u64,
+        /// Per-position notional cap (0 = disabled)
+        max_position_notional: u128,
+        /// Minimum order notional (0 = disabled)
+        min_order_notional: u64,
+        /// Per-side open-interest soft cap (0 = disabled)
+        max_open_interest: u128,
+        /// Flat liquidator reward floor from insurance (0 = disabled)
+        liquidation_reward_floor: u64,
+    } = 33,
+
+    /// Authority: stage a risk-class change (margins/penalty/close buffer)
+    /// behind the consensus-enforced delay — raising maintenance can make live
+    /// positions liquidatable, so users get the window to de-risk (§3.2).
+    #[codama(account(name = "authority", docs = "Market authority", signer))]
+    #[codama(account(name = "market", docs = "Market (staging slot written)", writable))]
+    ProposeRiskUpdate {
+        /// New maintenance margin, bps (validated with the init bounds)
+        maintenance_margin_bps: u16,
+        /// New initial margin, bps (≥ maintenance)
+        initial_margin_bps: u16,
+        /// New liquidation penalty, bps
+        liquidation_penalty_bps: u16,
+        /// New partial-liquidation close buffer, bps
+        liquidation_close_buffer_bps: u16,
+    } = 34,
+
+    /// Permissionless: apply a staged risk update once its delay elapses (the
+    /// crank philosophy — even admin changes complete permissionlessly).
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market to apply onto", writable))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    ApplyRiskUpdate {} = 35,
+
+    /// Authority: stage an authority transfer. Two-step — the NEW key must sign
+    /// the accept, so a typo'd dead address can never take over (§3.3).
+    #[codama(account(name = "authority", docs = "Current market authority", signer))]
+    #[codama(account(name = "market", docs = "Market (staging slot written)", writable))]
+    ProposeAuthorityTransfer {
+        /// The proposed new authority
+        new_authority: [u8; 32],
+    } = 36,
+
+    /// The staged NEW authority signs to take over the market.
+    #[codama(account(name = "new_authority", docs = "The staged new authority", signer))]
+    #[codama(account(name = "market", docs = "Market whose authority rotates", writable))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    AcceptAuthorityTransfer {} = 37,
+
+    /// Authority: stage an oracle repoint (the most dangerous admin power —
+    /// whoever controls the oracle controls liquidation prices). Only
+    /// proposable while the market is winding down (`PAUSE_ROLL`), and applies
+    /// only after the delay, on a fully paused + quiescent market (§3.3).
+    #[codama(account(name = "authority", docs = "Market authority", signer))]
+    #[codama(account(name = "market", docs = "Market (staging slot written)", writable))]
+    ProposeSetOracle {
+        /// The proposed new Pyth PriceUpdateV2 account
+        new_oracle: [u8; 32],
+        /// The feed id that account must carry
+        new_feed_id: [u8; 32],
+    } = 38,
+
+    /// Permissionless: apply a staged oracle repoint. Gates: delay elapsed;
+    /// market fully paused AND quiescent (round settled, all shards reset); the
+    /// staged account is live, fresh, and confidence-checked RIGHT NOW; address
+    /// + feed id commit atomically. The window re-anchors at the next roll.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(name = "market", docs = "Market to repoint", writable))]
+    #[codama(account(
+        name = "new_oracle",
+        docs = "The STAGED Pyth account (validated live before commit)"
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    ApplySetOracle {} = 39,
 
     /// Permissionless donation into the vault insurance pool (missing-features
     /// §4.1). Exists so a fresh money-path market's pool is not zero — an empty

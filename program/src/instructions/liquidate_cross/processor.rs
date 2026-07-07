@@ -290,6 +290,10 @@ pub fn process_liquidate_cross(
         {
             return Err(TempoProgramError::AccountMarketMismatch.into());
         }
+        // §3.4: the owner moved by `balance_delta − penalty_charged` (the PnL
+        // flush minus the penalty debit) and the liquidator gained
+        // `penalty_charged` — net user-balance delta = `balance_delta`.
+        crate::settle_money::apply_user_balance_delta(vault, balance_delta)?;
         let insurance = vault.insurance_balance();
         // The PnL that entered/left the owner's balance moves the opposite way in
         // insurance. A gain is funded from insurance (fail closed if it cannot,

@@ -67,7 +67,7 @@ export type WithdrawInstruction<
         ? WritableAccount<TAccountUserCollateral>
         : TAccountUserCollateral,
       TAccountVault extends string
-        ? ReadonlyAccount<TAccountVault>
+        ? WritableAccount<TAccountVault>
         : TAccountVault,
       TAccountVaultAuthority extends string
         ? ReadonlyAccount<TAccountVaultAuthority>
@@ -129,7 +129,7 @@ export type WithdrawInput<
   owner: TransactionSigner<TAccountOwner>;
   /** Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3) */
   userCollateral: Address<TAccountUserCollateral>;
-  /** Per-collateral vault (pass the mint-derived PDA) */
+  /** Per-collateral vault (aggregate updated + backing gate checked, §3.4/§4.2) */
   vault: Address<TAccountVault>;
   /** Vault authority PDA (signs the withdrawal) */
   vaultAuthority: Address<TAccountVaultAuthority>;
@@ -180,7 +180,7 @@ export function getWithdrawInstruction<
   const originalAccounts = {
     owner: { value: input.owner ?? null, isWritable: false },
     userCollateral: { value: input.userCollateral ?? null, isWritable: true },
-    vault: { value: input.vault ?? null, isWritable: false },
+    vault: { value: input.vault ?? null, isWritable: true },
     vaultAuthority: { value: input.vaultAuthority ?? null, isWritable: false },
     vaultTokenAccount: {
       value: input.vaultTokenAccount ?? null,
@@ -243,7 +243,7 @@ export type ParsedWithdrawInstruction<
     owner: TAccountMetas[0];
     /** Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3) */
     userCollateral: TAccountMetas[1];
-    /** Per-collateral vault (pass the mint-derived PDA) */
+    /** Per-collateral vault (aggregate updated + backing gate checked, §3.4/§4.2) */
     vault: TAccountMetas[2];
     /** Vault authority PDA (signs the withdrawal) */
     vaultAuthority: TAccountMetas[3];

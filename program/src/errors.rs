@@ -226,6 +226,34 @@ pub enum TempoProgramError {
     /// dead margin the reaper must later collect.
     #[error("Order expiry is already reached at submit time")]
     OrderAlreadyExpired,
+
+    /// (47) No staged admin change of the expected kind is pending on this account
+    /// (plan.md §3.1 — the propose→delay→apply engine).
+    #[error("No pending update of this kind")]
+    NoPendingUpdate,
+
+    /// (48) A staged admin change's effective slot has not been reached yet. The
+    /// delay is enforced by consensus (apply is permissionless), not by trust.
+    #[error("Pending update delay has not elapsed")]
+    PendingDelayNotElapsed,
+
+    /// (49) The market is not fully quiescent (round in flight, open interest,
+    /// live orders, or active maker quotes) for an operation that requires it
+    /// (e.g. applying an oracle repoint — no round may straddle two price regimes).
+    #[error("Market is not quiescent")]
+    MarketNotQuiescent,
+
+    /// (50) The order would push the market's per-side open interest past
+    /// `max_open_interest` (missing-features §1.2, soft cap checked at submit).
+    #[error("Order would exceed the market's open-interest cap")]
+    OpenInterestCapExceeded,
+
+    /// (51) The vault token balance no longer covers user balances + insurance
+    /// (missing-features §4.2). Fail-closed gate at token-outflow sites: drift in
+    /// the `total_user_balance` aggregate blocks withdrawals (funds stay safe)
+    /// rather than wedging rounds.
+    #[error("Vault backing invariant violated")]
+    VaultInvariantViolated,
 }
 
 impl From<TempoProgramError> for ProgramError {

@@ -39,6 +39,7 @@ impl<'a> TryFrom<&'a [AccountView]> for WithdrawAccounts<'a> {
         verify_signer(owner, false)?;
         verify_writable(user_collateral, true)?;
         verify_current_program_account(user_collateral)?;
+        verify_writable(vault, true)?;
         verify_current_program_account(vault)?;
         verify_writable(vault_token_account, true)?;
         verify_writable(user_token_account, true)?;

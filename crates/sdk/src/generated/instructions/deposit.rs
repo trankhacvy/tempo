@@ -17,7 +17,7 @@ pub struct Deposit {
     pub owner: solana_address::Address,
     /// Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)
     pub user_collateral: solana_address::Address,
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (the total_user_balance aggregate is updated, §3.4)
     pub vault: solana_address::Address,
     /// Vault token account (transfer destination)
     pub vault_token_account: solana_address::Address,
@@ -46,9 +46,7 @@ impl Deposit {
             self.user_collateral,
             false,
         ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            self.vault, false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(self.vault, false));
         accounts.push(solana_instruction::AccountMeta::new(
             self.vault_token_account,
             false,
@@ -112,7 +110,7 @@ impl DepositInstructionArgs {
 ///
 ///   0. `[signer]` owner
 ///   1. `[writable]` user_collateral
-///   2. `[]` vault
+///   2. `[writable]` vault
 ///   3. `[writable]` vault_token_account
 ///   4. `[writable]` user_token_account
 ///   5. `[optional]` token_program (default to `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`)
@@ -144,7 +142,7 @@ impl DepositBuilder {
         self.user_collateral = Some(user_collateral);
         self
     }
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (the total_user_balance aggregate is updated, §3.4)
     #[inline(always)]
     pub fn vault(&mut self, vault: solana_address::Address) -> &mut Self {
         self.vault = Some(vault);
@@ -222,7 +220,7 @@ pub struct DepositCpiAccounts<'a, 'b> {
     pub owner: &'b solana_account_info::AccountInfo<'a>,
     /// Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)
     pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (the total_user_balance aggregate is updated, §3.4)
     pub vault: &'b solana_account_info::AccountInfo<'a>,
     /// Vault token account (transfer destination)
     pub vault_token_account: &'b solana_account_info::AccountInfo<'a>,
@@ -240,7 +238,7 @@ pub struct DepositCpi<'a, 'b> {
     pub owner: &'b solana_account_info::AccountInfo<'a>,
     /// Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3)
     pub user_collateral: &'b solana_account_info::AccountInfo<'a>,
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (the total_user_balance aggregate is updated, §3.4)
     pub vault: &'b solana_account_info::AccountInfo<'a>,
     /// Vault token account (transfer destination)
     pub vault_token_account: &'b solana_account_info::AccountInfo<'a>,
@@ -301,10 +299,7 @@ impl<'a, 'b> DepositCpi<'a, 'b> {
             *self.user_collateral.key,
             false,
         ));
-        accounts.push(solana_instruction::AccountMeta::new_readonly(
-            *self.vault.key,
-            false,
-        ));
+        accounts.push(solana_instruction::AccountMeta::new(*self.vault.key, false));
         accounts.push(solana_instruction::AccountMeta::new(
             *self.vault_token_account.key,
             false,
@@ -359,7 +354,7 @@ impl<'a, 'b> DepositCpi<'a, 'b> {
 ///
 ///   0. `[signer]` owner
 ///   1. `[writable]` user_collateral
-///   2. `[]` vault
+///   2. `[writable]` vault
 ///   3. `[writable]` vault_token_account
 ///   4. `[writable]` user_token_account
 ///   5. `[]` token_program
@@ -398,7 +393,7 @@ impl<'a, 'b> DepositCpiBuilder<'a, 'b> {
         self.instruction.user_collateral = Some(user_collateral);
         self
     }
-    /// Per-collateral vault (pass the mint-derived PDA)
+    /// Per-collateral vault (the total_user_balance aggregate is updated, §3.4)
     #[inline(always)]
     pub fn vault(&mut self, vault: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {
         self.instruction.vault = Some(vault);

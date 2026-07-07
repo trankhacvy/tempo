@@ -12,7 +12,7 @@ use crate::{
 /// 0  [signer]   owner
 /// 1  []         margin_account (owner's group / member set)
 /// 2  [writable] user_collateral (shared ledger to debit)
-/// 3  []         vault
+/// 3  [writable] vault - the `total_user_balance` aggregate is updated (§3.4)
 /// 4  []         vault_authority (signs the token transfer)
 /// 5  [writable] vault_token_account
 /// 6  [writable] user_token_account
@@ -54,6 +54,7 @@ impl<'a> TryFrom<&'a [AccountView]> for WithdrawCrossAccounts<'a> {
         verify_signer(owner, false)?;
         verify_writable(user_collateral, true)?;
         verify_current_program_account(user_collateral)?;
+        verify_writable(vault, true)?;
         verify_current_program_account(vault)?;
         verify_writable(vault_token_account, true)?;
         verify_writable(user_token_account, true)?;

@@ -69,6 +69,20 @@ pub enum TempoInstructionDiscriminators {
     ResetShard = 31,
     /// Authority circuit breaker: set the market's pause bitflags (§3.2).
     SetPause = 32,
+    /// Authority: update the HOT market params (fees/caps/brake — §3.2).
+    UpdateMarketParams = 33,
+    /// Authority: stage a risk-class param change behind the delay (§3.2).
+    ProposeRiskUpdate = 34,
+    /// Permissionless: apply a staged risk update once the delay elapses.
+    ApplyRiskUpdate = 35,
+    /// Authority: stage an authority transfer (two-step, §3.3).
+    ProposeAuthorityTransfer = 36,
+    /// The staged NEW authority signs to take over.
+    AcceptAuthorityTransfer = 37,
+    /// Authority: stage an oracle repoint (paused-only, delayed — §3.3).
+    ProposeSetOracle = 38,
+    /// Permissionless: apply a staged oracle repoint (quiescence-gated).
+    ApplySetOracle = 39,
     /// Permissionless donation into the vault insurance pool (§4.1).
     SeedInsurance = 40,
     /// Self-CPI event emission (carries event data in instruction data).
@@ -113,6 +127,13 @@ impl TryFrom<u8> for TempoInstructionDiscriminators {
             30 => Ok(Self::InitShard),
             31 => Ok(Self::ResetShard),
             32 => Ok(Self::SetPause),
+            33 => Ok(Self::UpdateMarketParams),
+            34 => Ok(Self::ProposeRiskUpdate),
+            35 => Ok(Self::ApplyRiskUpdate),
+            36 => Ok(Self::ProposeAuthorityTransfer),
+            37 => Ok(Self::AcceptAuthorityTransfer),
+            38 => Ok(Self::ProposeSetOracle),
+            39 => Ok(Self::ApplySetOracle),
             40 => Ok(Self::SeedInsurance),
             228 => Ok(Self::EmitEvent),
             _ => Err(ProgramError::InvalidInstructionData),

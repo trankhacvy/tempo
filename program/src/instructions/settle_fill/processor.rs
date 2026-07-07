@@ -516,6 +516,9 @@ pub fn process_settle_fill(
                                 .unwrap_or(u64::MAX)
                                 .min(vault.insurance_balance());
                             vault.set_insurance_balance(vault.insurance_balance() - pay);
+                            // §3.4: the integrator's ledger credit below raises
+                            // Σ user balances by `pay`.
+                            crate::settle_money::apply_user_balance_delta(vault, pay as i128)?;
                             pay
                         };
                         if paid > 0 {

@@ -6,14 +6,17 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./authorityTransferredEvent";
 export * from "./chunkProcessedEvent";
 export * from "./clearingFinalizedEvent";
 export * from "./fillSettledEvent";
 export * from "./fundingUpdatedEvent";
 export * from "./insuranceSeededEvent";
 export * from "./marketInitializedEvent";
+export * from "./marketParamsUpdatedEvent";
 export * from "./marketPauseChangedEvent";
 export * from "./oraclePriceReadEvent";
+export * from "./oracleRepointedEvent";
 export * from "./order";
 export * from "./orderCancelledEvent";
 export * from "./orderSubmittedEvent";

@@ -5,27 +5,33 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
+pub(crate) mod r#authority_transferred_event;
 pub(crate) mod r#chunk_processed_event;
 pub(crate) mod r#clearing_finalized_event;
 pub(crate) mod r#fill_settled_event;
 pub(crate) mod r#funding_updated_event;
 pub(crate) mod r#insurance_seeded_event;
 pub(crate) mod r#market_initialized_event;
+pub(crate) mod r#market_params_updated_event;
 pub(crate) mod r#market_pause_changed_event;
 pub(crate) mod r#oracle_price_read_event;
+pub(crate) mod r#oracle_repointed_event;
 pub(crate) mod r#order;
 pub(crate) mod r#order_cancelled_event;
 pub(crate) mod r#order_submitted_event;
 pub(crate) mod r#position_liquidated_event;
 
+pub use self::r#authority_transferred_event::*;
 pub use self::r#chunk_processed_event::*;
 pub use self::r#clearing_finalized_event::*;
 pub use self::r#fill_settled_event::*;
 pub use self::r#funding_updated_event::*;
 pub use self::r#insurance_seeded_event::*;
 pub use self::r#market_initialized_event::*;
+pub use self::r#market_params_updated_event::*;
 pub use self::r#market_pause_changed_event::*;
 pub use self::r#oracle_price_read_event::*;
+pub use self::r#oracle_repointed_event::*;
 pub use self::r#order::*;
 pub use self::r#order_cancelled_event::*;
 pub use self::r#order_submitted_event::*;

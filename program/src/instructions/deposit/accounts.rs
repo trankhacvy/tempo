@@ -10,7 +10,7 @@ use crate::{
 /// # Account Layout
 /// 0. `[signer]` owner
 /// 1. `[writable]` user_collateral - owner's ledger
-/// 2. `[]` vault
+/// 2. `[writable]` vault - the `total_user_balance` aggregate is updated (§3.4)
 /// 3. `[writable]` vault_token_account
 /// 4. `[writable]` user_token_account
 /// 5. `[]` token_program
@@ -37,6 +37,7 @@ impl<'a> TryFrom<&'a [AccountView]> for DepositAccounts<'a> {
         verify_signer(owner, false)?;
         verify_writable(user_collateral, true)?;
         verify_current_program_account(user_collateral)?;
+        verify_writable(vault, true)?;
         verify_current_program_account(vault)?;
         verify_writable(vault_token_account, true)?;
         verify_writable(user_token_account, true)?;

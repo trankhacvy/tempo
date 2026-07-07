@@ -80,6 +80,14 @@ const IX_CLOSE_MAKER_QUOTE: u8 = 29;
 const IX_INIT_SHARD: u8 = 30;
 const IX_RESET_SHARD: u8 = 31;
 const IX_SET_PAUSE: u8 = 32;
+const IX_UPDATE_MARKET_PARAMS: u8 = 33;
+const IX_PROPOSE_RISK_UPDATE: u8 = 34;
+const IX_APPLY_RISK_UPDATE: u8 = 35;
+const IX_PROPOSE_AUTHORITY_TRANSFER: u8 = 36;
+const IX_ACCEPT_AUTHORITY_TRANSFER: u8 = 37;
+const IX_PROPOSE_SET_ORACLE: u8 = 38;
+const IX_APPLY_SET_ORACLE: u8 = 39;
+const IX_SEED_INSURANCE: u8 = 40;
 
 /// One cross-margin member as supplied to `withdraw_cross` / `liquidate_cross`
 /// (known-issues §2.4): a `Live` member is a `(position, market, oracle)` triple;
@@ -239,8 +247,10 @@ pub struct MarketState {
     pub num_ticks: u32,
     pub authority: Pubkey,
     pub market_seed: Pubkey,
+    pub oracle: Pubkey,
     pub phase: u8,
     pub bump: u8,
+    pub maintenance_margin_bps: u16,
     pub oi_long: u128,
     pub oi_short: u128,
     pub social_loss_index_long: i128,
@@ -321,6 +331,10 @@ fn read_pubkey(d: &[u8], off: usize) -> Pubkey {
 fn read_i64(d: &[u8], off: usize) -> i64 {
     i64::from_le_bytes(d[off..off + 8].try_into().unwrap())
 }
+fn read_u128(d: &[u8], off: usize) -> u128 {
+    u128::from_le_bytes(d[off..off + 16].try_into().unwrap())
+}
+
 fn read_i128(d: &[u8], off: usize) -> i128 {
     i128::from_le_bytes(d[off..off + 16].try_into().unwrap())
 }
@@ -346,6 +360,11 @@ pub struct VaultState {
     pub insurance_balance: u64,
     pub authority_bump: u8,
     pub bump: u8,
+    // v3 (plan.md §3.4)
+    pub authority: Pubkey,
+    pub total_user_balance: u128,
+    pub pending_withdraw_amount: u64,
+    pub pending_withdraw_slot: u64,
 }
 
 /// Decoded `UserCollateral` account (state/user_collateral.rs, after the prefix).
@@ -2191,7 +2210,7 @@ impl TestContext {
             accounts: vec![
                 AccountMeta::new_readonly(owner.pubkey(), true),
                 AccountMeta::new(user_collateral, false),
-                AccountMeta::new_readonly(vault, false),
+                AccountMeta::new(vault, false),
                 AccountMeta::new(*vault_token_account, false),
                 AccountMeta::new(*user_token_account, false),
                 AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false),
@@ -2244,7 +2263,7 @@ impl TestContext {
             AccountMeta::new_readonly(owner.pubkey(), true),
             AccountMeta::new_readonly(margin, false),
             AccountMeta::new(user_collateral, false),
-            AccountMeta::new_readonly(vault, false),
+            AccountMeta::new(vault, false),
             AccountMeta::new_readonly(vault_authority, false),
             AccountMeta::new(*vault_token_account, false),
             AccountMeta::new(*user_token_account, false),
@@ -2369,7 +2388,7 @@ impl TestContext {
             accounts: vec![
                 AccountMeta::new_readonly(*owner, true),
                 AccountMeta::new(user_collateral, false),
-                AccountMeta::new_readonly(vault, false),
+                AccountMeta::new(vault, false),
                 AccountMeta::new_readonly(vault_authority, false),
                 AccountMeta::new(*vault_token_account, false),
                 AccountMeta::new(*user_token_account, false),
@@ -2816,6 +2835,209 @@ impl TestContext {
             .map(|k| k.insecure_clone())
     }
 
+    /// UpdateMarketParams (hot set, §3.2) signed by `signer` (pass the recorded
+    /// authority for the happy path). Fields not under test ride as zeros.
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_update_market_params(
+        &mut self,
+        pdas: &MarketPdas,
+        signer: &Keypair,
+        taker_fee_bps: i16,
+        crank_fee: u64,
+        min_order_notional: u64,
+        max_open_interest: u128,
+        liquidation_reward_floor: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let mut data = Vec::with_capacity(1 + 72);
+        data.push(IX_UPDATE_MARKET_PARAMS);
+        data.extend_from_slice(&0i16.to_le_bytes()); // maker_fee
+        data.extend_from_slice(&taker_fee_bps.to_le_bytes());
+        data.extend_from_slice(&0u16.to_le_bytes()); // integrator share
+        data.extend_from_slice(&crank_fee.to_le_bytes());
+        data.extend_from_slice(&0u16.to_le_bytes()); // brake
+        data.extend_from_slice(&0u64.to_le_bytes()); // soft stale
+        data.extend_from_slice(&0u128.to_le_bytes()); // max position notional
+        data.extend_from_slice(&min_order_notional.to_le_bytes());
+        data.extend_from_slice(&max_open_interest.to_le_bytes());
+        data.extend_from_slice(&liquidation_reward_floor.to_le_bytes());
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(signer.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+                AccountMeta::new_readonly(self.event_authority, false),
+                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            ],
+            data,
+        };
+        self.send(ix, &[signer])
+    }
+
+    /// ProposeRiskUpdate (staged, §3.2) with the recorded authority.
+    pub fn try_propose_risk_update(
+        &mut self,
+        pdas: &MarketPdas,
+        maintenance_bps: u16,
+        initial_bps: u16,
+        penalty_bps: u16,
+        close_buffer_bps: u16,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let authority = self
+            .market_authority_keypair(pdas)
+            .expect("authority recorded");
+        let mut data = Vec::with_capacity(1 + 8);
+        data.push(IX_PROPOSE_RISK_UPDATE);
+        data.extend_from_slice(&maintenance_bps.to_le_bytes());
+        data.extend_from_slice(&initial_bps.to_le_bytes());
+        data.extend_from_slice(&penalty_bps.to_le_bytes());
+        data.extend_from_slice(&close_buffer_bps.to_le_bytes());
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(authority.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+            ],
+            data,
+        };
+        self.send(ix, &[&authority])
+    }
+
+    /// ApplyRiskUpdate (permissionless, §3.2) — payer cranks.
+    pub fn try_apply_risk_update(
+        &mut self,
+        pdas: &MarketPdas,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(self.payer.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+                AccountMeta::new_readonly(self.event_authority, false),
+                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            ],
+            data: vec![IX_APPLY_RISK_UPDATE],
+        };
+        let payer = self.payer.insecure_clone();
+        self.send(ix, &[&payer])
+    }
+
+    /// ProposeAuthorityTransfer (§3.3) with the recorded authority.
+    pub fn try_propose_authority_transfer(
+        &mut self,
+        pdas: &MarketPdas,
+        new_authority: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let authority = self
+            .market_authority_keypair(pdas)
+            .expect("authority recorded");
+        let mut data = Vec::with_capacity(1 + 32);
+        data.push(IX_PROPOSE_AUTHORITY_TRANSFER);
+        data.extend_from_slice(new_authority.as_ref());
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(authority.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+            ],
+            data,
+        };
+        self.send(ix, &[&authority])
+    }
+
+    /// AcceptAuthorityTransfer (§3.3) signed by the (claimed) new authority.
+    pub fn try_accept_authority_transfer(
+        &mut self,
+        pdas: &MarketPdas,
+        new_authority: &Keypair,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(new_authority.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+                AccountMeta::new_readonly(self.event_authority, false),
+                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            ],
+            data: vec![IX_ACCEPT_AUTHORITY_TRANSFER],
+        };
+        self.send(ix, &[new_authority])
+    }
+
+    /// ProposeSetOracle (§3.3) with the recorded authority.
+    pub fn try_propose_set_oracle(
+        &mut self,
+        pdas: &MarketPdas,
+        new_oracle: &Pubkey,
+        new_feed_id: &[u8; 32],
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let authority = self
+            .market_authority_keypair(pdas)
+            .expect("authority recorded");
+        let mut data = Vec::with_capacity(1 + 64);
+        data.push(IX_PROPOSE_SET_ORACLE);
+        data.extend_from_slice(new_oracle.as_ref());
+        data.extend_from_slice(new_feed_id);
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(authority.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+            ],
+            data,
+        };
+        self.send(ix, &[&authority])
+    }
+
+    /// ApplySetOracle (permissionless, §3.3) — payer cranks.
+    pub fn try_apply_set_oracle(
+        &mut self,
+        pdas: &MarketPdas,
+        new_oracle: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(self.payer.pubkey(), true),
+                AccountMeta::new(pdas.market, false),
+                AccountMeta::new_readonly(*new_oracle, false),
+                AccountMeta::new_readonly(self.event_authority, false),
+                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            ],
+            data: vec![IX_APPLY_SET_ORACLE],
+        };
+        let payer = self.payer.insecure_clone();
+        self.send(ix, &[&payer])
+    }
+
+    /// SeedInsurance (permissionless donate, §4.1): transfers from the donor's
+    /// token account into the vault and credits the pool.
+    pub fn seed_insurance(
+        &mut self,
+        donor: &Keypair,
+        vault_token_account: &Pubkey,
+        donor_token_account: &Pubkey,
+        amount: u64,
+    ) -> TransactionMetadata {
+        let (vault, _) = self.vault_pda();
+        let mut data = Vec::with_capacity(1 + 8);
+        data.push(IX_SEED_INSURANCE);
+        data.extend_from_slice(&amount.to_le_bytes());
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(donor.pubkey(), true),
+                AccountMeta::new(vault, false),
+                AccountMeta::new(*vault_token_account, false),
+                AccountMeta::new(*donor_token_account, false),
+                AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false),
+                AccountMeta::new_readonly(self.event_authority, false),
+                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            ],
+            data,
+        };
+        self.send(ix, &[donor]).expect("seed_insurance")
+    }
+
     /// SetPause with the market's recorded authority.
     pub fn set_pause(&mut self, pdas: &MarketPdas, paused: u8) -> TransactionMetadata {
         let authority = self
@@ -2884,9 +3106,10 @@ impl TestContext {
             num_ticks: read_u32(b, 44),
             authority: read_pubkey(b, 48),
             market_seed: read_pubkey(b, 80),
-            // oracle at 112
+            oracle: read_pubkey(b, 112),
             phase: b[144],
             bump: b[145],
+            maintenance_margin_bps: u16::from_le_bytes(b[202..204].try_into().unwrap()),
             oi_long: u128::from_le_bytes(b[276..292].try_into().unwrap()),
             oi_short: u128::from_le_bytes(b[292..308].try_into().unwrap()),
             social_loss_index_long: i128::from_le_bytes(b[308..324].try_into().unwrap()),
@@ -2976,14 +3199,45 @@ impl TestContext {
         let (vault, _) = self.vault_pda();
         let d = self.account_data(&vault);
         let b = &d[PREFIX..];
-        // layout: 2*Address(64), u64 insurance, u8 auth_bump, u8 bump
+        // layout: 2*Address(64), u64 insurance, u8 auth_bump, u8 bump,
+        // v3: authority(32), total_user_balance(u128), pending amount/slot(u64 ×2)
         VaultState {
             collateral_mint: read_pubkey(b, 0),
             vault_token_account: read_pubkey(b, 32),
             insurance_balance: read_u64(b, 64),
             authority_bump: b[72],
             bump: b[73],
+            authority: read_pubkey(b, 74),
+            total_user_balance: read_u128(b, 106),
+            pending_withdraw_amount: read_u64(b, 122),
+            pending_withdraw_slot: read_u64(b, 130),
         }
+    }
+
+    /// Test-only: overwrite the vault's `total_user_balance` aggregate in place
+    /// (simulates drift so the fail-closed outflow gate can be exercised).
+    pub fn corrupt_vault_aggregate(&mut self, total_user_balance: u128) {
+        let (vault, _) = self.vault_pda();
+        let mut acct = self.svm.get_account(&vault).expect("vault exists");
+        // data layout after the 2-byte prefix: ... total_user_balance at 106.
+        let off = PREFIX + 106;
+        acct.data[off..off + 16].copy_from_slice(&total_user_balance.to_le_bytes());
+        self.svm.set_account(vault, acct).expect("corrupt vault");
+    }
+
+    /// §3.4 property: the vault's `total_user_balance` aggregate must equal the
+    /// scanned Σ of the given owners' ledger balances (the host CAN scan; the
+    /// chain can't — that asymmetry is why the aggregate exists).
+    pub fn assert_aggregate(&self, owners: &[Pubkey]) {
+        let sum: u128 = owners
+            .iter()
+            .map(|o| self.user_collateral(o).balance as u128)
+            .sum();
+        assert_eq!(
+            self.vault().total_user_balance,
+            sum,
+            "vault.total_user_balance == Σ ledger balances (§3.4)"
+        );
     }
 
     /// Decode a `UserCollateral` ledger for `owner`.

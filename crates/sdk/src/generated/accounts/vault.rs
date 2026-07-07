@@ -17,6 +17,10 @@ pub struct Vault {
     pub insurance_balance_le: [u8; 8],
     pub authority_bump: u8,
     pub bump: u8,
+    pub authority: Address,
+    pub total_user_balance_le: [u8; 16],
+    pub pending_withdraw_amount_le: [u8; 8],
+    pub pending_withdraw_slot_le: [u8; 8],
 }
 
 pub const VAULT_DISCRIMINATOR: u8 = 6;

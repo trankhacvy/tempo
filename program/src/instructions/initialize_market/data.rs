@@ -43,6 +43,69 @@ pub const MAX_INITIAL_MARGIN_BPS: u16 = 10_000;
 /// Upper bound on `liquidation_penalty_bps` (50%).
 pub const MAX_LIQUIDATION_PENALTY_BPS: u16 = 5_000;
 
+/// Fee bounds shared by `initialize_market` and `update_market_params` (plan.md
+/// §3.2) — ONE source of truth so the two paths can never accept different
+/// configs. Signed fees within ±10%, integrator share a valid bps fraction.
+pub fn validate_fee_config(
+    maker_fee_bps: i16,
+    taker_fee_bps: i16,
+    integrator_share_bps: u16,
+) -> Result<(), ProgramError> {
+    if maker_fee_bps.unsigned_abs() > 1000 || taker_fee_bps.unsigned_abs() > 1000 {
+        return Err(TempoProgramError::MarketConfigOutOfRange.into());
+    }
+    if integrator_share_bps > 10_000 {
+        return Err(TempoProgramError::MarketConfigOutOfRange.into());
+    }
+    Ok(())
+}
+
+/// Brake bound shared by init + update: the per-slot price-move cap is a bps
+/// fraction (0 disables the brake → price jumps to target).
+pub fn validate_brake_config(max_price_move_bps_per_slot: u16) -> Result<(), ProgramError> {
+    if max_price_move_bps_per_slot > 10_000 {
+        return Err(TempoProgramError::MarketConfigOutOfRange.into());
+    }
+    Ok(())
+}
+
+/// Risk-config coupling shared by init + the staged risk update (plan.md §3.2):
+/// a market is either a pure clearing benchmark with NO money path (every risk
+/// bps zero) or a full perp with sane, ordered bounds. `initial >= maintenance`
+/// is what stops a position opening already on its liquidation line; the
+/// partial-liquidation close buffer is a money-path knob.
+pub fn validate_risk_config(
+    maintenance_margin_bps: u16,
+    initial_margin_bps: u16,
+    liquidation_penalty_bps: u16,
+    liquidation_close_buffer_bps: u16,
+) -> Result<(), ProgramError> {
+    if liquidation_close_buffer_bps > 10_000 {
+        return Err(TempoProgramError::MarketConfigOutOfRange.into());
+    }
+    if maintenance_margin_bps == 0 {
+        if initial_margin_bps != 0
+            || liquidation_penalty_bps != 0
+            || liquidation_close_buffer_bps != 0
+        {
+            return Err(TempoProgramError::MarketConfigOutOfRange.into());
+        }
+    } else {
+        if maintenance_margin_bps > MAX_MAINTENANCE_MARGIN_BPS {
+            return Err(TempoProgramError::MarketConfigOutOfRange.into());
+        }
+        if initial_margin_bps < maintenance_margin_bps
+            || initial_margin_bps > MAX_INITIAL_MARGIN_BPS
+        {
+            return Err(TempoProgramError::MarketConfigOutOfRange.into());
+        }
+        if liquidation_penalty_bps > MAX_LIQUIDATION_PENALTY_BPS {
+            return Err(TempoProgramError::MarketConfigOutOfRange.into());
+        }
+    }
+    Ok(())
+}
+
 /// Instruction data for InitializeMarket.
 ///
 /// # Layout (little-endian)
@@ -150,49 +213,18 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
         if num_slab_shards == 0 || num_slab_shards > MAX_SLAB_SHARDS {
             return Err(TempoProgramError::MarketConfigOutOfRange.into());
         }
-        // Fee config bounds: signed fees within ±10% and the integrator share a
-        // valid bps fraction.
-        if maker_fee_bps.unsigned_abs() > 1000 || taker_fee_bps.unsigned_abs() > 1000 {
-            return Err(TempoProgramError::MarketConfigOutOfRange.into());
-        }
-        if integrator_share_bps > 10_000 {
-            return Err(TempoProgramError::MarketConfigOutOfRange.into());
-        }
-        // Price-move cap is a bps fraction (0 disables the brake → price jumps to
-        // target). The soft-stale window is unbounded by construction.
-        if max_price_move_bps_per_slot > 10_000 {
-            return Err(TempoProgramError::MarketConfigOutOfRange.into());
-        }
-        // Risk config (missing-features §1.1/§1.2/§1.3): a market is either a pure
-        // clearing benchmark with NO money path (every risk bps zero) or a full perp
-        // with sane, ordered bounds. The initial margin is the buffer locked at open;
-        // requiring `initial >= maintenance` is what stops a position opening already
-        // on its liquidation line. `max_position_notional` is an opaque cap (0 = off).
-        // The partial-liquidation buffer is a money-path knob: bounded, and only
-        // meaningful when a maintenance margin exists (plan.md §2.1).
-        if liquidation_close_buffer_bps > 10_000 {
-            return Err(TempoProgramError::MarketConfigOutOfRange.into());
-        }
-        if maintenance_margin_bps == 0 {
-            if initial_margin_bps != 0
-                || liquidation_penalty_bps != 0
-                || liquidation_close_buffer_bps != 0
-            {
-                return Err(TempoProgramError::MarketConfigOutOfRange.into());
-            }
-        } else {
-            if maintenance_margin_bps > MAX_MAINTENANCE_MARGIN_BPS {
-                return Err(TempoProgramError::MarketConfigOutOfRange.into());
-            }
-            if initial_margin_bps < maintenance_margin_bps
-                || initial_margin_bps > MAX_INITIAL_MARGIN_BPS
-            {
-                return Err(TempoProgramError::MarketConfigOutOfRange.into());
-            }
-            if liquidation_penalty_bps > MAX_LIQUIDATION_PENALTY_BPS {
-                return Err(TempoProgramError::MarketConfigOutOfRange.into());
-            }
-        }
+        // Shared bounds — ONE source of truth with `update_market_params` /
+        // `apply_risk_update` (plan.md §3.2), so the init and live-update paths
+        // can never accept different configs. The soft-stale window stays
+        // unbounded by construction; `max_position_notional` is an opaque cap.
+        validate_fee_config(maker_fee_bps, taker_fee_bps, integrator_share_bps)?;
+        validate_brake_config(max_price_move_bps_per_slot)?;
+        validate_risk_config(
+            maintenance_margin_bps,
+            initial_margin_bps,
+            liquidation_penalty_bps,
+            liquidation_close_buffer_bps,
+        )?;
 
         Ok(Self {
             market_bump,

@@ -580,6 +580,43 @@ impl Market {
         u16::from_le_bytes(self.liquidation_close_buffer_bps_le)
     }
 
+    /// Staged-change kinds (plan.md §3.1): the propose→delay→apply engine.
+    pub const PENDING_NONE: u8 = 0;
+    pub const PENDING_RISK_PARAMS: u8 = 1;
+    pub const PENDING_ORACLE: u8 = 2;
+    pub const PENDING_AUTHORITY: u8 = 3;
+
+    /// Delay (slots) between proposing a risk-class change and applying it —
+    /// long enough for users to see it and exit (~20 min at devnet slot times).
+    /// The delay is enforced by consensus: `apply_*` is PERMISSIONLESS, so even
+    /// admin changes complete via the crank philosophy, not authority honesty.
+    pub const RISK_UPDATE_DELAY_SLOTS: u64 = 3_000;
+
+    /// Stage a change: kind + payload + the slot it becomes applicable.
+    /// Replaces any previously staged change (one slot, last write wins).
+    pub fn stage_pending(&mut self, kind: u8, payload: &[u8], effective_slot: u64) {
+        self.pending_kind = kind;
+        self.pending_payload = [0u8; 64];
+        self.pending_payload[..payload.len()].copy_from_slice(payload);
+        self.set_pending_effective_slot(effective_slot);
+    }
+
+    /// Take a staged change of `kind` if its delay has elapsed; clears the slot
+    /// so a staged change can be applied exactly once.
+    pub fn take_pending(&mut self, kind: u8, now_slot: u64) -> Result<[u8; 64], ProgramError> {
+        if self.pending_kind != kind {
+            return Err(TempoProgramError::NoPendingUpdate.into());
+        }
+        if now_slot < self.pending_effective_slot() {
+            return Err(TempoProgramError::PendingDelayNotElapsed.into());
+        }
+        let payload = self.pending_payload;
+        self.pending_kind = Self::PENDING_NONE;
+        self.pending_payload = [0u8; 64];
+        self.set_pending_effective_slot(0);
+        Ok(payload)
+    }
+
     /// Pause bit: block order intake + maker-quote writes (`MarketPaused`).
     pub const PAUSE_INTAKE: u8 = 1 << 0;
     /// Pause bit: also block `start_auction` (the market winds down quiescent).
@@ -1077,6 +1114,34 @@ mod tests {
         assert_eq!(de.pending_kind, 0);
         assert_eq!(de.pending_effective_slot(), 0);
         assert_eq!(de.pending_payload, [0u8; 64]);
+    }
+
+    #[test]
+    fn test_stage_and_take_pending() {
+        let mut m = test_market();
+        m.stage_pending(Market::PENDING_RISK_PARAMS, &[1, 2, 3], 100);
+        assert_eq!(m.pending_kind, Market::PENDING_RISK_PARAMS);
+        // Wrong kind → NoPendingUpdate (and the slot is untouched).
+        assert_eq!(
+            m.take_pending(Market::PENDING_ORACLE, 500),
+            Err(TempoProgramError::NoPendingUpdate.into())
+        );
+        // Early → PendingDelayNotElapsed.
+        assert_eq!(
+            m.take_pending(Market::PENDING_RISK_PARAMS, 99),
+            Err(TempoProgramError::PendingDelayNotElapsed.into())
+        );
+        // At/after the effective slot → payload returned, slot cleared.
+        let p = m.take_pending(Market::PENDING_RISK_PARAMS, 100).unwrap();
+        assert_eq!(&p[..3], &[1, 2, 3]);
+        assert_eq!(&p[3..], &[0u8; 61][..]);
+        assert_eq!(m.pending_kind, Market::PENDING_NONE);
+        assert_eq!(m.pending_effective_slot(), 0);
+        // Exactly once: a second take fails.
+        assert_eq!(
+            m.take_pending(Market::PENDING_RISK_PARAMS, 200),
+            Err(TempoProgramError::NoPendingUpdate.into())
+        );
     }
 
     #[test]

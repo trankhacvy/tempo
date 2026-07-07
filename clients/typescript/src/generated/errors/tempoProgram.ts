@@ -61,6 +61,11 @@ export const TEMPO_PROGRAM_ERROR__COLLATERAL_LEDGER_DRIFT = 0x2b; // 43
 export const TEMPO_PROGRAM_ERROR__POSITION_LIMIT_EXCEEDED = 0x2c; // 44
 export const TEMPO_PROGRAM_ERROR__SHARD_OUT_OF_RANGE = 0x2d; // 45
 export const TEMPO_PROGRAM_ERROR__ORDER_ALREADY_EXPIRED = 0x2e; // 46
+export const TEMPO_PROGRAM_ERROR__NO_PENDING_UPDATE = 0x2f; // 47
+export const TEMPO_PROGRAM_ERROR__PENDING_DELAY_NOT_ELAPSED = 0x30; // 48
+export const TEMPO_PROGRAM_ERROR__MARKET_NOT_QUIESCENT = 0x31; // 49
+export const TEMPO_PROGRAM_ERROR__OPEN_INTEREST_CAP_EXCEEDED = 0x32; // 50
+export const TEMPO_PROGRAM_ERROR__VAULT_INVARIANT_VIOLATED = 0x33; // 51
 
 export type TempoProgramError =
   | typeof TEMPO_PROGRAM_ERROR__ACCOUNT_MARKET_MISMATCH
@@ -89,11 +94,14 @@ export type TempoProgramError =
   | typeof TEMPO_PROGRAM_ERROR__MARGIN_MEMBER_DUPLICATE
   | typeof TEMPO_PROGRAM_ERROR__MARGIN_MEMBER_NOT_FOUND
   | typeof TEMPO_PROGRAM_ERROR__MARKET_CONFIG_OUT_OF_RANGE
+  | typeof TEMPO_PROGRAM_ERROR__MARKET_NOT_QUIESCENT
   | typeof TEMPO_PROGRAM_ERROR__MARKET_PAUSED
   | typeof TEMPO_PROGRAM_ERROR__MATH_OVERFLOW
   | typeof TEMPO_PROGRAM_ERROR__MISSING_SETTLE_ACCOUNTS
+  | typeof TEMPO_PROGRAM_ERROR__NO_PENDING_UPDATE
   | typeof TEMPO_PROGRAM_ERROR__NOT_LIQUIDATABLE
   | typeof TEMPO_PROGRAM_ERROR__NOT_MIGRATABLE
+  | typeof TEMPO_PROGRAM_ERROR__OPEN_INTEREST_CAP_EXCEEDED
   | typeof TEMPO_PROGRAM_ERROR__ORACLE_CONFIDENCE_TOO_WIDE
   | typeof TEMPO_PROGRAM_ERROR__ORACLE_FEED_MISMATCH
   | typeof TEMPO_PROGRAM_ERROR__ORACLE_FUTURE_TIMESTAMP
@@ -106,9 +114,11 @@ export type TempoProgramError =
   | typeof TEMPO_PROGRAM_ERROR__ORDER_BELOW_MINIMUM
   | typeof TEMPO_PROGRAM_ERROR__ORDER_NOT_FOUND
   | typeof TEMPO_PROGRAM_ERROR__ORDER_SLAB_FULL
+  | typeof TEMPO_PROGRAM_ERROR__PENDING_DELAY_NOT_ELAPSED
   | typeof TEMPO_PROGRAM_ERROR__POSITION_LIMIT_EXCEEDED
   | typeof TEMPO_PROGRAM_ERROR__SHARD_OUT_OF_RANGE
   | typeof TEMPO_PROGRAM_ERROR__TRADER_ORDER_CAP_REACHED
+  | typeof TEMPO_PROGRAM_ERROR__VAULT_INVARIANT_VIOLATED
   | typeof TEMPO_PROGRAM_ERROR__ZERO_QUANTITY;
 
 let tempoProgramErrorMessages: Record<TempoProgramError, string> | undefined;
@@ -140,11 +150,14 @@ if (process.env["NODE_ENV"] !== "production") {
     [TEMPO_PROGRAM_ERROR__MARGIN_MEMBER_DUPLICATE]: `Position is already in the cross-margin group`,
     [TEMPO_PROGRAM_ERROR__MARGIN_MEMBER_NOT_FOUND]: `Position is not a member of the cross-margin group`,
     [TEMPO_PROGRAM_ERROR__MARKET_CONFIG_OUT_OF_RANGE]: `Market configuration parameter is out of range`,
+    [TEMPO_PROGRAM_ERROR__MARKET_NOT_QUIESCENT]: `Market is not quiescent`,
     [TEMPO_PROGRAM_ERROR__MARKET_PAUSED]: `Market is paused`,
     [TEMPO_PROGRAM_ERROR__MATH_OVERFLOW]: `Arithmetic overflow during clearing math`,
     [TEMPO_PROGRAM_ERROR__MISSING_SETTLE_ACCOUNTS]: `Settle with a non-zero fill is missing required position/collateral accounts`,
+    [TEMPO_PROGRAM_ERROR__NO_PENDING_UPDATE]: `No pending update of this kind`,
     [TEMPO_PROGRAM_ERROR__NOT_LIQUIDATABLE]: `Position is not liquidatable`,
     [TEMPO_PROGRAM_ERROR__NOT_MIGRATABLE]: `Account is not at the expected pre-migration layout`,
+    [TEMPO_PROGRAM_ERROR__OPEN_INTEREST_CAP_EXCEEDED]: `Order would exceed the market's open-interest cap`,
     [TEMPO_PROGRAM_ERROR__ORACLE_CONFIDENCE_TOO_WIDE]: `Oracle confidence interval is too wide`,
     [TEMPO_PROGRAM_ERROR__ORACLE_FEED_MISMATCH]: `Oracle feed id does not match the expected feed`,
     [TEMPO_PROGRAM_ERROR__ORACLE_FUTURE_TIMESTAMP]: `Oracle publish time is in the future`,
@@ -157,9 +170,11 @@ if (process.env["NODE_ENV"] !== "production") {
     [TEMPO_PROGRAM_ERROR__ORDER_BELOW_MINIMUM]: `Order quantity is below the minimum order size`,
     [TEMPO_PROGRAM_ERROR__ORDER_NOT_FOUND]: `Order not found in the slab`,
     [TEMPO_PROGRAM_ERROR__ORDER_SLAB_FULL]: `The order slab is full (orders-per-auction cap reached)`,
+    [TEMPO_PROGRAM_ERROR__PENDING_DELAY_NOT_ELAPSED]: `Pending update delay has not elapsed`,
     [TEMPO_PROGRAM_ERROR__POSITION_LIMIT_EXCEEDED]: `Order would exceed the market's max position notional`,
     [TEMPO_PROGRAM_ERROR__SHARD_OUT_OF_RANGE]: `Shard id is out of range for this market`,
     [TEMPO_PROGRAM_ERROR__TRADER_ORDER_CAP_REACHED]: `Per-trader order cap reached for this auction`,
+    [TEMPO_PROGRAM_ERROR__VAULT_INVARIANT_VIOLATED]: `Vault backing invariant violated`,
     [TEMPO_PROGRAM_ERROR__ZERO_QUANTITY]: `Order quantity is zero`,
   };
 }

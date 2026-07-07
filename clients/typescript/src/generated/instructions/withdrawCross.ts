@@ -71,7 +71,7 @@ export type WithdrawCrossInstruction<
         ? WritableAccount<TAccountUserCollateral>
         : TAccountUserCollateral,
       TAccountVault extends string
-        ? ReadonlyAccount<TAccountVault>
+        ? WritableAccount<TAccountVault>
         : TAccountVault,
       TAccountVaultAuthority extends string
         ? ReadonlyAccount<TAccountVaultAuthority>
@@ -145,7 +145,7 @@ export type WithdrawCrossInput<
   marginAccount: Address<TAccountMarginAccount>;
   /** Shared ledger to debit */
   userCollateral: Address<TAccountUserCollateral>;
-  /** Per-collateral vault */
+  /** Per-collateral vault (aggregate updated + backing gate, §3.4/§4.2) */
   vault: Address<TAccountVault>;
   /** Vault authority PDA (signs) */
   vaultAuthority: Address<TAccountVaultAuthority>;
@@ -201,7 +201,7 @@ export function getWithdrawCrossInstruction<
     owner: { value: input.owner ?? null, isWritable: false },
     marginAccount: { value: input.marginAccount ?? null, isWritable: false },
     userCollateral: { value: input.userCollateral ?? null, isWritable: true },
-    vault: { value: input.vault ?? null, isWritable: false },
+    vault: { value: input.vault ?? null, isWritable: true },
     vaultAuthority: { value: input.vaultAuthority ?? null, isWritable: false },
     vaultTokenAccount: {
       value: input.vaultTokenAccount ?? null,
@@ -268,7 +268,7 @@ export type ParsedWithdrawCrossInstruction<
     marginAccount: TAccountMetas[1];
     /** Shared ledger to debit */
     userCollateral: TAccountMetas[2];
-    /** Per-collateral vault */
+    /** Per-collateral vault (aggregate updated + backing gate, §3.4/§4.2) */
     vault: TAccountMetas[3];
     /** Vault authority PDA (signs) */
     vaultAuthority: TAccountMetas[4];

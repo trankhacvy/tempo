@@ -37,12 +37,36 @@ pub fn release_order_reservation(
     Ok(())
 }
 
+/// Mirror a user-balance change into the vault's `total_user_balance` aggregate
+/// (plan.md §3.4, missing-features §4.2). Call it beside EVERY
+/// `UserCollateral.balance` mutation (credit/debit/apply_pnl/set_balance) —
+/// `lock`/`release`/`lock_up_to` move `locked` only and are exempt. Checked sub:
+/// an over-subtract means the aggregate drifted — surface it as the invariant
+/// error (fail closed at the money boundary) rather than wrapping.
+pub fn apply_user_balance_delta(vault: &mut Vault, delta: i128) -> Result<(), ProgramError> {
+    if delta == 0 {
+        return Ok(());
+    }
+    let cur = vault.total_user_balance();
+    let new = if delta > 0 {
+        cur.checked_add(delta as u128)
+            .ok_or(TempoProgramError::MathOverflow)?
+    } else {
+        cur.checked_sub((-delta) as u128)
+            .ok_or(TempoProgramError::VaultInvariantViolated)?
+    };
+    vault.set_total_user_balance(new);
+    Ok(())
+}
+
 /// Conserve `balance_delta` (how the trader's ledger moved, net of fee) against
 /// the insurance pool, then socialize any `shortfall` (loss uncovered by the
 /// trader's balance) to the winning side by open interest. `loser_signed_size`
 /// is the losing position's current signed size and selects which side absorbs
 /// the ADL charge. Fails closed (`InsuranceInsolvent`) on an underfunded gain —
-/// it never mints money.
+/// it never mints money. Also mirrors `balance_delta` into the vault's
+/// `total_user_balance` aggregate (§3.4), so every conserving settle keeps the
+/// backing invariant checkable on-chain.
 pub fn conserve_and_socialize(
     vault: &mut Vault,
     market: &mut Market,
@@ -50,6 +74,7 @@ pub fn conserve_and_socialize(
     shortfall: u64,
     loser_signed_size: i128,
 ) -> Result<(), ProgramError> {
+    apply_user_balance_delta(vault, balance_delta)?;
     // The insurance pool BEFORE this event accrues the covered loss. It is the
     // baseline the winner's later gain draws from, so the ADL residual is the bad
     // debt beyond it (mirrors liquidate's `bad_debt.saturating_sub(insurance)`).

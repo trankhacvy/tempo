@@ -151,6 +151,21 @@ pub enum TempoProgramError {
     /// 46 - Order expiry is already reached at submit time
     #[error("Order expiry is already reached at submit time")]
     OrderAlreadyExpired = 0x2E,
+    /// 47 - No pending update of this kind
+    #[error("No pending update of this kind")]
+    NoPendingUpdate = 0x2F,
+    /// 48 - Pending update delay has not elapsed
+    #[error("Pending update delay has not elapsed")]
+    PendingDelayNotElapsed = 0x30,
+    /// 49 - Market is not quiescent
+    #[error("Market is not quiescent")]
+    MarketNotQuiescent = 0x31,
+    /// 50 - Order would exceed the market's open-interest cap
+    #[error("Order would exceed the market's open-interest cap")]
+    OpenInterestCapExceeded = 0x32,
+    /// 51 - Vault backing invariant violated
+    #[error("Vault backing invariant violated")]
+    VaultInvariantViolated = 0x33,
 }
 
 impl From<TempoProgramError> for solana_program_error::ProgramError {

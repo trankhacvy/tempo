@@ -62,7 +62,10 @@ import {
   type VaultArgs,
 } from "../accounts";
 import {
+  getAcceptAuthorityTransferInstruction,
   getAddPositionToMarginInstructionAsync,
+  getApplyRiskUpdateInstruction,
+  getApplySetOracleInstruction,
   getCancelOrderInstructionAsync,
   getClearMakerQuoteInstruction,
   getCloseMakerQuoteInstruction,
@@ -82,6 +85,9 @@ import {
   getMigratePositionInstructionAsync,
   getProcessChunkInstructionAsync,
   getProcessMakerQuoteInstructionAsync,
+  getProposeAuthorityTransferInstruction,
+  getProposeRiskUpdateInstruction,
+  getProposeSetOracleInstruction,
   getReadOracleInstruction,
   getRemovePositionFromMarginInstruction,
   getResetShardInstruction,
@@ -94,9 +100,13 @@ import {
   getUpdateFundingInstruction,
   getUpdateMakerQuoteLevelsInstruction,
   getUpdateMakerQuoteMidInstruction,
+  getUpdateMarketParamsInstruction,
   getWithdrawCrossInstruction,
   getWithdrawInstruction,
+  parseAcceptAuthorityTransferInstruction,
   parseAddPositionToMarginInstruction,
+  parseApplyRiskUpdateInstruction,
+  parseApplySetOracleInstruction,
   parseCancelOrderInstruction,
   parseClearMakerQuoteInstruction,
   parseCloseMakerQuoteInstruction,
@@ -116,6 +126,9 @@ import {
   parseMigratePositionInstruction,
   parseProcessChunkInstruction,
   parseProcessMakerQuoteInstruction,
+  parseProposeAuthorityTransferInstruction,
+  parseProposeRiskUpdateInstruction,
+  parseProposeSetOracleInstruction,
   parseReadOracleInstruction,
   parseRemovePositionFromMarginInstruction,
   parseResetShardInstruction,
@@ -128,9 +141,13 @@ import {
   parseUpdateFundingInstruction,
   parseUpdateMakerQuoteLevelsInstruction,
   parseUpdateMakerQuoteMidInstruction,
+  parseUpdateMarketParamsInstruction,
   parseWithdrawCrossInstruction,
   parseWithdrawInstruction,
+  type AcceptAuthorityTransferInput,
   type AddPositionToMarginAsyncInput,
+  type ApplyRiskUpdateInput,
+  type ApplySetOracleInput,
   type CancelOrderAsyncInput,
   type ClearMakerQuoteInput,
   type CloseMakerQuoteInput,
@@ -148,7 +165,10 @@ import {
   type LiquidateInput,
   type MigrateMarketInput,
   type MigratePositionAsyncInput,
+  type ParsedAcceptAuthorityTransferInstruction,
   type ParsedAddPositionToMarginInstruction,
+  type ParsedApplyRiskUpdateInstruction,
+  type ParsedApplySetOracleInstruction,
   type ParsedCancelOrderInstruction,
   type ParsedClearMakerQuoteInstruction,
   type ParsedCloseMakerQuoteInstruction,
@@ -168,6 +188,9 @@ import {
   type ParsedMigratePositionInstruction,
   type ParsedProcessChunkInstruction,
   type ParsedProcessMakerQuoteInstruction,
+  type ParsedProposeAuthorityTransferInstruction,
+  type ParsedProposeRiskUpdateInstruction,
+  type ParsedProposeSetOracleInstruction,
   type ParsedReadOracleInstruction,
   type ParsedRemovePositionFromMarginInstruction,
   type ParsedResetShardInstruction,
@@ -180,10 +203,14 @@ import {
   type ParsedUpdateFundingInstruction,
   type ParsedUpdateMakerQuoteLevelsInstruction,
   type ParsedUpdateMakerQuoteMidInstruction,
+  type ParsedUpdateMarketParamsInstruction,
   type ParsedWithdrawCrossInstruction,
   type ParsedWithdrawInstruction,
   type ProcessChunkAsyncInput,
   type ProcessMakerQuoteAsyncInput,
+  type ProposeAuthorityTransferInput,
+  type ProposeRiskUpdateInput,
+  type ProposeSetOracleInput,
   type ReadOracleInput,
   type RemovePositionFromMarginInput,
   type ResetShardInput,
@@ -196,6 +223,7 @@ import {
   type UpdateFundingInput,
   type UpdateMakerQuoteLevelsInput,
   type UpdateMakerQuoteMidInput,
+  type UpdateMarketParamsInput,
   type WithdrawCrossInput,
   type WithdrawInput,
 } from "../instructions";
@@ -294,6 +322,13 @@ export enum TempoProgramInstruction {
   InitShard,
   ResetShard,
   SetPause,
+  UpdateMarketParams,
+  ProposeRiskUpdate,
+  ApplyRiskUpdate,
+  ProposeAuthorityTransfer,
+  AcceptAuthorityTransfer,
+  ProposeSetOracle,
+  ApplySetOracle,
   SeedInsurance,
 }
 
@@ -399,6 +434,27 @@ export function identifyTempoProgramInstruction(
   }
   if (containsBytes(data, getU8Encoder().encode(32), 0)) {
     return TempoProgramInstruction.SetPause;
+  }
+  if (containsBytes(data, getU8Encoder().encode(33), 0)) {
+    return TempoProgramInstruction.UpdateMarketParams;
+  }
+  if (containsBytes(data, getU8Encoder().encode(34), 0)) {
+    return TempoProgramInstruction.ProposeRiskUpdate;
+  }
+  if (containsBytes(data, getU8Encoder().encode(35), 0)) {
+    return TempoProgramInstruction.ApplyRiskUpdate;
+  }
+  if (containsBytes(data, getU8Encoder().encode(36), 0)) {
+    return TempoProgramInstruction.ProposeAuthorityTransfer;
+  }
+  if (containsBytes(data, getU8Encoder().encode(37), 0)) {
+    return TempoProgramInstruction.AcceptAuthorityTransfer;
+  }
+  if (containsBytes(data, getU8Encoder().encode(38), 0)) {
+    return TempoProgramInstruction.ProposeSetOracle;
+  }
+  if (containsBytes(data, getU8Encoder().encode(39), 0)) {
+    return TempoProgramInstruction.ApplySetOracle;
   }
   if (containsBytes(data, getU8Encoder().encode(40), 0)) {
     return TempoProgramInstruction.SeedInsurance;
@@ -511,6 +567,27 @@ export type ParsedTempoProgramInstruction<
   | ({
       instructionType: TempoProgramInstruction.SetPause;
     } & ParsedSetPauseInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.UpdateMarketParams;
+    } & ParsedUpdateMarketParamsInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ProposeRiskUpdate;
+    } & ParsedProposeRiskUpdateInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ApplyRiskUpdate;
+    } & ParsedApplyRiskUpdateInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ProposeAuthorityTransfer;
+    } & ParsedProposeAuthorityTransferInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.AcceptAuthorityTransfer;
+    } & ParsedAcceptAuthorityTransferInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ProposeSetOracle;
+    } & ParsedProposeSetOracleInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ApplySetOracle;
+    } & ParsedApplySetOracleInstruction<TProgram>)
   | ({
       instructionType: TempoProgramInstruction.SeedInsurance;
     } & ParsedSeedInsuranceInstruction<TProgram>);
@@ -751,6 +828,55 @@ export function parseTempoProgramInstruction<TProgram extends string>(
         ...parseSetPauseInstruction(instruction),
       };
     }
+    case TempoProgramInstruction.UpdateMarketParams: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.UpdateMarketParams,
+        ...parseUpdateMarketParamsInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.ProposeRiskUpdate: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ProposeRiskUpdate,
+        ...parseProposeRiskUpdateInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.ApplyRiskUpdate: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ApplyRiskUpdate,
+        ...parseApplyRiskUpdateInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.ProposeAuthorityTransfer: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ProposeAuthorityTransfer,
+        ...parseProposeAuthorityTransferInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.AcceptAuthorityTransfer: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.AcceptAuthorityTransfer,
+        ...parseAcceptAuthorityTransferInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.ProposeSetOracle: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ProposeSetOracle,
+        ...parseProposeSetOracleInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.ApplySetOracle: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ApplySetOracle,
+        ...parseApplySetOracleInstruction(instruction),
+      };
+    }
     case TempoProgramInstruction.SeedInsurance: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -924,6 +1050,34 @@ export type TempoProgramPluginInstructions = {
   setPause: (
     input: SetPauseInput,
   ) => ReturnType<typeof getSetPauseInstruction> & SelfPlanAndSendFunctions;
+  updateMarketParams: (
+    input: UpdateMarketParamsInput,
+  ) => ReturnType<typeof getUpdateMarketParamsInstruction> &
+    SelfPlanAndSendFunctions;
+  proposeRiskUpdate: (
+    input: ProposeRiskUpdateInput,
+  ) => ReturnType<typeof getProposeRiskUpdateInstruction> &
+    SelfPlanAndSendFunctions;
+  applyRiskUpdate: (
+    input: ApplyRiskUpdateInput,
+  ) => ReturnType<typeof getApplyRiskUpdateInstruction> &
+    SelfPlanAndSendFunctions;
+  proposeAuthorityTransfer: (
+    input: ProposeAuthorityTransferInput,
+  ) => ReturnType<typeof getProposeAuthorityTransferInstruction> &
+    SelfPlanAndSendFunctions;
+  acceptAuthorityTransfer: (
+    input: AcceptAuthorityTransferInput,
+  ) => ReturnType<typeof getAcceptAuthorityTransferInstruction> &
+    SelfPlanAndSendFunctions;
+  proposeSetOracle: (
+    input: ProposeSetOracleInput,
+  ) => ReturnType<typeof getProposeSetOracleInstruction> &
+    SelfPlanAndSendFunctions;
+  applySetOracle: (
+    input: ApplySetOracleInput,
+  ) => ReturnType<typeof getApplySetOracleInstruction> &
+    SelfPlanAndSendFunctions;
   seedInsurance: (
     input: SeedInsuranceInput,
   ) => ReturnType<typeof getSeedInsuranceInstruction> &
@@ -1131,6 +1285,41 @@ export function tempoProgramProgram() {
             ),
           setPause: (input) =>
             addSelfPlanAndSendFunctions(client, getSetPauseInstruction(input)),
+          updateMarketParams: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getUpdateMarketParamsInstruction(input),
+            ),
+          proposeRiskUpdate: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getProposeRiskUpdateInstruction(input),
+            ),
+          applyRiskUpdate: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getApplyRiskUpdateInstruction(input),
+            ),
+          proposeAuthorityTransfer: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getProposeAuthorityTransferInstruction(input),
+            ),
+          acceptAuthorityTransfer: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getAcceptAuthorityTransferInstruction(input),
+            ),
+          proposeSetOracle: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getProposeSetOracleInstruction(input),
+            ),
+          applySetOracle: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getApplySetOracleInstruction(input),
+            ),
           seedInsurance: (input) =>
             addSelfPlanAndSendFunctions(
               client,

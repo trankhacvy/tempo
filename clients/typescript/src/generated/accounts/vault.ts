@@ -49,6 +49,10 @@ export type Vault = {
   insuranceBalanceLe: Array<number>;
   authorityBump: number;
   bump: number;
+  authority: Address;
+  totalUserBalanceLe: Array<number>;
+  pendingWithdrawAmountLe: Array<number>;
+  pendingWithdrawSlotLe: Array<number>;
 };
 
 export type VaultArgs = {
@@ -58,6 +62,10 @@ export type VaultArgs = {
   insuranceBalanceLe: Array<number>;
   authorityBump: number;
   bump: number;
+  authority: Address;
+  totalUserBalanceLe: Array<number>;
+  pendingWithdrawAmountLe: Array<number>;
+  pendingWithdrawSlotLe: Array<number>;
 };
 
 /** Gets the encoder for {@link VaultArgs} account data. */
@@ -70,6 +78,10 @@ export function getVaultEncoder(): FixedSizeEncoder<VaultArgs> {
       ["insuranceBalanceLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
       ["authorityBump", getU8Encoder()],
       ["bump", getU8Encoder()],
+      ["authority", getAddressEncoder()],
+      ["totalUserBalanceLe", getArrayEncoder(getU8Encoder(), { size: 16 })],
+      ["pendingWithdrawAmountLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
+      ["pendingWithdrawSlotLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
     ]),
     (value) => ({
       ...value,
@@ -87,6 +99,10 @@ export function getVaultDecoder(): FixedSizeDecoder<Vault> {
     ["insuranceBalanceLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
     ["authorityBump", getU8Decoder()],
     ["bump", getU8Decoder()],
+    ["authority", getAddressDecoder()],
+    ["totalUserBalanceLe", getArrayDecoder(getU8Decoder(), { size: 16 })],
+    ["pendingWithdrawAmountLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
+    ["pendingWithdrawSlotLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
   ]);
 }
 

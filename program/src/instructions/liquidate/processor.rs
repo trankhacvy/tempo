@@ -131,7 +131,7 @@ pub fn process_liquidate(
     // Owner ledger: the position's collateral was locked inside `balance`, so
     // replace it with the post-liquidation residual: balance - collateral +
     // returned_to_owner. The loss + penalty thus leave the owner's claim.
-    {
+    let owner_balance_delta = {
         let mut acct = *ix.accounts.user_collateral;
         let mut uc_data = acct.try_borrow_mut()?;
         let uc = UserCollateral::from_bytes_mut(&mut uc_data)?;
@@ -139,6 +139,7 @@ pub fn process_liquidate(
             return Err(TempoProgramError::InvalidCollateralAccount.into());
         }
         uc.validate_self(ix.accounts.user_collateral, program_id)?;
+        let before = uc.balance();
         uc.release(locked_release);
         // The released collateral leaves `balance`; capture any shortfall instead
         // of dropping it (locked <= balance normally holds, so it is usually 0).
@@ -149,7 +150,8 @@ pub fn process_liquidate(
         if outcome.returned_to_owner > 0 {
             uc.credit(outcome.returned_to_owner)?;
         }
-    }
+        uc.balance() as i128 - before as i128
+    };
 
     // Pay the penalty to the liquidator's ledger.
     if outcome.penalty > 0 {
@@ -174,6 +176,12 @@ pub fn process_liquidate(
         {
             return Err(TempoProgramError::AccountMarketMismatch.into());
         }
+        // §3.4: mirror the owner's actual balance change + the liquidator's
+        // penalty credit into the backing aggregate.
+        crate::settle_money::apply_user_balance_delta(
+            vault,
+            owner_balance_delta + outcome.penalty as i128,
+        )?;
         let insurance = vault.insurance_balance();
         let insurance_delta: i128 =
             collateral as i128 - outcome.returned_to_owner as i128 - outcome.penalty as i128;

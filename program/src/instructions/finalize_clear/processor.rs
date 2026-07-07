@@ -264,6 +264,8 @@ pub fn process_finalize_clear(
                 }
                 let pay = crank_fee.min(vault.insurance_balance());
                 vault.set_insurance_balance(vault.insurance_balance() - pay);
+                // §3.4: the cranker's ledger credit below raises Σ user balances.
+                crate::settle_money::apply_user_balance_delta(vault, pay as i128)?;
                 pay
             };
             if paid > 0 {

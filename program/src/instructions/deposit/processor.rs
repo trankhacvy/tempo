@@ -71,6 +71,13 @@ pub fn process_deposit(
         let uc = UserCollateral::from_bytes_mut(&mut uc_data)?;
         uc.credit(amount)?;
     }
+    // Mirror into the vault's backing aggregate (plan.md §3.4).
+    {
+        let mut v = *ix.accounts.vault;
+        let mut v_data = v.try_borrow_mut()?;
+        let vault = Vault::from_bytes_mut(&mut v_data)?;
+        crate::settle_money::apply_user_balance_delta(vault, amount as i128)?;
+    }
 
     Ok(())
 }

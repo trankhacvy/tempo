@@ -66,7 +66,7 @@ export type DepositInstruction<
         ? WritableAccount<TAccountUserCollateral>
         : TAccountUserCollateral,
       TAccountVault extends string
-        ? ReadonlyAccount<TAccountVault>
+        ? WritableAccount<TAccountVault>
         : TAccountVault,
       TAccountVaultTokenAccount extends string
         ? WritableAccount<TAccountVaultTokenAccount>
@@ -124,7 +124,7 @@ export type DepositInput<
   owner: TransactionSigner<TAccountOwner>;
   /** Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3) */
   userCollateral: Address<TAccountUserCollateral>;
-  /** Per-collateral vault (pass the mint-derived PDA) */
+  /** Per-collateral vault (the total_user_balance aggregate is updated, §3.4) */
   vault: Address<TAccountVault>;
   /** Vault token account (transfer destination) */
   vaultTokenAccount: Address<TAccountVaultTokenAccount>;
@@ -170,7 +170,7 @@ export function getDepositInstruction<
   const originalAccounts = {
     owner: { value: input.owner ?? null, isWritable: false },
     userCollateral: { value: input.userCollateral ?? null, isWritable: true },
-    vault: { value: input.vault ?? null, isWritable: false },
+    vault: { value: input.vault ?? null, isWritable: true },
     vaultTokenAccount: {
       value: input.vaultTokenAccount ?? null,
       isWritable: true,
@@ -230,7 +230,7 @@ export type ParsedDepositInstruction<
     owner: TAccountMetas[0];
     /** Owner's collateral ledger (mint-scoped: seeds [collateral, owner, vault.collateral_mint], CR-3) */
     userCollateral: TAccountMetas[1];
-    /** Per-collateral vault (pass the mint-derived PDA) */
+    /** Per-collateral vault (the total_user_balance aggregate is updated, §3.4) */
     vault: TAccountMetas[2];
     /** Vault token account (transfer destination) */
     vaultTokenAccount: TAccountMetas[3];
