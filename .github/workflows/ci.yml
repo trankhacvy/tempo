@@ -45,6 +45,13 @@ jobs:
         run: just build && cargo test -p tempo-integration-tests
       - name: generated clients are fresh vs the IDL
         run: just clients-fresh
+      - name: web vendor bundle builds fresh from the generated clients
+        # The bundle is a git-ignored build artifact (rebuilt by predev/prebuild),
+        # so freshness = it builds from the just-regenerated clients AND carries
+        # the current layout's fields (known-issues §2.12 guard).
+        run: |
+          pnpm --filter @tempo/web bundle-client
+          grep -q "numSlabShards" apps/web/src/vendor/tempo-client.mjs
 
   kani:
     name: formal verification (panic/overflow + OI conservation)
