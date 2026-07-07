@@ -4,6 +4,7 @@ use super::accept_authority_transfer::{
     AcceptAuthorityTransferAccounts, AcceptAuthorityTransferData,
 };
 use super::add_position_to_margin::{AddPositionToMarginAccounts, AddPositionToMarginData};
+use super::apply_insurance_withdraw::{ApplyInsuranceWithdrawAccounts, ApplyInsuranceWithdrawData};
 use super::apply_risk_update::{ApplyRiskUpdateAccounts, ApplyRiskUpdateData};
 use super::apply_set_oracle::{ApplySetOracleAccounts, ApplySetOracleData};
 use super::cancel_order::{CancelOrderAccounts, CancelOrderData};
@@ -27,6 +28,9 @@ use super::process_chunk::{ProcessChunkAccounts, ProcessChunkData};
 use super::process_maker_quote::{ProcessMakerQuoteAccounts, ProcessMakerQuoteData};
 use super::propose_authority_transfer::{
     ProposeAuthorityTransferAccounts, ProposeAuthorityTransferData,
+};
+use super::propose_insurance_withdraw::{
+    ProposeInsuranceWithdrawAccounts, ProposeInsuranceWithdrawData,
 };
 use super::propose_risk_update::{ProposeRiskUpdateAccounts, ProposeRiskUpdateData};
 use super::propose_set_oracle::{ProposeSetOracleAccounts, ProposeSetOracleData};
@@ -124,6 +128,16 @@ define_instruction!(
     ProposeSetOracleData
 );
 define_instruction!(ApplySetOracle, ApplySetOracleAccounts, ApplySetOracleData);
+define_instruction!(
+    ProposeInsuranceWithdraw,
+    ProposeInsuranceWithdrawAccounts,
+    ProposeInsuranceWithdrawData
+);
+define_instruction!(
+    ApplyInsuranceWithdraw,
+    ApplyInsuranceWithdrawAccounts,
+    ApplyInsuranceWithdrawData
+);
 define_instruction!(Withdraw, WithdrawAccounts, WithdrawData);
 define_instruction!(LiquidateCross, LiquidateCrossAccounts, LiquidateCrossData);
 define_instruction!(WithdrawCross, WithdrawCrossAccounts, WithdrawCrossData);

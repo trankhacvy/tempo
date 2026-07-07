@@ -197,3 +197,43 @@ fn proof_unrealized_pnl_no_overflow_in_envelope() {
         assert_eq!(pnl > 0, mark > entry);
     }
 }
+
+/// `partial_close_qty` (plan.md §4.1) is panic-free over the documented
+/// operating envelope, and its result is bounded by the position: a `Some(c)`
+/// is always strictly less than the target size (a partial stays partial —
+/// full closes are the `None` path). All arithmetic is checked/`Option`-guarded,
+/// so the property Kani buys here is exhaustive panic/overflow-freedom in the
+/// same 48-bit envelope `proof_unrealized_pnl_no_overflow_in_envelope` pins
+/// (the multiply/divide-heavy CORRECTNESS props — health restoration and
+/// minimality — stay on the 20k-iter host fuzz, same split as the other
+/// division-bearing math: CBMC cannot bit-blast the u128 division).
+#[kani::proof]
+fn proof_partial_close_qty_safe() {
+    const LIM: u128 = 1 << 48;
+    let target_abs_size: u128 = kani::any();
+    let equity: i128 = kani::any();
+    let maintenance: i128 = kani::any();
+    let mark: u64 = kani::any();
+    let maintenance_bps: u16 = kani::any();
+    let penalty_bps: u16 = kani::any();
+    let buffer_bps: u16 = kani::any();
+    kani::assume(target_abs_size <= LIM);
+    kani::assume(equity >= -(LIM as i128) && equity <= LIM as i128);
+    kani::assume(maintenance >= -(LIM as i128) && maintenance <= LIM as i128);
+    kani::assume((mark as u128) <= LIM);
+    kani::assume(maintenance_bps <= 5_000);
+    kani::assume(penalty_bps <= 5_000);
+
+    if let Some(c) = crate::margin::partial_close_qty(
+        target_abs_size,
+        equity,
+        maintenance,
+        mark,
+        maintenance_bps,
+        penalty_bps,
+        buffer_bps,
+    ) {
+        // A Some(c) is always a genuine partial: strictly inside the position.
+        assert!((c as u128) < target_abs_size || c == 0);
+    }
+}

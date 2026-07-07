@@ -64,6 +64,7 @@ import {
 import {
   getAcceptAuthorityTransferInstruction,
   getAddPositionToMarginInstructionAsync,
+  getApplyInsuranceWithdrawInstruction,
   getApplyRiskUpdateInstruction,
   getApplySetOracleInstruction,
   getCancelOrderInstructionAsync,
@@ -86,6 +87,7 @@ import {
   getProcessChunkInstructionAsync,
   getProcessMakerQuoteInstructionAsync,
   getProposeAuthorityTransferInstruction,
+  getProposeInsuranceWithdrawInstruction,
   getProposeRiskUpdateInstruction,
   getProposeSetOracleInstruction,
   getReadOracleInstruction,
@@ -105,6 +107,7 @@ import {
   getWithdrawInstruction,
   parseAcceptAuthorityTransferInstruction,
   parseAddPositionToMarginInstruction,
+  parseApplyInsuranceWithdrawInstruction,
   parseApplyRiskUpdateInstruction,
   parseApplySetOracleInstruction,
   parseCancelOrderInstruction,
@@ -127,6 +130,7 @@ import {
   parseProcessChunkInstruction,
   parseProcessMakerQuoteInstruction,
   parseProposeAuthorityTransferInstruction,
+  parseProposeInsuranceWithdrawInstruction,
   parseProposeRiskUpdateInstruction,
   parseProposeSetOracleInstruction,
   parseReadOracleInstruction,
@@ -146,6 +150,7 @@ import {
   parseWithdrawInstruction,
   type AcceptAuthorityTransferInput,
   type AddPositionToMarginAsyncInput,
+  type ApplyInsuranceWithdrawInput,
   type ApplyRiskUpdateInput,
   type ApplySetOracleInput,
   type CancelOrderAsyncInput,
@@ -167,6 +172,7 @@ import {
   type MigratePositionAsyncInput,
   type ParsedAcceptAuthorityTransferInstruction,
   type ParsedAddPositionToMarginInstruction,
+  type ParsedApplyInsuranceWithdrawInstruction,
   type ParsedApplyRiskUpdateInstruction,
   type ParsedApplySetOracleInstruction,
   type ParsedCancelOrderInstruction,
@@ -189,6 +195,7 @@ import {
   type ParsedProcessChunkInstruction,
   type ParsedProcessMakerQuoteInstruction,
   type ParsedProposeAuthorityTransferInstruction,
+  type ParsedProposeInsuranceWithdrawInstruction,
   type ParsedProposeRiskUpdateInstruction,
   type ParsedProposeSetOracleInstruction,
   type ParsedReadOracleInstruction,
@@ -209,6 +216,7 @@ import {
   type ProcessChunkAsyncInput,
   type ProcessMakerQuoteAsyncInput,
   type ProposeAuthorityTransferInput,
+  type ProposeInsuranceWithdrawInput,
   type ProposeRiskUpdateInput,
   type ProposeSetOracleInput,
   type ReadOracleInput,
@@ -330,6 +338,8 @@ export enum TempoProgramInstruction {
   ProposeSetOracle,
   ApplySetOracle,
   SeedInsurance,
+  ProposeInsuranceWithdraw,
+  ApplyInsuranceWithdraw,
 }
 
 export function identifyTempoProgramInstruction(
@@ -458,6 +468,12 @@ export function identifyTempoProgramInstruction(
   }
   if (containsBytes(data, getU8Encoder().encode(40), 0)) {
     return TempoProgramInstruction.SeedInsurance;
+  }
+  if (containsBytes(data, getU8Encoder().encode(41), 0)) {
+    return TempoProgramInstruction.ProposeInsuranceWithdraw;
+  }
+  if (containsBytes(data, getU8Encoder().encode(42), 0)) {
+    return TempoProgramInstruction.ApplyInsuranceWithdraw;
   }
   throw new SolanaError(
     SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
@@ -590,7 +606,13 @@ export type ParsedTempoProgramInstruction<
     } & ParsedApplySetOracleInstruction<TProgram>)
   | ({
       instructionType: TempoProgramInstruction.SeedInsurance;
-    } & ParsedSeedInsuranceInstruction<TProgram>);
+    } & ParsedSeedInsuranceInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ProposeInsuranceWithdraw;
+    } & ParsedProposeInsuranceWithdrawInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ApplyInsuranceWithdraw;
+    } & ParsedApplyInsuranceWithdrawInstruction<TProgram>);
 
 export function parseTempoProgramInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
@@ -884,6 +906,20 @@ export function parseTempoProgramInstruction<TProgram extends string>(
         ...parseSeedInsuranceInstruction(instruction),
       };
     }
+    case TempoProgramInstruction.ProposeInsuranceWithdraw: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ProposeInsuranceWithdraw,
+        ...parseProposeInsuranceWithdrawInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.ApplyInsuranceWithdraw: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ApplyInsuranceWithdraw,
+        ...parseApplyInsuranceWithdrawInstruction(instruction),
+      };
+    }
     default:
       throw new SolanaError(
         SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
@@ -1081,6 +1117,14 @@ export type TempoProgramPluginInstructions = {
   seedInsurance: (
     input: SeedInsuranceInput,
   ) => ReturnType<typeof getSeedInsuranceInstruction> &
+    SelfPlanAndSendFunctions;
+  proposeInsuranceWithdraw: (
+    input: ProposeInsuranceWithdrawInput,
+  ) => ReturnType<typeof getProposeInsuranceWithdrawInstruction> &
+    SelfPlanAndSendFunctions;
+  applyInsuranceWithdraw: (
+    input: ApplyInsuranceWithdrawInput,
+  ) => ReturnType<typeof getApplyInsuranceWithdrawInstruction> &
     SelfPlanAndSendFunctions;
 };
 
@@ -1324,6 +1368,16 @@ export function tempoProgramProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getSeedInsuranceInstruction(input),
+            ),
+          proposeInsuranceWithdraw: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getProposeInsuranceWithdrawInstruction(input),
+            ),
+          applyInsuranceWithdraw: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getApplyInsuranceWithdrawInstruction(input),
             ),
         },
         pdas: {

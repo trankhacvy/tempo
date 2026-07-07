@@ -85,6 +85,10 @@ pub enum TempoInstructionDiscriminators {
     ApplySetOracle = 39,
     /// Permissionless donation into the vault insurance pool (§4.1).
     SeedInsurance = 40,
+    /// Vault authority: stage an insurance withdrawal behind the delay (§4.4).
+    ProposeInsuranceWithdraw = 41,
+    /// Permissionless: apply a staged insurance withdrawal (backing-gated).
+    ApplyInsuranceWithdraw = 42,
     /// Self-CPI event emission (carries event data in instruction data).
     EmitEvent = 228,
 }
@@ -135,6 +139,8 @@ impl TryFrom<u8> for TempoInstructionDiscriminators {
             38 => Ok(Self::ProposeSetOracle),
             39 => Ok(Self::ApplySetOracle),
             40 => Ok(Self::SeedInsurance),
+            41 => Ok(Self::ProposeInsuranceWithdraw),
+            42 => Ok(Self::ApplyInsuranceWithdraw),
             228 => Ok(Self::EmitEvent),
             _ => Err(ProgramError::InvalidInstructionData),
         }

@@ -2249,6 +2249,38 @@
       },
       {
         "kind": "definedTypeNode",
+        "name": "insuranceWithdrawnEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "collateralMint",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "authority",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "amount",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
         "name": "marketInitializedEvent",
         "type": {
           "fields": [
@@ -2649,6 +2681,24 @@
               "type": {
                 "endian": "le",
                 "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "closedQty",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "remainingSize",
+              "type": {
+                "endian": "le",
+                "format": "i64",
                 "kind": "numberTypeNode"
               }
             }
@@ -7403,6 +7453,167 @@
         ],
         "kind": "instructionNode",
         "name": "seedInsurance"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Vault authority (recorded at init)"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "authority"
+          },
+          {
+            "docs": [
+              "Vault (staging slot written)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 41
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "amount",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "proposeInsuranceWithdraw"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Permissionless caller"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "cranker"
+          },
+          {
+            "docs": [
+              "Vault (pool debited, staging cleared)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "Vault authority PDA (signs)"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "vaultAuthority"
+          },
+          {
+            "docs": [
+              "Vault token account (source)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vaultTokenAccount"
+          },
+          {
+            "docs": [
+              "Recipient token account (same mint, HS-12)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "recipientTokenAccount"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            "docs": [
+              "SPL token program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tokenProgram"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 42
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "applyInsuranceWithdraw"
       }
     ],
     "kind": "programNode",

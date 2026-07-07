@@ -135,6 +135,9 @@ pub fn process_liquidate_cross(
             social_short,
             penalty_bps,
             mint,
+            close_buffer_bps,
+            min_order_notional,
+            reward_floor,
         ) = {
             let market_data = market_ai.try_borrow()?;
             let market = Market::from_account(&market_data, market_ai, program_id)?;
@@ -153,6 +156,9 @@ pub fn process_liquidate_cross(
                 market.social_loss_index_short(),
                 market.liquidation_penalty_bps(),
                 market.collateral_mint,
+                market.liquidation_close_buffer_bps(),
+                market.min_order_notional(),
+                market.liquidation_reward_floor(),
             )
         };
         if oracle_ai.address() != &oracle_key {
@@ -199,6 +205,10 @@ pub fn process_liquidate_cross(
                 social_short,
                 penalty_bps,
                 mint,
+                bps,
+                close_buffer_bps,
+                min_order_notional,
+                reward_floor,
             ));
         }
     }
@@ -217,11 +227,17 @@ pub fn process_liquidate_cross(
         social_short,
         penalty_bps,
         market_mint,
+        target_maint_bps,
+        close_buffer_bps,
+        min_order_notional,
+        reward_floor,
     ) = target.ok_or(TempoProgramError::NotLiquidatable)?;
     let market_key = *target_market.address();
 
     // --- close the target (identical conserving flow to `liquidate`) ---
-    let (owner_key, size_signed, entry, collateral, realized) = {
+    // `realized` folds into apply_fill's flush below; kept in the read for the
+    // borrow symmetry with `liquidate`.
+    let (owner_key, size_signed, entry, collateral, _realized) = {
         let mut acct = *target_pos;
         let mut pos_data = acct.try_borrow_mut()?;
         let position = Position::from_bytes_mut(&mut pos_data)?;
@@ -236,16 +252,55 @@ pub fn process_liquidate_cross(
         )
     };
 
+    // Decide the close size (missing-features §6.1): PARTIAL when the combined
+    // account can be restored with the buffer and the remainder clears the dust
+    // floor; every fallback is the full close. The formula takes the COMBINED
+    // equity/maintenance with the TARGET leg's mark + bps (the single-leg case
+    // reduces to the same inequality — see margin::partial_close_qty).
+    let abs_size_u128 = size_signed.unsigned_abs();
+    let full_qty = u64::try_from(abs_size_u128).unwrap_or(u64::MAX);
+    let close_qty = match crate::margin::partial_close_qty(
+        abs_size_u128,
+        combined_equity,
+        combined_maintenance,
+        mark,
+        target_maint_bps,
+        penalty_bps,
+        close_buffer_bps,
+    ) {
+        Some(c) if c > 0 && c < full_qty => {
+            let remainder_notional = (abs_size_u128 - c as u128).saturating_mul(mark as u128);
+            if min_order_notional > 0 && remainder_notional < (min_order_notional as u128) {
+                full_qty
+            } else {
+                c
+            }
+        }
+        _ => full_qty,
+    };
+    let is_full = close_qty == full_qty;
+
     // Cross-margin close: the loss is drawn from the SHARED account balance, not
     // the position's isolated locked margin (that would book spurious bad debt
-    // while the account still has free balance). Realize the close PnL
-    // (funding/social already in `realized`, plus mark PnL) against the balance,
-    // release the target's locked margin, charge the liquidation penalty, and
+    // while the account still has free balance). Realize the CLOSED slice at the
+    // solvency mark via apply_fill (a full close realizes the entire PnL —
+    // identical economics to the old direct `realized + unrealized` sum), flush
+    // it against the balance, charge the penalty on the CLOSED notional, and
     // conserve through insurance exactly as `settle_fill` does.
-    let pnl = realized
-        .checked_add(unrealized_pnl(size_signed, entry, mark))
-        .ok_or(TempoProgramError::MathOverflow)?;
-    let notional = size_signed.unsigned_abs().saturating_mul(mark as u128);
+    let (new_signed, pnl) = {
+        let mut acct = *target_pos;
+        let mut pos_data = acct.try_borrow_mut()?;
+        let position = Position::from_bytes_mut(&mut pos_data)?;
+        let is_buy_close = size_signed < 0; // closing a short buys
+        position.apply_fill(is_buy_close, close_qty, mark, social_long, social_short)?;
+        let pnl = position.realized_pnl();
+        position.set_realized_pnl(0);
+        (position.size() as i128, pnl)
+    };
+    // Silence the now-unused direct-sum input (entry still feeds the event math
+    // indirectly via apply_fill's VWAP bookkeeping).
+    let _ = unrealized_pnl(size_signed, entry, mark);
+    let notional = (close_qty as u128).saturating_mul(mark as u128);
     let penalty = u64::try_from(
         crate::wide_math::mul_div_floor(notional, penalty_bps as u128, 10_000).unwrap_or(u128::MAX),
     )
@@ -259,9 +314,13 @@ pub fn process_liquidate_cross(
         let mut uc_data = acct.try_borrow_mut()?;
         let uc = UserCollateral::from_bytes_mut(&mut uc_data)?;
         uc.validate_self(ix.accounts.user_collateral, program_id)?;
-        // Free the target's reserved margin (free<->locked only; no balance change).
-        let release_amt = (collateral as u128).min(uc.locked() as u128) as u64;
-        uc.release(release_amt);
+        // Free the target's reserved margin (free<->locked only; no balance
+        // change) — on a FULL close only; a partial keeps it backing the
+        // remainder (conservative: a later full close releases it).
+        if is_full {
+            let release_amt = (collateral as u128).min(uc.locked() as u128) as u64;
+            uc.release(release_amt);
+        }
         let before = uc.balance();
         let shortfall = uc.apply_pnl(pnl)?;
         let after_pnl = uc.balance();
@@ -316,7 +375,9 @@ pub fn process_liquidate_cross(
         }
     }
 
-    {
+    // A FULL close zeroes the residual fields (apply_fill already zeroed the
+    // size + realized); a partial leaves the live remainder in place.
+    if is_full {
         let mut acct = *target_pos;
         let mut pos_data = acct.try_borrow_mut()?;
         let position = Position::from_bytes_mut(&mut pos_data)?;
@@ -330,11 +391,21 @@ pub fn process_liquidate_cross(
         let mut acct = *target_market;
         let mut market_data = acct.try_borrow_mut()?;
         let market = Market::from_bytes_mut(&mut market_data)?;
-        market.apply_oi_delta(size_signed, 0);
+        market.apply_oi_delta(size_signed, new_signed);
         if !market.socialize_bad_debt(size_signed, social_residual)? {
             log!("tempo: xliq unbacked bad debt={}", social_residual);
         }
     }
+
+    // Reward floor (§6.2) — shared with the isolated path.
+    crate::settle_money::pay_reward_floor(
+        program_id,
+        ix.accounts.vault,
+        ix.accounts.liquidator_collateral,
+        market_mint,
+        reward_floor,
+        penalty_charged,
+    )?;
 
     let event = PositionLiquidatedEvent {
         market: market_key,
@@ -343,6 +414,8 @@ pub fn process_liquidate_cross(
         equity: position_equity,
         penalty: penalty_charged,
         bad_debt: shortfall,
+        closed_qty: close_qty,
+        remaining_size: new_signed as i64,
     };
     emit_event(
         program_id,

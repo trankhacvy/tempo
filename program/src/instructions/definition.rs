@@ -1043,6 +1043,54 @@ pub enum TempoProgramInstruction {
         amount: u64,
     } = 40,
 
+    /// Vault authority: stage an insurance withdrawal behind the consensus
+    /// delay (plan.md §4.4) — the only authority-controlled token OUTFLOW in
+    /// the program; users get the delay window to exit before it can land.
+    #[codama(account(
+        name = "authority",
+        docs = "Vault authority (recorded at init)",
+        signer
+    ))]
+    #[codama(account(name = "vault", docs = "Vault (staging slot written)", writable))]
+    ProposeInsuranceWithdraw {
+        /// Tokens to withdraw from the pool (bounded by the pool at propose,
+        /// re-clamped at apply)
+        amount: u64,
+    } = 41,
+
+    /// Permissionless: apply a staged insurance withdrawal once the delay
+    /// elapses. Re-clamps to the current pool, then the §4.2 FAIL-CLOSED
+    /// backing gate runs post-debit, pre-transfer — tokens may only leave while
+    /// the vault still covers every user balance + the remaining pool.
+    #[codama(account(name = "cranker", docs = "Permissionless caller", signer))]
+    #[codama(account(
+        name = "vault",
+        docs = "Vault (pool debited, staging cleared)",
+        writable
+    ))]
+    #[codama(account(name = "vault_authority", docs = "Vault authority PDA (signs)"))]
+    #[codama(account(
+        name = "vault_token_account",
+        docs = "Vault token account (source)",
+        writable
+    ))]
+    #[codama(account(
+        name = "recipient_token_account",
+        docs = "Recipient token account (same mint, HS-12)",
+        writable
+    ))]
+    #[codama(account(name = "token_program", docs = "SPL token program", default_value = program("token")))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    ApplyInsuranceWithdraw {} = 42,
+
     /// Invoked via CPI to emit event data in instruction args (prevents log truncation).
     #[codama(skip)]
     #[codama(account(name = "event_authority", signer))]

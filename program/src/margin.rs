@@ -55,6 +55,60 @@ pub fn ladder_reservation(total_ladder_qty: u64, window_top_price: u64, initial_
     initial_margin(total_ladder_qty, window_top_price, initial_bps)
 }
 
+/// Minimum target-leg quantity to close at `mark` so the account returns to
+/// health with a `buffer_bps` cushion above maintenance (missing-features §6.1,
+/// plan.md §4.1). Works for BOTH liquidation paths: pass the single position's
+/// equity/maintenance (isolated) or the combined account's (cross) — the
+/// single-leg case reduces to the same inequality.
+///
+/// Derivation (integer, ×1e8 to clear both bps denominators): closing `c` at
+/// `mark` leaves equity unchanged (the realized slice equals the removed
+/// unrealized slice) minus the penalty on the closed notional, while
+/// maintenance drops by `c·mark·maint_bps/1e4`. Requiring the buffered health
+/// `E − c·mark·pen/1e4 ≥ (M − c·mark·maint/1e4)·B/1e4` (B = 1e4 + buffer) and
+/// solving for the smallest `c`:
+///
+/// ```text
+/// c = ceil( (M·B·1e4 − E·1e8) / (mark·(maint_bps·B − pen_bps·1e4)) )
+/// ```
+///
+/// Returns `None` ⇒ **full close** (insolvent, feature disabled, degenerate
+/// config where the penalty eats the health gain, `c ≥ |size|`, or any
+/// overflow — always the conservative direction). Returns `Some(0)` when the
+/// account is already at buffered health. Rounds UP (closes slightly more —
+/// against the position holder, the house rounding direction).
+pub fn partial_close_qty(
+    target_abs_size: u128,
+    equity: i128,
+    maintenance: i128,
+    mark: u64,
+    maintenance_bps: u16,
+    penalty_bps: u16,
+    buffer_bps: u16,
+) -> Option<u64> {
+    if equity <= 0 || buffer_bps == 0 || target_abs_size == 0 || mark == 0 || maintenance <= 0 {
+        return None; // insolvent / disabled / degenerate ⇒ full close
+    }
+    let b = 10_000u128 + buffer_bps as u128;
+    let maint_b = (maintenance_bps as u128) * b; // ≤ 5e3·2e4 = 1e8
+    let pen_scaled = (penalty_bps as u128) * 10_000; // ≤ 5e7
+    if maint_b <= pen_scaled {
+        return None; // the penalty eats the health gain ⇒ partial can't converge
+    }
+    // num = M·B·1e4 − E·1e8  (both positive here; u128 with checked muls).
+    let need = (maintenance as u128).checked_mul(b)?.checked_mul(10_000)?;
+    let have = (equity as u128).checked_mul(100_000_000)?;
+    if have >= need {
+        return Some(0); // already at buffered health — nothing to close
+    }
+    let den = (mark as u128).checked_mul(maint_b - pen_scaled)?;
+    let c = crate::wide_math::mul_div_ceil(need - have, 1, den)?;
+    if c >= target_abs_size {
+        return None; // the remainder can't restore health ⇒ full close
+    }
+    u64::try_from(c).ok()
+}
+
 /// A position is liquidatable when its equity falls below maintenance margin.
 pub fn is_liquidatable(equity: i128, maintenance: i128) -> bool {
     equity < maintenance
@@ -199,6 +253,96 @@ mod tests {
         assert_eq!(initial_margin(10, 100, 500), 50);
         // small notional that floored to 0 now rounds up: 7·33·30bps = 6930/10000 → 1.
         assert_eq!(initial_margin(7, 33, 30), 1);
+    }
+
+    #[test]
+    fn test_partial_close_qty_minimality_and_fallbacks() {
+        // Long 100 @ entry 100, mark 95: equity = collateral 400 + unrl (-500)
+        // = -100 → insolvent → full close.
+        assert_eq!(partial_close_qty(100, -100, 475, 95, 500, 100, 200), None);
+        // Disabled buffer → full close.
+        assert_eq!(partial_close_qty(100, 300, 475, 95, 500, 100, 0), None);
+        // Degenerate: penalty ≥ buffered maintenance relief → full close.
+        // maint_b = 100·10200 = 1.02e6; pen·1e4 = 200·1e4 = 2e6 > maint_b.
+        assert_eq!(partial_close_qty(100, 300, 475, 95, 100, 200, 200), None);
+
+        // A real partial: long 100 @ mark 95, maint 5% (475), equity 300,
+        // buffer 2%. c = ceil((475·10200·1e4 − 300·1e8)/(95·(500·10200 − 100·1e4)))
+        //            = ceil(18450e6/(95·5.1e6−95e4·... )) — just assert the
+        // post-close health property + minimality below.
+        let c = partial_close_qty(100, 300, 475, 95, 500, 100, 200).unwrap();
+        assert!(c > 0 && c < 100, "a genuine partial: 0 < c < |size|");
+        let healthy = |c: u128| {
+            // E − c·mark·pen/1e4 ≥ (M − c·mark·maint/1e4)·B/1e4, all ×1e8.
+            let e = 300i128 * 100_000_000;
+            let pen = (c as i128) * 95 * 100 * 10_000;
+            let m_after = 475i128 * 10_000 - (c as i128) * 95 * 500;
+            e - pen >= m_after * 10_200
+        };
+        assert!(healthy(c as u128), "post-close health restored with buffer");
+        assert!(
+            !healthy((c - 1) as u128),
+            "c is MINIMAL: one lot less stays unhealthy"
+        );
+
+        // Already at buffered health → Some(0).
+        assert_eq!(
+            partial_close_qty(100, 10_000, 475, 95, 500, 100, 200),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn fuzz_partial_close_restores_health_and_is_minimal() {
+        // Deterministic LCG (the house fuzz pattern): 20k random books.
+        let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut next = move || {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            state >> 33
+        };
+        let mut partials = 0u32;
+        for _ in 0..20_000 {
+            let abs_size = (next() % 1_000_000 + 1) as u128;
+            let mark = next() % 1_000_000 + 1;
+            let maint_bps = (next() % 5_000 + 1) as u16;
+            let pen_bps = (next() % 5_000) as u16;
+            let buf_bps = (next() % 10_000 + 1) as u16;
+            let maintenance = maintenance_margin(abs_size as i128, mark, maint_bps);
+            // Equity at 50%–150% of maintenance so genuine partials (just under
+            // the buffered line) and full-close fallbacks both occur.
+            let pct = (next() % 100 + 50) as i128;
+            let equity = (maintenance.max(1) * pct / 100).max(1);
+
+            let Some(c) = partial_close_qty(
+                abs_size,
+                equity,
+                maintenance,
+                mark,
+                maint_bps,
+                pen_bps,
+                buf_bps,
+            ) else {
+                continue; // full-close fallback: always safe
+            };
+            let c = c as i128;
+            let b = 10_000 + buf_bps as i128;
+            // Health with the buffer, ×1e8 (mirrors the derivation exactly).
+            let health = |c: i128| {
+                let e = equity * 100_000_000;
+                let pen = c * (mark as i128) * (pen_bps as i128) * 10_000;
+                let m_after = maintenance * 10_000 - c * (mark as i128) * (maint_bps as i128);
+                e - pen >= m_after * b
+            };
+            assert!(health(c), "post-close buffered health restored");
+            if c > 0 {
+                partials += 1;
+                assert!(!health(c - 1), "minimality: c−1 is still unhealthy");
+                assert!((c as u128) < abs_size, "partial stays partial");
+            }
+        }
+        assert!(partials > 1_000, "the fuzz actually exercised partials");
     }
 
     #[test]

@@ -38,6 +38,9 @@ pub fn process_liquidate(
         effective_price,
         last_good_oracle_slot,
         soft_stale_slots,
+        close_buffer_bps,
+        min_order_notional,
+        liquidation_reward_floor,
     ) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
@@ -53,6 +56,9 @@ pub fn process_liquidate(
             market.effective_price_1e8(),
             market.last_good_oracle_slot(),
             market.soft_stale_slots(),
+            market.liquidation_close_buffer_bps(),
+            market.min_order_notional(),
+            market.liquidation_reward_floor(),
         )
     };
 
@@ -92,6 +98,9 @@ pub fn process_liquidate(
         let mut md = acct.try_borrow_mut()?;
         Market::from_bytes_mut(&mut md)?.advance_effective_price(raw, now_slot);
     }
+    // §5.2 naming honesty: this is the SOLVENCY price (raw confidence-checked
+    // oracle, never the braked/banded funding mark) — the two are deliberately
+    // different definitions with different manipulation surfaces.
     let mark = resolved.price();
 
     // Settle funding into the position, then read its post-funding state.
@@ -123,6 +132,54 @@ pub fn process_liquidate(
     let maint = maintenance_margin(size_signed, mark, maintenance_bps);
     if !is_liquidatable(outcome.equity, maint) {
         return Err(TempoProgramError::NotLiquidatable.into());
+    }
+
+    // --- partial liquidation (missing-features §6.1, plan.md §4.1) ---
+    // Close only the MINIMUM that restores buffered health, when the market has
+    // a close buffer configured, the result is a genuine partial, and the
+    // remainder clears the dust floor. Every fallback is the full close below.
+    let abs_size_u128 = size_signed.unsigned_abs();
+    let full_qty = u64::try_from(abs_size_u128).unwrap_or(u64::MAX);
+    let partial_qty = match crate::margin::partial_close_qty(
+        abs_size_u128,
+        outcome.equity,
+        maint,
+        mark,
+        maintenance_bps,
+        penalty_bps,
+        close_buffer_bps,
+    ) {
+        Some(c) if c > 0 && c < full_qty => {
+            let remainder_notional = (abs_size_u128 - c as u128).saturating_mul(mark as u128);
+            if min_order_notional > 0 && remainder_notional < (min_order_notional as u128) {
+                None // dust remainder ⇒ full close
+            } else {
+                Some(c)
+            }
+        }
+        _ => None,
+    };
+
+    if let Some(close_qty) = partial_qty {
+        return liquidate_partial(
+            program_id,
+            &ix,
+            PartialArgs {
+                market_key,
+                owner_key,
+                size_signed,
+                entry,
+                mark,
+                collateral,
+                close_qty,
+                maintenance_bps,
+                penalty_bps,
+                social_long,
+                social_short,
+                market_collateral_mint,
+                liquidation_reward_floor,
+            },
+        );
     }
 
     // Bad debt left uncovered by insurance, socialized to the winning side.
@@ -160,6 +217,14 @@ pub fn process_liquidate(
         let lc = UserCollateral::from_bytes_mut(&mut lc_data)?;
         lc.credit(outcome.penalty)?;
     }
+    crate::settle_money::pay_reward_floor(
+        program_id,
+        ix.accounts.vault,
+        ix.accounts.liquidator_collateral,
+        market_collateral_mint,
+        liquidation_reward_floor,
+        outcome.penalty,
+    )?;
 
     // Conserve the close through insurance: whatever the close moved into/out of
     // the owner + liquidator ledgers moves the opposite way in the pool, so
@@ -245,6 +310,8 @@ pub fn process_liquidate(
         equity: equity_i128,
         penalty: outcome.penalty,
         bad_debt: outcome.bad_debt,
+        closed_qty: full_qty,
+        remaining_size: 0,
     };
     emit_event(
         program_id,
@@ -254,4 +321,169 @@ pub fn process_liquidate(
     )?;
 
     Ok(())
+}
+
+/// Everything the partial path needs (bundled to keep the arg list sane).
+struct PartialArgs {
+    market_key: Address,
+    owner_key: Address,
+    size_signed: i128,
+    entry: u64,
+    mark: u64,
+    collateral: u64,
+    close_qty: u64,
+    maintenance_bps: u16,
+    penalty_bps: u16,
+    social_long: i128,
+    social_short: i128,
+    market_collateral_mint: Address,
+    liquidation_reward_floor: u64,
+}
+
+/// The PARTIAL close (missing-features §6.1): realize only `close_qty` at the
+/// solvency mark, shrink the locked margin to the remainder's initial target,
+/// charge the penalty on the CLOSED notional from free balance, conserve the
+/// PnL flush through insurance, drop OI to the remainder, and verify progress
+/// (`LiquidationNoProgress` if the remainder is somehow still unhealthy — the
+/// buffered formula makes this unreachable, kept as a belt-and-suspenders
+/// backstop). Funding + social loss were already settled by the caller.
+fn liquidate_partial(
+    program_id: &Address,
+    ix: &crate::instructions::Liquidate,
+    a: PartialArgs,
+) -> ProgramResult {
+    use crate::margin::{equity, unrealized_pnl};
+
+    // 1. Realize the closed slice into the position. No flip is possible
+    //    (close_qty < |size|), so apply_fill only reduces + realizes.
+    let (new_signed, realized_flush, release_delta, new_collateral) = {
+        let mut acct = *ix.accounts.position;
+        let mut pos_data = acct.try_borrow_mut()?;
+        let position = crate::state::Position::from_bytes_mut(&mut pos_data)?;
+        let is_buy_close = a.size_signed < 0; // closing a short buys
+        position.apply_fill(
+            is_buy_close,
+            a.close_qty,
+            a.mark,
+            a.social_long,
+            a.social_short,
+        )?;
+        let new_signed = position.size() as i128;
+        let realized_flush = position.realized_pnl();
+        position.set_realized_pnl(0);
+        // KEEP the full locked collateral on the remainder (conservative): the
+        // realized loss slice flushes to the LEDGER below, so shrinking the
+        // position's collateral to the initial target would leave the position
+        // itself (collateral + unrealized) below maintenance even though the
+        // ACCOUNT is healthy — the exact trap the progress backstop caught in
+        // testing. The owner reclaims the excess on close/normal settles.
+        let release_delta = 0u64;
+        let new_collateral = a.collateral;
+        (new_signed, realized_flush, release_delta, new_collateral)
+    };
+
+    // 2. Owner ledger: release the freed margin slice, flush the realized
+    //    slice, then charge the penalty on the CLOSED notional from FREE
+    //    balance only — the remainder's margin stays backed.
+    let penalty = {
+        let notional = (a.close_qty as u128) * (a.mark as u128);
+        crate::wide_math::mul_div_floor(notional, a.penalty_bps as u128, 10_000)
+            .and_then(|m| u64::try_from(m).ok())
+            .unwrap_or(u64::MAX)
+    };
+    let (pnl_delta, shortfall, penalty_charged) = {
+        let mut acct = *ix.accounts.user_collateral;
+        let mut uc_data = acct.try_borrow_mut()?;
+        let uc = UserCollateral::from_bytes_mut(&mut uc_data)?;
+        if uc.owner != a.owner_key {
+            return Err(TempoProgramError::InvalidCollateralAccount.into());
+        }
+        uc.validate_self(ix.accounts.user_collateral, program_id)?;
+        let before = uc.balance();
+        uc.release(release_delta);
+        let shortfall = uc.apply_pnl(realized_flush)?;
+        // The insurance-mirrored delta is the PnL flush ONLY; the penalty is an
+        // owner→liquidator transfer (net-zero across user balances).
+        let pnl_delta = uc.balance() as i128 - before as i128;
+        let penalty_charged = penalty.min(uc.free());
+        uc.set_balance(uc.balance() - penalty_charged);
+        (pnl_delta, shortfall, penalty_charged)
+    };
+
+    // 3. Liquidator earns the penalty (+ the floor top-up below).
+    if penalty_charged > 0 {
+        let mut acct = *ix.accounts.liquidator_collateral;
+        let mut lc_data = acct.try_borrow_mut()?;
+        UserCollateral::from_bytes_mut(&mut lc_data)?.credit(penalty_charged)?;
+    }
+
+    // 4. Conserve the flush through insurance (+ aggregate), drop OI to the
+    //    remainder, socialize any shortfall against the PRE-close side.
+    {
+        let mut v = *ix.accounts.vault;
+        let mut vault_data = v.try_borrow_mut()?;
+        let vault = Vault::from_bytes_mut(&mut vault_data)?;
+        vault.validate_self(ix.accounts.vault, program_id)?;
+        if a.market_collateral_mint != Address::new_from_array([0u8; 32])
+            && vault.collateral_mint != a.market_collateral_mint
+        {
+            return Err(TempoProgramError::AccountMarketMismatch.into());
+        }
+        let mut m = *ix.accounts.market;
+        let mut market_data = m.try_borrow_mut()?;
+        let market = Market::from_bytes_mut(&mut market_data)?;
+        crate::settle_money::conserve_and_socialize(
+            vault,
+            market,
+            pnl_delta,
+            shortfall,
+            a.size_signed,
+        )?;
+        market.apply_oi_delta(a.size_signed, new_signed);
+    }
+
+    // 5. Progress backstop (wires the reserved LiquidationNoProgress): the
+    //    remainder must be healthy at plain maintenance.
+    let equity_after = equity(
+        new_collateral,
+        0,
+        unrealized_pnl(new_signed, a.entry, a.mark),
+    );
+    let maint_after = maintenance_margin(new_signed, a.mark, a.maintenance_bps);
+    if is_liquidatable(equity_after, maint_after) {
+        return Err(TempoProgramError::LiquidationNoProgress.into());
+    }
+
+    // 6. Reward floor (§6.2), then the event.
+    crate::settle_money::pay_reward_floor(
+        program_id,
+        ix.accounts.vault,
+        ix.accounts.liquidator_collateral,
+        a.market_collateral_mint,
+        a.liquidation_reward_floor,
+        penalty_charged,
+    )?;
+
+    log!(
+        "tempo: partial liq closed={} remaining={} penalty={}",
+        a.close_qty,
+        new_signed as i64,
+        penalty_charged
+    );
+    let event = PositionLiquidatedEvent {
+        market: a.market_key,
+        owner: a.owner_key,
+        mark: a.mark,
+        equity: equity_after,
+        penalty: penalty_charged,
+        bad_debt: shortfall,
+        closed_qty: a.close_qty,
+        remaining_size: new_signed as i64,
+    };
+    emit_event(
+        program_id,
+        ix.accounts.event_authority,
+        ix.accounts.tempo_program,
+        &event.to_bytes(),
+    )
 }

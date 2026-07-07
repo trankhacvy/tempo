@@ -1410,21 +1410,21 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
 
 ### 9.4 Phase 3 — Risk depth (no layout changes)
 
-- [ ] **P3.1 — `partial_close_qty` math** (§4.1.1)
+- [x] **P3.1 — `partial_close_qty` math** (§4.1.1)
   Pure fn in `margin.rs` + unit tests + 20k-iter fuzz (health restored with buffer;
   minimality `c−1` fails; full-close fallbacks: equity ≤ 0, `maint_b ≤ pen_scaled`,
   `c ≥ |size|`).
   **Done when:** `cargo test --features idl margin` shows the unit + fuzz tests
   green by name.
 
-- [ ] **P3.2 — Kani harness** (§4.1.1)
+- [x] **P3.2 — Kani harness** (§4.1.1)
   `proof_partial_close_qty_safe` (panic-freedom, `2^48` envelope), added to
   `kani_proofs.rs` scoped like the existing three.
   **Done when:** `cargo kani --harness proof_partial_close_qty_safe` prints
   `VERIFICATION:- SUCCESSFUL` — output shown. (If kani is not installed in this
   environment, write `> BLOCKED: cargo-kani unavailable` and leave for CI.)
 
-- [ ] **P3.3 — Partial liquidation in `liquidate`** (§4.1.2)
+- [x] **P3.3 — Partial liquidation in `liquidate`** (§4.1.2)
   Close-size decision + partial branch (`apply_fill` at mark, penalty on closed
   notional, partial collateral release, OI delta to new size, `LiquidationNoProgress`
   backstop, event `closed_qty`/`remaining_size` appended — DATA_LEN 104→120).
@@ -1432,36 +1432,36 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   close on a 1%-underwater position; repeated calls converge; insolvent → full
   close; dust remainder → full close; conservation assert green.
 
-- [ ] **P3.4 — Partial liquidation in `liquidate_cross`** (§4.1.2)
+- [x] **P3.4 — Partial liquidation in `liquidate_cross`** (§4.1.2)
   Same formula with combined equity/maintenance on the target leg.
   **Done when:** cross partial-liquidation tests pass by name — shown.
 
-- [ ] **P3.5 — Liquidation reward floor** (§4.2)
+- [x] **P3.5 — Liquidation reward floor** (§4.2)
   Insurance-funded top-up in both liquidate paths, capped at pool; conserving
   (aggregate updated).
   **Done when:** tests show: penalty < floor → topped up; capped at insurance;
   floor 0 = no-op; P2.8 property still green — shown.
 
-- [ ] **P3.6 — OI soft cap** (§4.3)
+- [x] **P3.6 — OI soft cap** (§4.3)
   Read-only submit check (`OpenInterestCapExceeded`/50), reducing orders exempt,
   `new_exposure_abs` hoisted.
   **Done when:** tests show: over-cap increase rejected `Custom(50)`; pure reduce
   passes over the cap; same-round overshoot case documented-and-asserted — shown.
 
-- [ ] **P3.7 — Insurance withdraw (41/42)** (§4.4)
+- [x] **P3.7 — Insurance withdraw (41/42)** (§4.4)
   Staged on Vault; permissionless apply; backing gate before transfer; clamps to
   shrunk insurance; `InsuranceWithdrawnEvent`.
   **Done when:** tests show: early apply `Custom(48)`; no-pending `Custom(47)`;
   gate-blocked withdraw `Custom(51)`; happy path pays and clears pending — shown.
 
-- [ ] **P3.8 — Mark-price renames + docs** (§4.5)
+- [x] **P3.8 — Mark-price renames + docs** (§4.5)
   `funding_mark` / `solvency_price` local renames; `docs/risk-model.md` "two prices"
   section.
   **Done when:** `grep -rn "solvency_price" program/src/instructions/liquidate/` hits
   AND `cargo test --features idl` still green AND the doc section exists
   (`grep -n "two prices" docs/risk-model.md`) — shown.
 
-- [ ] **P3.9 — Phase 3 gate** — same seven checks as P1.11, all outputs shown.
+- [x] **P3.9 — Phase 3 gate** — same seven checks as P1.11, all outputs shown.
 
 - [ ] **P3.10 (OP) — Deploy (no re-provision) + partial-liquidation devnet drill**
 

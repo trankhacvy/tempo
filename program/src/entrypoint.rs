@@ -3,13 +3,14 @@ use pinocchio::{account::AccountView, entrypoint, error::ProgramError, Address, 
 use crate::{
     instructions::{
         process_accept_authority_transfer, process_add_position_to_margin,
-        process_apply_risk_update, process_apply_set_oracle, process_cancel_order,
-        process_clear_maker_quote, process_close_maker_quote, process_deposit, process_emit_event,
-        process_finalize_clear, process_force_reset, process_init_collateral,
-        process_init_maker_quote, process_init_margin_account, process_init_position,
-        process_init_shard, process_init_vault, process_initialize_market, process_liquidate,
-        process_liquidate_cross, process_migrate_market, process_migrate_position,
-        process_process_chunk, process_process_maker_quote, process_propose_authority_transfer,
+        process_apply_insurance_withdraw, process_apply_risk_update, process_apply_set_oracle,
+        process_cancel_order, process_clear_maker_quote, process_close_maker_quote,
+        process_deposit, process_emit_event, process_finalize_clear, process_force_reset,
+        process_init_collateral, process_init_maker_quote, process_init_margin_account,
+        process_init_position, process_init_shard, process_init_vault, process_initialize_market,
+        process_liquidate, process_liquidate_cross, process_migrate_market,
+        process_migrate_position, process_process_chunk, process_process_maker_quote,
+        process_propose_authority_transfer, process_propose_insurance_withdraw,
         process_propose_risk_update, process_propose_set_oracle, process_read_oracle,
         process_remove_position_from_margin, process_reset_shard, process_seed_insurance,
         process_set_pause, process_settle_fill, process_settle_maker_quote, process_start_auction,
@@ -156,6 +157,12 @@ pub fn process_instruction(
         }
         TempoInstructionDiscriminators::SeedInsurance => {
             process_seed_insurance(program_id, accounts, instruction_data)
+        }
+        TempoInstructionDiscriminators::ProposeInsuranceWithdraw => {
+            process_propose_insurance_withdraw(program_id, accounts, instruction_data)
+        }
+        TempoInstructionDiscriminators::ApplyInsuranceWithdraw => {
+            process_apply_insurance_withdraw(program_id, accounts, instruction_data)
         }
         TempoInstructionDiscriminators::EmitEvent => process_emit_event(program_id, accounts),
     }

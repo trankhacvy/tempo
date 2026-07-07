@@ -8,6 +8,7 @@
 
 export * from "./acceptAuthorityTransfer";
 export * from "./addPositionToMargin";
+export * from "./applyInsuranceWithdraw";
 export * from "./applyRiskUpdate";
 export * from "./applySetOracle";
 export * from "./cancelOrder";
@@ -30,6 +31,7 @@ export * from "./migratePosition";
 export * from "./processChunk";
 export * from "./processMakerQuote";
 export * from "./proposeAuthorityTransfer";
+export * from "./proposeInsuranceWithdraw";
 export * from "./proposeRiskUpdate";
 export * from "./proposeSetOracle";
 export * from "./readOracle";

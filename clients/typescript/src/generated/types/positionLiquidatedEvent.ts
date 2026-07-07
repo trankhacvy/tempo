@@ -12,6 +12,8 @@ import {
   getAddressEncoder,
   getI128Decoder,
   getI128Encoder,
+  getI64Decoder,
+  getI64Encoder,
   getStructDecoder,
   getStructEncoder,
   getU64Decoder,
@@ -29,6 +31,8 @@ export type PositionLiquidatedEvent = {
   equity: bigint;
   penalty: bigint;
   badDebt: bigint;
+  closedQty: bigint;
+  remainingSize: bigint;
 };
 
 export type PositionLiquidatedEventArgs = {
@@ -38,6 +42,8 @@ export type PositionLiquidatedEventArgs = {
   equity: number | bigint;
   penalty: number | bigint;
   badDebt: number | bigint;
+  closedQty: number | bigint;
+  remainingSize: number | bigint;
 };
 
 export function getPositionLiquidatedEventEncoder(): FixedSizeEncoder<PositionLiquidatedEventArgs> {
@@ -48,6 +54,8 @@ export function getPositionLiquidatedEventEncoder(): FixedSizeEncoder<PositionLi
     ["equity", getI128Encoder()],
     ["penalty", getU64Encoder()],
     ["badDebt", getU64Encoder()],
+    ["closedQty", getU64Encoder()],
+    ["remainingSize", getI64Encoder()],
   ]);
 }
 
@@ -59,6 +67,8 @@ export function getPositionLiquidatedEventDecoder(): FixedSizeDecoder<PositionLi
     ["equity", getI128Decoder()],
     ["penalty", getU64Decoder()],
     ["badDebt", getU64Decoder()],
+    ["closedQty", getU64Decoder()],
+    ["remainingSize", getI64Decoder()],
   ]);
 }
 

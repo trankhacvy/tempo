@@ -69,14 +69,21 @@ pub fn process_update_funding(
     // Halt funding when the oracle is too uncertain (system-design §10).
     price.require_confidence(DEFAULT_MAX_CONF_BPS)?;
 
-    let mark = compute_mark_price(last_bid, last_ask, price.price_1e8, MARK_BAND_BPS)?;
+    // §5.2 naming honesty: this is the FUNDING mark (banded clearing mid) —
+    // solvency prices off the raw oracle via `solvency_mark`, deliberately NOT this.
+    let funding_mark = compute_mark_price(last_bid, last_ask, price.price_1e8, MARK_BAND_BPS)?;
 
     // Elapsed-time fraction of one funding interval, in bps (capped at one period).
     let elapsed = now_ts.saturating_sub(last_funding_ts as i64).max(0);
     let period_fraction_bps =
         (elapsed.saturating_mul(10_000) / FUNDING_INTERVAL_SECS).min(10_000) as u32;
 
-    let rate = period_funding_rate(mark, price.price_1e8, period_fraction_bps, MAX_FUNDING_RATE)?;
+    let rate = period_funding_rate(
+        funding_mark,
+        price.price_1e8,
+        period_fraction_bps,
+        MAX_FUNDING_RATE,
+    )?;
     let new_index = next_funding_index(funding_index, rate);
 
     // Write the advanced index + timestamp back.
@@ -93,14 +100,14 @@ pub fn process_update_funding(
     log!(
         "tempo: funding index={} mark={} oracle={}",
         new_index,
-        mark,
+        funding_mark,
         price.price_1e8
     );
 
     let event = FundingUpdatedEvent {
         market: market_key,
         funding_index: new_index,
-        mark,
+        mark: funding_mark,
         oracle_price_1e8: price.price_1e8,
     };
     emit_event(

@@ -3,7 +3,7 @@
 //! Single source of truth for `settle_fill`, `settle_maker_quote`, `liquidate`,
 //! and `liquidate_cross` so the four paths cannot drift (known-issues §1.1, §1.2).
 
-use pinocchio::{account::AccountView, error::ProgramError, Address};
+use pinocchio::{account::AccountView, error::ProgramError, Address, ProgramResult};
 use pinocchio_log::log;
 
 use crate::{
@@ -103,6 +103,46 @@ pub fn conserve_and_socialize(
         if residual > 0 && !market.socialize_bad_debt(loser_signed_size, residual)? {
             log!("tempo: settle unbacked bad debt={}", residual);
         }
+    }
+    Ok(())
+}
+
+/// Keeper-reward floor (missing-features §6.2): top the equity-capped penalty
+/// up to `floor` FROM INSURANCE, capped at the pool (conserving, fail-soft) —
+/// the `finalize_clear` crank-fee shape. Griefing-safe by construction: a
+/// liquidation only executes when equity < maintenance, an on-chain condition
+/// an attacker cannot manufacture for free.
+pub fn pay_reward_floor(
+    program_id: &Address,
+    vault_acct: &AccountView,
+    liquidator_ledger: &AccountView,
+    market_collateral_mint: Address,
+    floor: u64,
+    penalty_paid: u64,
+) -> ProgramResult {
+    if floor <= penalty_paid {
+        return Ok(());
+    }
+    let top_up = {
+        let mut v = *vault_acct;
+        let mut vault_data = v.try_borrow_mut()?;
+        let vault = Vault::from_bytes_mut(&mut vault_data)?;
+        vault.validate_self(vault_acct, program_id)?;
+        if market_collateral_mint != Address::new_from_array([0u8; 32])
+            && vault.collateral_mint != market_collateral_mint
+        {
+            return Err(TempoProgramError::AccountMarketMismatch.into());
+        }
+        let pay = (floor - penalty_paid).min(vault.insurance_balance());
+        vault.set_insurance_balance(vault.insurance_balance() - pay);
+        // §3.4: the liquidator ledger credit below raises Σ user balances.
+        apply_user_balance_delta(vault, pay as i128)?;
+        pay
+    };
+    if top_up > 0 {
+        let mut acct = *liquidator_ledger;
+        let mut lc_data = acct.try_borrow_mut()?;
+        UserCollateral::from_bytes_mut(&mut lc_data)?.credit(top_up)?;
     }
     Ok(())
 }

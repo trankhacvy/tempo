@@ -10,13 +10,8 @@ use borsh::BorshSerialize;
 use solana_address::Address;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, Eq, PartialEq)]
-pub struct PositionLiquidatedEvent {
-    pub market: Address,
-    pub owner: Address,
-    pub mark: u64,
-    pub equity: i128,
-    pub penalty: u64,
-    pub bad_debt: u64,
-    pub closed_qty: u64,
-    pub remaining_size: i64,
+pub struct InsuranceWithdrawnEvent {
+    pub collateral_mint: Address,
+    pub authority: Address,
+    pub amount: u64,
 }

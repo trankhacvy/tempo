@@ -128,3 +128,24 @@ notional math cannot overflow. Margin requirements round up and fees round down 
 - Collateral is single-mint by design; supporting multiple collateral mints is a separate
   redesign. **For now the only supported collateral is USDC** — all markets share one USDC
   vault/ledger (many markets, one collateral mint). See `known-issues.md` §2.3.
+
+## Two prices, two names, two reasons (missing-features §5.2)
+
+Tempo deliberately runs **two** "mark" definitions, and this is a design
+decision, not an inconsistency:
+
+- **The funding mark** (`update_funding`) is the oracle-banded midpoint of the
+  last bid/ask clearing prices. Funding's entire job is measuring the
+  market-vs-index gap, so it must see the market's own prices — banded ±5%
+  around the oracle so a thin or manipulated book cannot drag it far.
+- **The solvency price** (`liquidate`, `liquidate_cross`, `withdraw_cross`) is
+  the RAW, confidence-checked oracle via `oracle::solvency_mark` — never the
+  braked effective price and never the book-derived funding mark. The §2.2
+  lesson: any lag or book influence in the solvency price doubles as an
+  anti-liquidation brake during a crash (underwater positions stay
+  un-liquidatable; over-withdrawal is permitted).
+
+Unifying them would hand whichever surface feeds the shared definition a lever
+over the other function's guarantees. Integrators should read them as two
+numbers with two names; revisit only if a manipulation simulation shows the
+banded mid is robust enough to price solvency (plan.md §4.5).

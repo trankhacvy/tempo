@@ -88,6 +88,8 @@ const IX_ACCEPT_AUTHORITY_TRANSFER: u8 = 37;
 const IX_PROPOSE_SET_ORACLE: u8 = 38;
 const IX_APPLY_SET_ORACLE: u8 = 39;
 const IX_SEED_INSURANCE: u8 = 40;
+const IX_PROPOSE_INSURANCE_WITHDRAW: u8 = 41;
+const IX_APPLY_INSURANCE_WITHDRAW: u8 = 42;
 
 /// One cross-margin member as supplied to `withdraw_cross` / `liquidate_cross`
 /// (known-issues §2.4): a `Live` member is a `(position, market, oracle)` triple;
@@ -417,9 +419,15 @@ pub struct TestContext {
     /// Minimum order notional written at init (missing-features §2.6); defaults
     /// to 0 (disabled). Set before `init_market` for anti-dust tests.
     pub market_min_order_notional: u64,
+    /// Partial-liquidation close buffer (bps) written at init (§6.1); defaults
+    /// to 0 (partial liquidation disabled — full close).
+    pub market_close_buffer_bps: u16,
     /// Number of `OrderSlab` shards a market is created with (Stage A sharding);
     /// defaults to 1 (single-shard path). Set before `init_market` for multi-shard tests.
     pub market_num_slab_shards: u16,
+    /// The `init_vault` admin keypair (recorded so tests can sign the staged
+    /// insurance withdraw — the vault's stored authority since Vault v3).
+    pub vault_admin: Option<Keypair>,
     /// Collateral mint written onto the `Market` at init (binds it to a vault);
     /// `None` → a zero mint, so the vault-binding check is skipped (legacy/clearing
     /// markets). Set before `init_market` to exercise the binding.
@@ -493,9 +501,11 @@ impl TestContext {
             market_initial_margin_bps: None,
             market_max_position_notional: 0,
             market_min_order_notional: 0,
+            market_close_buffer_bps: 0,
             market_num_slab_shards: 1,
             market_collateral_mint: None,
             vault_mint: None,
+            vault_admin: None,
             signers: HashMap::new(),
             market_authority: HashMap::new(),
         }
@@ -638,7 +648,7 @@ impl TestContext {
         data.extend_from_slice(&self.market_min_order_notional.to_le_bytes());
         data.extend_from_slice(&0u128.to_le_bytes());
         data.extend_from_slice(&0u64.to_le_bytes());
-        data.extend_from_slice(&0u16.to_le_bytes());
+        data.extend_from_slice(&self.market_close_buffer_bps.to_le_bytes());
 
         // initialize_market no longer creates the slab (shards are made one-per-tx by
         // init_shard), so there is no `order_slab` account here.
@@ -2148,6 +2158,7 @@ impl TestContext {
         vault_token_account: &Pubkey,
     ) -> Pubkey {
         self.vault_mint = Some(*collateral_mint);
+        self.vault_admin = Some(admin.insecure_clone());
         let (vault, vault_bump) = self.vault_pda();
         let (_authority, authority_bump) = self.vault_authority_pda();
 
@@ -3036,6 +3047,60 @@ impl TestContext {
             data,
         };
         self.send(ix, &[donor]).expect("seed_insurance")
+    }
+
+    /// ProposeInsuranceWithdraw (§4.4) signed by `signer` (pass the vault's
+    /// recorded authority — the init_vault admin — for the happy path).
+    pub fn try_propose_insurance_withdraw(
+        &mut self,
+        signer: &Keypair,
+        amount: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let (vault, _) = self.vault_pda();
+        let mut data = Vec::with_capacity(1 + 8);
+        data.push(IX_PROPOSE_INSURANCE_WITHDRAW);
+        data.extend_from_slice(&amount.to_le_bytes());
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(signer.pubkey(), true),
+                AccountMeta::new(vault, false),
+            ],
+            data,
+        };
+        self.send(ix, &[signer])
+    }
+
+    /// ApplyInsuranceWithdraw (permissionless, §4.4) — payer cranks; pays into
+    /// `recipient_token_account`.
+    pub fn try_apply_insurance_withdraw(
+        &mut self,
+        vault_token_account: &Pubkey,
+        recipient_token_account: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let (vault, _) = self.vault_pda();
+        let (vault_authority, _) = self.vault_authority_pda();
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(self.payer.pubkey(), true),
+                AccountMeta::new(vault, false),
+                AccountMeta::new_readonly(vault_authority, false),
+                AccountMeta::new(*vault_token_account, false),
+                AccountMeta::new(*recipient_token_account, false),
+                AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false),
+                AccountMeta::new_readonly(self.event_authority, false),
+                AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+            ],
+            data: vec![IX_APPLY_INSURANCE_WITHDRAW],
+        };
+        let payer = self.payer.insecure_clone();
+        self.send(ix, &[&payer])
+    }
+
+    /// The keypair recorded as the vault's authority at `init_vault` (Vault v3).
+    pub fn vault_admin_keypair(&self) -> Option<Keypair> {
+        self.vault_admin.as_ref().map(|k| k.insecure_clone())
     }
 
     /// SetPause with the market's recorded authority.

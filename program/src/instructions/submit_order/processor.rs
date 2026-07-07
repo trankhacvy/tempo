@@ -56,6 +56,9 @@ pub fn process_submit_order(
         max_position_notional,
         num_slab_shards,
         min_order_notional,
+        max_open_interest,
+        oi_long,
+        oi_short,
     ) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
@@ -86,6 +89,9 @@ pub fn process_submit_order(
             market.max_position_notional(),
             market.num_slab_shards(),
             market.min_order_notional(),
+            market.max_open_interest(),
+            market.oi_long(),
+            market.oi_short(),
         )
     };
 
@@ -219,21 +225,44 @@ pub fn process_submit_order(
         let _ = already_same_side;
         let opening_qty: u64 = ix.data.quantity;
 
-        // Per-position notional cap (missing-features §1.2): bound the order's
-        // worst-case NEW exposure only. A same-side order grows `|pos|` by `qty`; an
-        // opposite-side order first *reduces* it, so only the flip remainder past
-        // `|pos|` is new. A pure reduce/close adds zero new exposure and is therefore
-        // never blocked — a trader can always de-risk even after the oracle-anchored
-        // window rose past the cap (the cap is a risk-INCREASE gate, not a hold gate).
-        if max_position_notional > 0 {
-            let same_side = (pos_size >= 0) == is_buy;
-            let new_exposure_abs = if same_side {
-                abs_pos.saturating_add(qty)
+        // Worst-case NEW exposure this order can add (missing-features §1.2):
+        // a same-side order grows `|pos|` by `qty`; an opposite-side order first
+        // *reduces* it, so only the flip remainder past `|pos|` is new. A pure
+        // reduce/close adds ZERO new exposure — so neither cap below can ever
+        // block de-risking (both are risk-INCREASE gates, not hold gates).
+        let same_side = (pos_size >= 0) == is_buy;
+        let new_exposure_abs = if same_side {
+            abs_pos.saturating_add(qty)
+        } else {
+            qty.saturating_sub(abs_pos)
+        };
+
+        // Per-position notional cap.
+        if max_position_notional > 0
+            && new_exposure_abs.saturating_mul(worst_price as u128) > max_position_notional
+        {
+            return Err(TempoProgramError::PositionLimitExceeded.into());
+        }
+
+        // Per-side open-interest SOFT cap (plan.md §4.3). Read-only check —
+        // Design Z's parallel intake preserved: races inside one round can
+        // overshoot by at most one round of individually-margined, notional-
+        // capped orders. A risk-SIZING rail, not a solvency gate (solvency is
+        // margin's job). The cap gates the INCREMENT this order can add to its
+        // side's OI (side OI already contains `|pos|`): a same-side order adds
+        // `qty`; an opposite-side order adds only the flip remainder. A pure
+        // reduce adds zero and is never blocked.
+        if max_open_interest > 0 {
+            let oi_increase = if same_side {
+                qty
             } else {
                 qty.saturating_sub(abs_pos)
             };
-            if new_exposure_abs.saturating_mul(worst_price as u128) > max_position_notional {
-                return Err(TempoProgramError::PositionLimitExceeded.into());
+            if oi_increase > 0 {
+                let side_oi = if is_buy { oi_long } else { oi_short };
+                if side_oi.saturating_add(oi_increase) > max_open_interest {
+                    return Err(TempoProgramError::OpenInterestCapExceeded.into());
+                }
             }
         }
 

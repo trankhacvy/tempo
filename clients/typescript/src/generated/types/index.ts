@@ -12,6 +12,7 @@ export * from "./clearingFinalizedEvent";
 export * from "./fillSettledEvent";
 export * from "./fundingUpdatedEvent";
 export * from "./insuranceSeededEvent";
+export * from "./insuranceWithdrawnEvent";
 export * from "./marketInitializedEvent";
 export * from "./marketParamsUpdatedEvent";
 export * from "./marketPauseChangedEvent";
