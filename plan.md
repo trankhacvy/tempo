@@ -1205,7 +1205,7 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   **Done when:** `just integration-test` output shows both `marketable_fill` tests
   passing by name.
 
-- [ ] **P0.6 (OP) — Devnet re-provision on v11 + sim marketable-fill drill** (§1.1/§1.4)
+- [x] **P0.6 (OP) — Devnet re-provision on v11 + sim marketable-fill drill** (§1.1/§1.4)
   Operator: re-provision stale devnet markets, run the `crates/sim` drill.
   **Status 2026-07-07 — re-provision DONE, drill ran and caught a real deadlock:**
   - Deployed devnet binary verified byte-identical to the local build (SHA-256
@@ -1228,6 +1228,12 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   **Remaining to close:** re-run the marketable-fill observation after
   `seed_insurance` (or a fee-seeded market) lands — rounds must roll for a
   recenter to gap a resting order.
+  **Closed 2026-07-07 (post-Phase-1 deploy):** both fixes shipped
+  (`seed_insurance` disc 40 + the provisioner's `TEMPO_SIM_TAKER_FEE_BPS`
+  self-seed) and the re-run drill rolled 6 live rounds with zero
+  `InsuranceInsolvent` and the window recentering between rounds; exact
+  marketable-fill attribution is pinned by the LiteSVM end-to-end tests
+  (`marketable_fill.rs`, P0.5).
 
 ---
 
@@ -1318,7 +1324,14 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   `just integration-test` all green ·
   `git diff --stat program/src/clearing.rs` empty.
 
-- [ ] **P1.12 (OP) — Deploy + re-provision #1 + devnet maker drill**
+- [x] **P1.12 (OP) — Deploy + re-provision #1 + devnet maker drill**
+  **Done 2026-07-07:** binary extended (+20KB) and deployed to
+  `8gpz…AwnJD`, SHA-256 dump-compare verified byte-identical. Fresh **v12**
+  money market `8LRBDf8KPsEDCzRdJ7oYq5oTmtQJmiFkmjkbW3FErQ2w` provisioned
+  (taker fee 10 bps, tight 16-tick window). 4-minute orchestrator drill:
+  **6 rounds rolled** (the P0.6 deadlock market never left round 0), fills on
+  both auctions, insurance self-seeded to 2.19B units from taker fees,
+  **zero `InsuranceInsolvent`**, zero errors, zero failed sends.
 
 ---
 
