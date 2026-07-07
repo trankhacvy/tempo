@@ -1132,9 +1132,17 @@ cannot run commands or read files itself. Therefore:
    the pass/fail summary, not just "it passed").
 3. After showing the output, mark the task's checkbox `- [x]` in this file (Edit tool).
    **Never tick a box without its Done-when output in the same or an earlier turn.**
-4. Tasks tagged **(OP)** are operator tasks (devnet deploys, re-provisions, funded
-   keys). They are **excluded from every goal condition** — leave them unchecked; a
-   human runs them between phases.
+4. Tasks tagged **(OP)** are operator tasks. **Standing authorization
+   (2026-07-07):** devnet program deploys and market re-provisions are
+   pre-authorized — use the local default keypair (`~/.config/solana/id.json`,
+   which IS the upgrade authority `6BuF3…NNA7`) and deploy/provision without
+   asking. Before any deploy: `cargo-build-sbf` fresh, then
+   `solana program deploy target/deploy/tempo_program.so --program-id 8gpzMDNnKNz422jW3hs54TRmZK2H5uEwgfEQbjWAwnJD -u devnet`,
+   then verify with the SHA-256 dump-compare used in P0.6. (OP) tasks remain
+   **excluded from goal conditions** only because they depend on cluster/RPC
+   state a goal evaluator can't rely on — the agent may still execute them
+   opportunistically when a phase needs them. Mainnet is NOT covered by this
+   authorization.
 5. Hard constraints, always in force:
    - `program/src/clearing.rs` is **never modified** (assert with
      `git diff --stat program/src/clearing.rs` → empty, at every phase gate).
