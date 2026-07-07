@@ -1397,7 +1397,14 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
 
 - [x] **P2.11 — Phase 2 gate** — same seven checks as P1.11, all outputs shown.
 
-- [ ] **P2.12 (OP) — Deploy + vault re-provision + admin drill on devnet**
+- [x] **P2.12 (OP) — Deploy + vault re-provision + admin drill on devnet**
+  **Done 2026-07-08:** binary extended (+30KB) and deployed, SHA-256
+  dump-compare verified. Fresh market `DQi8…zdLd` (v12) with a fresh mint →
+  **Vault v3** `9xSH…ogtU` (authority recorded, staged-withdraw slot empty).
+  4-minute drill: 6 rounds rolled, fills both auctions, and the §3.4 backing
+  invariant held TO THE UNIT live: `total_user_balance` (2,999,997,704,461,195)
+  + `insurance` (2,295,538,805) = the agents' 3×10¹⁵ deposits exactly. Zero
+  errors, zero `InsuranceInsolvent`, zero `VaultInvariantViolated`.
 
 ---
 
