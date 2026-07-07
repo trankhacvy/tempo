@@ -95,6 +95,26 @@ pub struct SettleMoney {
     pub integrator_collateral: Option<Pubkey>,
 }
 
+impl SettleMoney {
+    /// Derive the full money-path set for settling `owner`'s order on a market
+    /// settling in `collateral_mint` (known-issues §2.11). The mint-scoped ledger
+    /// is ALWAYS attached: it is a deterministic PDA, and the program requires it
+    /// exactly when the settle releases a reservation (a fully-consuming settle) —
+    /// attaching it unconditionally removes the "did this settle need it?" client
+    /// guesswork. Position + vault ride along for the same reason. Safe on any
+    /// money-path market: `submit_order` already required position + ledger to
+    /// exist for every order that can be settled there (§1.1). Use
+    /// `SettleMoney::default()` only for a clearing-only (no-money-path) market.
+    pub fn for_order_owner(pdas: &MarketPdas, owner: Pubkey, collateral_mint: Pubkey) -> Self {
+        Self {
+            position: Some(crate::pda::position(&pdas.market, &owner).0),
+            user_collateral: Some(crate::pda::user_collateral(&owner, &collateral_mint).0),
+            vault: Some(crate::pda::vault(&collateral_mint).0),
+            integrator_collateral: None,
+        }
+    }
+}
+
 /// DISCOVER (`finalize_clear`): the completeness-gated single-pass cross. Design Z
 /// (DDR-1): pass ALL of the market's slab shards in `shards` (read-only) — finalize scans
 /// every one for completeness, so `shards.len()` must equal `Market.num_slab_shards`. The two
@@ -638,6 +658,30 @@ mod tests {
             },
         );
         assert_eq!(full.accounts.len(), 10);
+    }
+
+    #[test]
+    fn settle_builder_always_attaches_ledger() {
+        // known-issues §2.11: the derivation helper must ALWAYS attach the
+        // owner's mint-scoped ledger (+ position + vault) so a fully-consuming
+        // settle can never fail MissingSettleAccounts from a client omission.
+        let pdas = MarketPdas::derive(Pubkey::new_unique());
+        let owner = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let money = SettleMoney::for_order_owner(&pdas, owner, mint);
+        assert_eq!(
+            money.position.unwrap(),
+            crate::pda::position(&pdas.market, &owner).0
+        );
+        assert_eq!(
+            money.user_collateral.unwrap(),
+            crate::pda::user_collateral(&owner, &mint).0
+        );
+        assert_eq!(money.vault.unwrap(), crate::pda::vault(&mint).0);
+        assert!(money.integrator_collateral.is_none());
+        // And the wrapper carries them: 6 base + position + ledger + vault = 9.
+        let ix = settle_fill(&pdas, Pubkey::new_unique(), 0, 1, 0, &money);
+        assert_eq!(ix.accounts.len(), 9);
     }
 
     #[test]

@@ -15,10 +15,11 @@ use crate::{errors::TempoProgramError, state::OrderSide, traits::InstructionData
 /// * `side` (u8) — 0 buy, 1 sell
 /// * `price` (u64)
 /// * `quantity` (u64)
-/// * `reduce_only` (u8) — 1 = the order may only *reduce* an existing opposite
-///   position; the processor reserves margin only for any portion that would open
-///   new exposure, so a close is not blocked by the worst-case reservation
-///   (missing-features §1.1/§2.2). 0 = a normal order (reserves the full worst case).
+/// * `reduce_only` (u8) — 1 = the order is intended only to *reduce* an existing
+///   opposite position. It reserves the same FULL worst-case margin as a normal
+///   order (DDR-3 Correction-2 item 3 — no headroom discount; see the processor);
+///   its sole effect is forcing `Consumed` at settle (never re-armed `Resting`),
+///   so it can never carry across rounds (missing-features §2.2). 0 = normal.
 /// * `shard_id` (u16) — which `OrderSlab` shard to insert into (`[0, num_slab_shards)`).
 ///   The client picks the shard (least-full / hash) and passes the resolved shard PDA
 ///   as the `order_slab` account; the processor validates the PDA against this index.
