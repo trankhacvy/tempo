@@ -66,6 +66,14 @@ pub const MAX_LIQUIDATION_PENALTY_BPS: u16 = 5_000;
 /// * `max_position_notional` (u128) — per-position notional cap (0 = disabled)
 /// * `num_slab_shards` (u16) — number of OrderSlab shards (Stage A sharding, ≥ 1). The
 ///   shards themselves are created one-per-tx by `init_shard`, not here.
+/// * `min_order_notional` (u64) — minimum `quantity·price` per order/maker level
+///   (anti-dust, missing-features §2.6). 0 = disabled.
+/// * `max_open_interest` (u128) — per-side OI soft cap (missing-features §1.2).
+///   0 = disabled.
+/// * `liquidation_reward_floor` (u64) — flat liquidator reward floor paid from
+///   insurance when the equity-capped penalty is smaller (§6.2). 0 = disabled.
+/// * `liquidation_close_buffer_bps` (u16) — partial-liquidation health buffer
+///   above maintenance (§6.1). 0 = partial liquidation disabled (full close).
 ///
 /// Note: `order_slab_bump` is retained for wire-format stability but is UNUSED — Stage A
 /// creates the slab shards via `init_shard`, not in `initialize_market`.
@@ -89,6 +97,10 @@ pub struct InitializeMarketData {
     pub initial_margin_bps: u16,
     pub max_position_notional: u128,
     pub num_slab_shards: u16,
+    pub min_order_notional: u64,
+    pub max_open_interest: u128,
+    pub liquidation_reward_floor: u64,
+    pub liquidation_close_buffer_bps: u16,
 }
 
 impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
@@ -117,6 +129,10 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
         let initial_margin_bps = u16::from_le_bytes(data[111..113].try_into().unwrap());
         let max_position_notional = u128::from_le_bytes(data[113..129].try_into().unwrap());
         let num_slab_shards = u16::from_le_bytes(data[129..131].try_into().unwrap());
+        let min_order_notional = u64::from_le_bytes(data[131..139].try_into().unwrap());
+        let max_open_interest = u128::from_le_bytes(data[139..155].try_into().unwrap());
+        let liquidation_reward_floor = u64::from_le_bytes(data[155..163].try_into().unwrap());
+        let liquidation_close_buffer_bps = u16::from_le_bytes(data[163..165].try_into().unwrap());
 
         if tick_size == 0 {
             return Err(TempoProgramError::InvalidPrice.into());
@@ -152,8 +168,16 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
         // with sane, ordered bounds. The initial margin is the buffer locked at open;
         // requiring `initial >= maintenance` is what stops a position opening already
         // on its liquidation line. `max_position_notional` is an opaque cap (0 = off).
+        // The partial-liquidation buffer is a money-path knob: bounded, and only
+        // meaningful when a maintenance margin exists (plan.md §2.1).
+        if liquidation_close_buffer_bps > 10_000 {
+            return Err(TempoProgramError::MarketConfigOutOfRange.into());
+        }
         if maintenance_margin_bps == 0 {
-            if initial_margin_bps != 0 || liquidation_penalty_bps != 0 {
+            if initial_margin_bps != 0
+                || liquidation_penalty_bps != 0
+                || liquidation_close_buffer_bps != 0
+            {
                 return Err(TempoProgramError::MarketConfigOutOfRange.into());
             }
         } else {
@@ -190,20 +214,46 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
             initial_margin_bps,
             max_position_notional,
             num_slab_shards,
+            min_order_notional,
+            max_open_interest,
+            liquidation_reward_floor,
+            liquidation_close_buffer_bps,
         })
     }
 }
 
 impl<'a> InstructionData<'a> for InitializeMarketData {
-    const LEN: usize = 1 + 1 + 1 + 8 + 4 + 4 + 32 + 2 + 2 + 2 + 2 + 2 + 8 + 32 + 2 + 8 + 2 + 16 + 2;
+    const LEN: usize = 1
+        + 1
+        + 1
+        + 8
+        + 4
+        + 4
+        + 32
+        + 2
+        + 2
+        + 2
+        + 2
+        + 2
+        + 8
+        + 32
+        + 2
+        + 8
+        + 2
+        + 16
+        + 2
+        + 8
+        + 16
+        + 8
+        + 2;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn encode(tick_size: u64, num_ticks: u32, cap: u32) -> [u8; 131] {
-        let mut buf = [0u8; 131];
+    fn encode(tick_size: u64, num_ticks: u32, cap: u32) -> [u8; 165] {
+        let mut buf = [0u8; 165];
         buf[0] = 250;
         buf[1] = 251;
         buf[2] = 252;
@@ -225,6 +275,12 @@ mod tests {
         buf[113..129].copy_from_slice(&0u128.to_le_bytes());
         // num_slab_shards (Stage A) — default 16 for the tests.
         buf[129..131].copy_from_slice(&16u16.to_le_bytes());
+        // v12 tail: min_order_notional + max_open_interest + reward floor +
+        // close buffer (all 0 = disabled except the buffer exercised below).
+        buf[131..139].copy_from_slice(&0u64.to_le_bytes());
+        buf[139..155].copy_from_slice(&0u128.to_le_bytes());
+        buf[155..163].copy_from_slice(&0u64.to_le_bytes());
+        buf[163..165].copy_from_slice(&0u16.to_le_bytes());
         buf
     }
 
@@ -249,6 +305,53 @@ mod tests {
         assert_eq!(d.initial_margin_bps, 1000);
         assert_eq!(d.max_position_notional, 0);
         assert_eq!(d.num_slab_shards, 16);
+        assert_eq!(d.min_order_notional, 0);
+        assert_eq!(d.max_open_interest, 0);
+        assert_eq!(d.liquidation_reward_floor, 0);
+        assert_eq!(d.liquidation_close_buffer_bps, 0);
+    }
+
+    #[test]
+    fn test_len_is_165() {
+        assert_eq!(InitializeMarketData::LEN, 165);
+    }
+
+    #[test]
+    fn test_v12_fields_parsed() {
+        let mut buf = encode(10, 64, 90);
+        buf[131..139].copy_from_slice(&5_000u64.to_le_bytes());
+        buf[139..155].copy_from_slice(&1_000_000u128.to_le_bytes());
+        buf[155..163].copy_from_slice(&77u64.to_le_bytes());
+        buf[163..165].copy_from_slice(&250u16.to_le_bytes());
+        let d = InitializeMarketData::try_from(&buf[..]).unwrap();
+        assert_eq!(d.min_order_notional, 5_000);
+        assert_eq!(d.max_open_interest, 1_000_000);
+        assert_eq!(d.liquidation_reward_floor, 77);
+        assert_eq!(d.liquidation_close_buffer_bps, 250);
+    }
+
+    #[test]
+    fn test_close_buffer_over_max_rejected() {
+        let mut buf = encode(10, 64, 90);
+        buf[163..165].copy_from_slice(&10_001u16.to_le_bytes());
+        assert_eq!(
+            InitializeMarketData::try_from(&buf[..]).err().unwrap(),
+            TempoProgramError::MarketConfigOutOfRange.into()
+        );
+    }
+
+    #[test]
+    fn test_close_buffer_requires_money_path() {
+        // maintenance 0 (no money path) + nonzero close buffer → rejected.
+        let mut buf = encode(10, 64, 90);
+        buf[51..53].copy_from_slice(&0u16.to_le_bytes()); // maintenance 0
+        buf[53..55].copy_from_slice(&0u16.to_le_bytes()); // penalty 0
+        buf[111..113].copy_from_slice(&0u16.to_le_bytes()); // initial 0
+        buf[163..165].copy_from_slice(&100u16.to_le_bytes()); // buffer ≠ 0
+        assert_eq!(
+            InitializeMarketData::try_from(&buf[..]).err().unwrap(),
+            TempoProgramError::MarketConfigOutOfRange.into()
+        );
     }
 
     #[test]

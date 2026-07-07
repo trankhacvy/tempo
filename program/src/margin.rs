@@ -42,6 +42,19 @@ pub fn initial_margin(size_added: u64, entry: u64, initial_bps: u16) -> u64 {
         .unwrap_or(u64::MAX)
 }
 
+/// Worst-case standing margin for a maker ladder (missing-features §7.1):
+/// `initial_margin(Σ all level sizes, window_top)`. Deliberately
+/// **mid-independent** — every level (both sides) is priced at the window top (a
+/// bid buys at ≤ its limit ≤ the top; an ask's worst in-window short mark is the
+/// top), so the reservation is a pure function of the ladder SHAPE. Moving
+/// `mid_tick` never changes it, keeping the O(1) `update_maker_quote_mid`
+/// re-quote path collateral-free. Rounds UP via `initial_margin` (never lock
+/// less than policy). Both auctions can cross in the same round, so both sides
+/// reserve simultaneously (the sum, not the max).
+pub fn ladder_reservation(total_ladder_qty: u64, window_top_price: u64, initial_bps: u16) -> u64 {
+    initial_margin(total_ladder_qty, window_top_price, initial_bps)
+}
+
 /// A position is liquidatable when its equity falls below maintenance margin.
 pub fn is_liquidatable(equity: i128, maintenance: i128) -> bool {
     equity < maintenance
@@ -186,6 +199,21 @@ mod tests {
         assert_eq!(initial_margin(10, 100, 500), 50);
         // small notional that floored to 0 now rounds up: 7·33·30bps = 6930/10000 → 1.
         assert_eq!(initial_margin(7, 33, 30), 1);
+    }
+
+    #[test]
+    fn test_ladder_reservation() {
+        // 12 bid lots + 8 ask lots, window top 640, 10% initial → 20·640·0.10 = 1280.
+        assert_eq!(ladder_reservation(20, 640, 1000), 1280);
+        // Empty ladder reserves nothing.
+        assert_eq!(ladder_reservation(0, 640, 1000), 0);
+        // Rounds UP like initial_margin (never lock less than policy).
+        assert_eq!(ladder_reservation(7, 33, 30), 1);
+        // Equals the taker-side formula by construction (single source of truth).
+        assert_eq!(
+            ladder_reservation(20, 640, 1000),
+            initial_margin(20, 640, 1000)
+        );
     }
 
     #[test]

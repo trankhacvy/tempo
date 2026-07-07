@@ -168,6 +168,36 @@ pub struct Market {
     /// `start_auction` gates on. Each `reset_shard` increments it once; reset to 0 at
     /// roll (see clearing-protocol §4, freeze model).
     pub shards_ready_le: [u8; 2],
+    // --- operability + risk depth (VERSION 12; appended, offsets stable) ---
+    /// Pause bitflags: bit 0 = `PAUSE_INTAKE` (`submit_order` + maker-quote writes
+    /// reject with `MarketPaused`; cancels/cranks/settles/withdrawals/liquidations
+    /// keep running so the in-flight round drains and users can always exit), bit 1
+    /// = `PAUSE_ROLL` (`start_auction` also rejects; the market winds down to a
+    /// fully settled quiescent state). There is deliberately NO pause-withdraw bit
+    /// (freezing user exits is a custody power this program must not have).
+    pub paused: u8,
+    /// Minimum order notional (`quantity·price`), 0 = disabled (missing-features
+    /// §2.6, anti-dust). Enforced at `submit_order` and per maker-quote level.
+    pub min_order_notional_le: [u8; 8],
+    /// Per-side open-interest soft cap, 0 = disabled (missing-features §1.2).
+    /// Checked at submit against current OI (read-only — Design Z's parallel
+    /// intake preserved); same-round races can overshoot by at most one round of
+    /// individually-margined orders. A risk-SIZING rail, not a solvency gate.
+    pub max_open_interest_le: [u8; 16],
+    /// Flat liquidation reward floor paid from insurance when the equity-capped
+    /// penalty is smaller (missing-features §6.2). 0 = disabled.
+    pub liquidation_reward_floor_le: [u8; 8],
+    /// Partial-liquidation health buffer in bps above maintenance
+    /// (missing-features §6.1). 0 = partial liquidation disabled (full close).
+    pub liquidation_close_buffer_bps_le: [u8; 2],
+    /// Staged admin change kind: 0=None 1=RiskParams 2=Oracle 3=Authority.
+    pub pending_kind: u8,
+    /// Slot at which the staged change may be applied (permissionlessly).
+    pub pending_effective_slot_le: [u8; 8],
+    /// Kind-specific payload: RiskParams = 4×u16 LE (maintenance, initial,
+    /// penalty, close_buffer); Oracle = new oracle Address (32) + new feed id
+    /// (32); Authority = new authority Address (32), rest zero.
+    pub pending_payload: [u8; 64],
 }
 
 assert_no_padding!(
@@ -200,6 +230,14 @@ assert_no_padding!(
         + 16
         + 2
         + 2
+        + 1
+        + 8
+        + 16
+        + 8
+        + 2
+        + 1
+        + 8
+        + 64
 );
 
 impl Discriminator for Market {
@@ -244,7 +282,17 @@ impl Versioned for Market {
     // no longer write `Market` (restoring parallel intake) and there is no aggregate to drift.
     // Removing a prefix field is NOT append-compatible → a pre-v11 market must be re-provisioned
     // (the version bump fails it loudly). `shards_ready` (the roll aggregate) is retained.
-    const VERSION: u8 = 11;
+    //
+    // v12 (operability + risk depth, plan.md §2.1): appended `paused` (bitflags),
+    // `min_order_notional`, `max_open_interest`, `liquidation_reward_floor`,
+    // `liquidation_close_buffer_bps`, and the staged admin-change block
+    // (`pending_kind`/`pending_effective_slot`/`pending_payload`) — the COMPLETE
+    // append set for the whole plan, batched so devnet re-provisions once, not
+    // per-phase. Fields are inert until their instructions land. An append is
+    // prefix-compatible for readers, but the account is sized by `DATA_LEN`, so a
+    // pre-v12 market is shorter and must be re-provisioned (the version bump
+    // fails it loudly).
+    const VERSION: u8 = 12;
 }
 
 impl AccountSize for Market {
@@ -275,7 +323,15 @@ impl AccountSize for Market {
         + 2
         + 16
         + 2
-        + 2;
+        + 2
+        + 1
+        + 8
+        + 16
+        + 8
+        + 2
+        + 1
+        + 8
+        + 64;
 }
 
 impl AccountDeserialize for Market {}
@@ -323,6 +379,14 @@ impl AccountSerialize for Market {
         data.extend_from_slice(&self.max_position_notional_le);
         data.extend_from_slice(&self.num_slab_shards_le);
         data.extend_from_slice(&self.shards_ready_le);
+        data.push(self.paused);
+        data.extend_from_slice(&self.min_order_notional_le);
+        data.extend_from_slice(&self.max_open_interest_le);
+        data.extend_from_slice(&self.liquidation_reward_floor_le);
+        data.extend_from_slice(&self.liquidation_close_buffer_bps_le);
+        data.push(self.pending_kind);
+        data.extend_from_slice(&self.pending_effective_slot_le);
+        data.extend_from_slice(&self.pending_payload);
         data
     }
 }
@@ -486,6 +550,54 @@ impl Market {
         u16
     );
     le_field!(shards_ready, set_shards_ready, shards_ready_le, u16);
+    le_field!(
+        min_order_notional,
+        set_min_order_notional,
+        min_order_notional_le,
+        u64
+    );
+    le_field!(
+        max_open_interest,
+        set_max_open_interest,
+        max_open_interest_le,
+        u128
+    );
+    le_field!(
+        liquidation_reward_floor,
+        set_liquidation_reward_floor,
+        liquidation_reward_floor_le,
+        u64
+    );
+    le_field!(
+        pending_effective_slot,
+        set_pending_effective_slot,
+        pending_effective_slot_le,
+        u64
+    );
+
+    #[inline(always)]
+    pub fn liquidation_close_buffer_bps(&self) -> u16 {
+        u16::from_le_bytes(self.liquidation_close_buffer_bps_le)
+    }
+
+    /// Pause bit: block order intake + maker-quote writes (`MarketPaused`).
+    pub const PAUSE_INTAKE: u8 = 1 << 0;
+    /// Pause bit: also block `start_auction` (the market winds down quiescent).
+    pub const PAUSE_ROLL: u8 = 1 << 1;
+    /// Every defined pause bit (for rejecting unknown flags at `set_pause`).
+    pub const PAUSE_ALL: u8 = Self::PAUSE_INTAKE | Self::PAUSE_ROLL;
+
+    /// Reject when the given pause `flag` is set (missing-features §3.2). Only
+    /// intake-side instructions check this — cancels, cranks, settles,
+    /// withdrawals, and liquidations NEVER do, so a pause can't trap funds or
+    /// wedge an in-flight round.
+    #[inline(always)]
+    pub fn require_not_paused(&self, flag: u8) -> Result<(), ProgramError> {
+        if self.paused & flag != 0 {
+            return Err(TempoProgramError::MarketPaused.into());
+        }
+        Ok(())
+    }
 
     #[inline(always)]
     pub fn max_price_move_bps_per_slot(&self) -> u16 {
@@ -645,6 +757,10 @@ impl Market {
         initial_margin_bps: u16,
         max_position_notional: u128,
         num_slab_shards: u16,
+        min_order_notional: u64,
+        max_open_interest: u128,
+        liquidation_reward_floor: u64,
+        liquidation_close_buffer_bps: u16,
     ) -> Self {
         Self {
             current_auction_id_le: 0u64.to_le_bytes(),
@@ -689,6 +805,14 @@ impl Market {
             max_position_notional_le: max_position_notional.to_le_bytes(),
             num_slab_shards_le: num_slab_shards.to_le_bytes(),
             shards_ready_le: 0u16.to_le_bytes(),
+            paused: 0,
+            min_order_notional_le: min_order_notional.to_le_bytes(),
+            max_open_interest_le: max_open_interest.to_le_bytes(),
+            liquidation_reward_floor_le: liquidation_reward_floor.to_le_bytes(),
+            liquidation_close_buffer_bps_le: liquidation_close_buffer_bps.to_le_bytes(),
+            pending_kind: 0,
+            pending_effective_slot_le: 0u64.to_le_bytes(),
+            pending_payload: [0u8; 64],
         }
     }
 
@@ -898,7 +1022,11 @@ mod tests {
             30,
             600,
             0,
-            16, // num_slab_shards
+            16,        // num_slab_shards
+            1_000,     // min_order_notional
+            5_000_000, // max_open_interest
+            25,        // liquidation_reward_floor
+            200,       // liquidation_close_buffer_bps
         )
     }
 
@@ -938,6 +1066,35 @@ mod tests {
         assert_eq!(de.integrator_share_bps(), 5000);
         assert_eq!(de.crank_fee(), 7);
         assert_eq!(de.collateral_mint, m.collateral_mint);
+        // v12 append block round-trips; a fresh market is unpaused with no
+        // staged change.
+        assert_eq!(Market::VERSION, 12);
+        assert_eq!(de.paused, 0);
+        assert_eq!(de.min_order_notional(), 1_000);
+        assert_eq!(de.max_open_interest(), 5_000_000);
+        assert_eq!(de.liquidation_reward_floor(), 25);
+        assert_eq!(de.liquidation_close_buffer_bps(), 200);
+        assert_eq!(de.pending_kind, 0);
+        assert_eq!(de.pending_effective_slot(), 0);
+        assert_eq!(de.pending_payload, [0u8; 64]);
+    }
+
+    #[test]
+    fn test_require_not_paused_bits() {
+        let mut m = test_market();
+        assert!(m.require_not_paused(Market::PAUSE_INTAKE).is_ok());
+        m.paused = Market::PAUSE_INTAKE;
+        assert_eq!(
+            m.require_not_paused(Market::PAUSE_INTAKE),
+            Err(TempoProgramError::MarketPaused.into())
+        );
+        // Intake-paused does NOT imply roll-paused: each bit gates independently.
+        assert!(m.require_not_paused(Market::PAUSE_ROLL).is_ok());
+        m.paused = Market::PAUSE_ALL;
+        assert_eq!(
+            m.require_not_paused(Market::PAUSE_ROLL),
+            Err(TempoProgramError::MarketPaused.into())
+        );
     }
 
     #[test]

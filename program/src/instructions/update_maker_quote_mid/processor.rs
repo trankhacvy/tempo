@@ -28,6 +28,7 @@ pub fn process_update_maker_quote_mid(
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
         market.require_phase(AuctionPhase::Collect)?;
+        market.require_not_paused(Market::PAUSE_INTAKE)?;
         market.num_ticks()
     };
     if ix.data.mid_tick >= num_ticks {

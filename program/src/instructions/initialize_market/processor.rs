@@ -49,6 +49,10 @@ pub fn process_initialize_market(
         d.initial_margin_bps,
         d.max_position_notional,
         d.num_slab_shards,
+        d.min_order_notional,
+        d.max_open_interest,
+        d.liquidation_reward_floor,
+        d.liquidation_close_buffer_bps,
     );
     // Open the first collection window: accumulation is blocked until this slot.
     let now_ts = Clock::get()?.unix_timestamp;

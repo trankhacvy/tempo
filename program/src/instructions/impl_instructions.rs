@@ -25,6 +25,8 @@ use super::remove_position_from_margin::{
     RemovePositionFromMarginAccounts, RemovePositionFromMarginData,
 };
 use super::reset_shard::{ResetShardAccounts, ResetShardData};
+use super::seed_insurance::{SeedInsuranceAccounts, SeedInsuranceData};
+use super::set_pause::{SetPauseAccounts, SetPauseData};
 use super::settle_fill::{SettleFillAccounts, SettleFillData};
 use super::settle_maker_quote::{SettleMakerQuoteAccounts, SettleMakerQuoteData};
 use super::start_auction::{StartAuctionAccounts, StartAuctionData};
@@ -78,6 +80,8 @@ define_instruction!(ReadOracle, ReadOracleAccounts, ReadOracleData);
 define_instruction!(InitVault, InitVaultAccounts, InitVaultData);
 define_instruction!(InitCollateral, InitCollateralAccounts, InitCollateralData);
 define_instruction!(Deposit, DepositAccounts, DepositData);
+define_instruction!(SetPause, SetPauseAccounts, SetPauseData);
+define_instruction!(SeedInsurance, SeedInsuranceAccounts, SeedInsuranceData);
 define_instruction!(Withdraw, WithdrawAccounts, WithdrawData);
 define_instruction!(LiquidateCross, LiquidateCrossAccounts, LiquidateCrossData);
 define_instruction!(WithdrawCross, WithdrawCrossAccounts, WithdrawCrossData);

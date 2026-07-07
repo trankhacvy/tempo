@@ -36,6 +36,12 @@ pub fn process_close_maker_quote(
         if quote.status != 0 {
             return Err(TempoProgramError::InvalidOrderStatus.into());
         }
+        // §7.1: a quote with a standing reservation must be cleared first
+        // (clear_maker_quote releases the margin) — closing would strand the
+        // maker's locked collateral with no account left to release it from.
+        if quote.reserved_margin() != 0 {
+            return Err(TempoProgramError::InvalidOrderStatus.into());
+        }
     }
 
     close_pda_account(ix.accounts.maker_quote, ix.accounts.maker)

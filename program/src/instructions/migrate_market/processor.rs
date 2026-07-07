@@ -15,7 +15,11 @@ use crate::{
 /// known-issues §2.7), and the v8 pre-trade risk config (`initial_margin_bps` 2 +
 /// `max_position_notional` 16 = 18, missing-features §1.1/§1.2). All are pure
 /// appends, so the old account is exactly this much shorter than the current layout.
-const MARKET_APPENDED_LEN: usize = (16 * 2 + 16 * 2 + 8 + 8 + 8 + 2 + 8) + 8 + (2 + 16); // = 124
+/// v10/v11 sharding (`num_slab_shards` + `shards_ready` = 4) and the v12
+/// operability block (108) are appended too — this path is SUPERSEDED (§3) and
+/// kept only for its synthetic test, so the constant tracks `Market::LEN` growth
+/// purely to stay self-consistent.
+const MARKET_APPENDED_LEN: usize = (16 * 2 + 16 * 2 + 8 + 8 + 8 + 2 + 8) + 8 + (2 + 16) + 4 + 108; // = 236
 /// The prior layout version this migration upgrades from.
 const MARKET_OLD_VERSION: u8 = 4;
 /// Account-data offset of the stable `authority` field: 2-byte prefix + the
@@ -85,20 +89,24 @@ pub fn process_migrate_market(
         }
         // Bump the version so the current reader accepts the account.
         data[1] = Market::VERSION;
-        // Trailing layout (current): ... max_price_move_bps(2), soft_stale_slots(8),
-        // window_floor_price(8), initial_margin_bps(2), max_position_notional(16).
-        // The v8 tail (initial_margin_bps + max_position_notional) is left zero by the
-        // wipe above — `Market::initial_margin_bps` falls back to maintenance when
-        // zero, and a zero notional cap is disabled (missing-features §1.2). The older
-        // three sit 18 bytes earlier than the account end now: max_price_move + soft_stale
-        // are admin config; the window floor (known-issues §2.7) can't be reconstructed
-        // here (migrate has no oracle), so seed it to the genesis default (tick_size, in
-        // the preserved prefix at bytes 18..26) — the next `start_auction` re-snaps it.
-        let n = Market::LEN;
-        data[n - 36..n - 34].copy_from_slice(&ix.data.max_price_move_bps_per_slot.to_le_bytes());
-        data[n - 34..n - 26].copy_from_slice(&ix.data.soft_stale_slots.to_le_bytes());
+        // Write the admin config at STABLE FRONT offsets (2-byte prefix + fixed
+        // field layout; end-relative offsets drifted every append and were wrong
+        // since v10 — harmless only because this path is superseded). The v8+
+        // tail (initial margin, notional cap, sharding, v12 block) is left zero
+        // by the wipe above — `Market::initial_margin_bps` falls back to
+        // maintenance when zero, and zero caps/flags are disabled. The window
+        // floor (known-issues §2.7) can't be reconstructed here (migrate has no
+        // oracle), so seed it to the genesis default (tick_size, preserved in the
+        // prefix at raw bytes 18..26) — the next `start_auction` re-snaps it.
+        const MAX_PRICE_MOVE_OFF: usize = 2 + 364; // prefix + fields before it
+        const SOFT_STALE_OFF: usize = 2 + 366;
+        const WINDOW_FLOOR_OFF: usize = 2 + 374;
+        data[MAX_PRICE_MOVE_OFF..MAX_PRICE_MOVE_OFF + 2]
+            .copy_from_slice(&ix.data.max_price_move_bps_per_slot.to_le_bytes());
+        data[SOFT_STALE_OFF..SOFT_STALE_OFF + 8]
+            .copy_from_slice(&ix.data.soft_stale_slots.to_le_bytes());
         let tick_size: [u8; 8] = data[18..26].try_into().unwrap();
-        data[n - 26..n - 18].copy_from_slice(&tick_size);
+        data[WINDOW_FLOOR_OFF..WINDOW_FLOOR_OFF + 8].copy_from_slice(&tick_size);
     }
 
     Ok(())

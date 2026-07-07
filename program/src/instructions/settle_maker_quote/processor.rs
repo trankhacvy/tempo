@@ -37,6 +37,7 @@ pub fn process_settle_maker_quote(
         auction_id,
         funding_index,
         maint_bps,
+        initial_bps,
         maker_fee_bps,
         market_mint,
         social_long,
@@ -53,6 +54,7 @@ pub fn process_settle_maker_quote(
             market.current_auction_id(),
             market.funding_index(),
             market.maintenance_margin_bps(),
+            market.initial_margin_bps(),
             market.maker_fee_bps(),
             market.collateral_mint,
             market.social_loss_index_long(),
@@ -235,13 +237,13 @@ pub fn process_settle_maker_quote(
         None => return Err(TempoProgramError::MissingSettleAccounts.into()),
     };
     if let Some(uc_acct) = uc_opt {
-        // Maker quotes have NO pre-trade reservation (unlike `submit_order`, §1.1),
-        // so lock only the MAINTENANCE margin here — requiring the higher initial
-        // buffer with nothing reserved could revert and wedge a maker who can't top
-        // up (a permissionless cranker can't fix it for them). The initial-margin
-        // buffer is a taker-path guarantee; makers get it once quote-time margin
-        // (missing-features §7.1) is built.
-        let target_margin = initial_margin(new_abs_size, new_entry, maint_bps);
+        // Quote-time margin (§7.1) now reserves the ladder's worst case at
+        // update_maker_quote_levels, so the maker path gets the same INITIAL
+        // buffer target as the taker path (settle only ever nets against the
+        // standing reservation + free balance). The never-revert lock below is
+        // the backstop for the residual gap cases (e.g. a window recenter past
+        // the reservation's worst_price snapshot).
+        let target_margin = initial_margin(new_abs_size, new_entry, initial_bps);
         // Maker fee on both sides' notional (signed: negative = rebate).
         let mut fee = signed_protocol_fee(total_bid_fill, bid_price, maker_fee_bps)
             .checked_add(signed_protocol_fee(
@@ -273,7 +275,7 @@ pub fn process_settle_maker_quote(
             realized
         };
 
-        let (balance_delta, shortfall) = {
+        let (balance_delta, shortfall, effective_collateral) = {
             let mut uc = *uc_acct;
             let mut uc_data = uc.try_borrow_mut()?;
             let user_collateral = UserCollateral::from_bytes_mut(&mut uc_data)?;
@@ -291,18 +293,28 @@ pub fn process_settle_maker_quote(
                 let mut pos_data = pos_acct.try_borrow_mut()?;
                 Position::from_bytes_mut(&mut pos_data)?.collateral()
             };
-            if target_margin > current {
-                user_collateral.lock(target_margin - current)?;
-            } else if current > target_margin {
+            // DDR-3 no-revert (mirrors settle_fill): lock what is available —
+            // a matched fill can't be un-filled, and a reverting quote settle is
+            // WORSE than an under-margined position: the quote never marks
+            // settled, so the next round's fold overwrites the snapshots and the
+            // round's fills are silently lost. Any shortfall leaves the position
+            // below target for the liquidation backstop instead.
+            let effective_collateral = if target_margin > current {
+                let locked = user_collateral.lock_up_to(target_margin - current);
+                current + locked
+            } else {
                 user_collateral.release(current - target_margin);
-            }
-            (balance_delta, shortfall)
+                target_margin
+            };
+            (balance_delta, shortfall, effective_collateral)
         };
 
         {
             let mut pos_acct = *ix.accounts.position;
             let mut pos_data = pos_acct.try_borrow_mut()?;
-            Position::from_bytes_mut(&mut pos_data)?.set_collateral(target_margin);
+            // Never over-report margin to the risk gates: store what was
+            // actually locked, not the target (same rule as settle_fill).
+            Position::from_bytes_mut(&mut pos_data)?.set_collateral(effective_collateral);
         }
 
         if balance_delta != 0 || shortfall > 0 {

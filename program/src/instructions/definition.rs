@@ -87,6 +87,14 @@ pub enum TempoProgramInstruction {
         /// Number of OrderSlab shards (Stage A sharding, ≥ 1). Shards are created
         /// one-per-tx by `init_shard`, not here.
         num_slab_shards: u16,
+        /// Minimum order notional `quantity·price` (anti-dust, 0 = disabled)
+        min_order_notional: u64,
+        /// Per-side open-interest soft cap (0 = disabled)
+        max_open_interest: u128,
+        /// Flat liquidator reward floor paid from insurance (0 = disabled)
+        liquidation_reward_floor: u64,
+        /// Partial-liquidation health buffer above maintenance, bps (0 = full close)
+        liquidation_close_buffer_bps: u16,
     } = 0,
 
     /// Submit a resting order into the slab (phase must be Collect).
@@ -569,9 +577,8 @@ pub enum TempoProgramInstruction {
     #[codama(account(name = "market", docs = "Market the quote belongs to", writable))]
     #[codama(account(
         name = "maker_quote",
-        docs = "MakerQuote PDA to create",
-        writable,
-        default_value = pda("makerQuote", [seed("market", account("market")), seed("maker", account("maker"))])
+        docs = "MakerQuote PDA to create (client resolves [b\"maker_quote\", market, maker, quote_index] — §4.9 multi-quote seeds)",
+        writable
     ))]
     #[codama(account(name = "system_program", docs = "System program", default_value = program("system")))]
     InitMakerQuote {
@@ -582,6 +589,8 @@ pub enum TempoProgramInstruction {
         expiry_slots: u64,
         /// Optional delegate allowed to write the ladder (all-zero for none)
         delegate: [u8; 32],
+        /// Which of the maker's concurrent quotes this is (4th PDA seed, §4.9)
+        quote_index: u16,
     } = 16,
 
     /// Maker: re-anchor the ladder by moving its mid (the O(1) hot path).
@@ -595,10 +604,18 @@ pub enum TempoProgramInstruction {
         mid_tick: u32,
     } = 17,
 
-    /// Maker: rewrite the full ladder (fixed-size padded level regions).
+    /// Maker: rewrite the full ladder (fixed-size padded level regions). The
+    /// ladder's worst-case margin is delta-locked in the MAKER's ledger
+    /// (quote-time margin, missing-features §7.1) — an unbacked ladder is
+    /// rejected here, before it can ever fold and steer the clearing price.
     #[codama(account(name = "writer", docs = "Maker or its delegate", signer))]
     #[codama(account(name = "market", docs = "Market (supplies num_ticks)"))]
     #[codama(account(name = "maker_quote", docs = "MakerQuote to update", writable))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "The MAKER's mint-scoped collateral ledger (reservation delta-locked here)",
+        writable
+    ))]
     UpdateMakerQuoteLevels {
         /// Monotonic nonce (must strictly increase)
         sequence: u64,
@@ -614,10 +631,16 @@ pub enum TempoProgramInstruction {
         ask_levels: [u8; 80],
     } = 18,
 
-    /// Maker: zero the ladder and deactivate the quote.
+    /// Maker: zero the ladder and deactivate the quote (releases the ladder's
+    /// standing margin reservation back to the maker's ledger, §7.1).
     #[codama(account(name = "writer", docs = "Maker or its delegate", signer))]
     #[codama(account(name = "market", docs = "Market (decrements active count)", writable))]
     #[codama(account(name = "maker_quote", docs = "MakerQuote to clear", writable))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "The MAKER's ledger (the standing reservation is released here)",
+        writable
+    ))]
     ClearMakerQuote {
         /// Monotonic nonce (must strictly increase)
         sequence: u64,
@@ -834,6 +857,57 @@ pub enum TempoProgramInstruction {
         writable
     ))]
     ResetShard {} = 31,
+
+    /// Authority circuit breaker (missing-features §3.2): set the market's pause
+    /// bitflags. Bit 0 = pause intake (submits + maker-quote writes), bit 1 =
+    /// pause the roll (market winds down quiescent). Cancels, cranks, settles,
+    /// withdrawals, and liquidations are NEVER paused — a pause can't trap funds.
+    #[codama(account(name = "authority", docs = "Market authority", signer))]
+    #[codama(account(name = "market", docs = "Market to pause/resume", writable))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    SetPause {
+        /// New pause bitflags (0 = fully resumed; unknown bits rejected)
+        paused: u8,
+    } = 32,
+
+    /// Permissionless donation into the vault insurance pool (missing-features
+    /// §4.1). Exists so a fresh money-path market's pool is not zero — an empty
+    /// pool deadlocks the first profitable maker settle (`InsuranceInsolvent`;
+    /// reproduced on devnet, plan.md P0.6). Conserving by construction.
+    #[codama(account(name = "donor", docs = "Anyone (signs the token transfer)", signer))]
+    #[codama(account(name = "vault", docs = "Vault (insurance bookkeeping)", writable))]
+    #[codama(account(
+        name = "vault_token_account",
+        docs = "Vault SPL token account",
+        writable
+    ))]
+    #[codama(account(
+        name = "donor_token_account",
+        docs = "Donor SPL token account (same mint)",
+        writable
+    ))]
+    #[codama(account(name = "token_program", docs = "SPL token program", default_value = program("token")))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    SeedInsurance {
+        /// Tokens to donate into the insurance pool (must be non-zero)
+        amount: u64,
+    } = 40,
 
     /// Invoked via CPI to emit event data in instruction args (prevents log truncation).
     #[codama(skip)]

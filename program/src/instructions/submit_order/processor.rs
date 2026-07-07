@@ -55,6 +55,7 @@ pub fn process_submit_order(
         window_top_price,
         max_position_notional,
         num_slab_shards,
+        min_order_notional,
     ) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
@@ -66,6 +67,8 @@ pub fn process_submit_order(
         // (below) — conservative for a deferred order; DDR-3's classifier + the
         // never-revert settle path handle a resting order whose window later moves.
         let is_collect = market.phase()? == AuctionPhase::Collect;
+        // Circuit breaker (missing-features §3.2): intake pauses, exits never do.
+        market.require_not_paused(Market::PAUSE_INTAKE)?;
         market.validate_price(ix.data.price)?;
         // ensure the price falls in the histogram window
         market.price_to_tick(ix.data.price)?;
@@ -82,6 +85,7 @@ pub fn process_submit_order(
             window_top_price,
             market.max_position_notional(),
             market.num_slab_shards(),
+            market.min_order_notional(),
         )
     };
 
@@ -110,6 +114,15 @@ pub fn process_submit_order(
     // `<`, but an order submitted AT its expiry auction is never entitled to fold).
     if ix.data.expires_at_auction != 0 && ix.data.expires_at_auction <= auction_id {
         return Err(TempoProgramError::OrderAlreadyExpired.into());
+    }
+
+    // Anti-dust (missing-features §2.6): bound the order's notional from below.
+    // Plain u128 comparison — no division, no rounding question. 0 = disabled.
+    if min_order_notional > 0 {
+        let notional = (ix.data.quantity as u128) * (ix.data.price as u128);
+        if notional < min_order_notional as u128 {
+            return Err(TempoProgramError::OrderBelowMinimum.into());
+        }
     }
 
     // --- validate order slab PDA matches this market + anti-spam + reduce headroom ---

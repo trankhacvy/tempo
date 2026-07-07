@@ -67,6 +67,10 @@ pub enum TempoInstructionDiscriminators {
     InitShard = 30,
     /// Stage A sharding: reset one drained shard for the next round.
     ResetShard = 31,
+    /// Authority circuit breaker: set the market's pause bitflags (§3.2).
+    SetPause = 32,
+    /// Permissionless donation into the vault insurance pool (§4.1).
+    SeedInsurance = 40,
     /// Self-CPI event emission (carries event data in instruction data).
     EmitEvent = 228,
 }
@@ -108,6 +112,8 @@ impl TryFrom<u8> for TempoInstructionDiscriminators {
             29 => Ok(Self::CloseMakerQuote),
             30 => Ok(Self::InitShard),
             31 => Ok(Self::ResetShard),
+            32 => Ok(Self::SetPause),
+            40 => Ok(Self::SeedInsurance),
             228 => Ok(Self::EmitEvent),
             _ => Err(ProgramError::InvalidInstructionData),
         }

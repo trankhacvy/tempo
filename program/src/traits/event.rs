@@ -26,6 +26,16 @@ pub enum EventDiscriminators {
     OraclePriceRead = 6,
     FundingUpdated = 7,
     PositionLiquidated = 8,
+    /// Reserved for the Phase-2 admin release (plan.md §3.2).
+    MarketParamsUpdated = 9,
+    MarketPauseChanged = 10,
+    /// Reserved for the Phase-2 admin release (plan.md §3.3).
+    OracleRepointed = 11,
+    /// Reserved for the Phase-2 admin release (plan.md §3.3).
+    AuthorityTransferred = 12,
+    InsuranceSeeded = 13,
+    /// Reserved for the Phase-3 risk release (plan.md §4.4).
+    InsuranceWithdrawn = 14,
 }
 
 /// Event discriminator with Anchor-compatible prefix

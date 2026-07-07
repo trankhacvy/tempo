@@ -19,7 +19,7 @@ pub fn process_clear_maker_quote(
     let writer = *ix.accounts.writer.address();
     let market_key = *ix.accounts.market.address();
 
-    {
+    let (reserved, quote_maker) = {
         let mut quote_account = *ix.accounts.maker_quote;
         let mut quote_data = quote_account.try_borrow_mut()?;
         let quote = MakerQuote::from_bytes_mut(&mut quote_data)?;
@@ -34,12 +34,32 @@ pub fn process_clear_maker_quote(
         if ix.data.sequence <= quote.sequence() {
             return Err(ProgramError::InvalidInstructionData);
         }
+        let reserved = quote.reserved_margin();
+        let quote_maker = quote.maker;
         quote.set_sequence(ix.data.sequence);
         quote.num_bids = 0;
         quote.num_asks = 0;
         quote.status = 0;
         quote.bid_levels_le = [0u8; LEVELS_LEN];
         quote.ask_levels_le = [0u8; LEVELS_LEN];
+        quote.set_reserved_margin(0);
+        (reserved, quote_maker)
+    };
+
+    // Release the ladder's standing reservation in full (missing-features §7.1).
+    // The shared helper validates the ledger belongs to the MAKER — a delegate
+    // (or anyone else) can never redirect the margin — and releases saturating.
+    if reserved > 0 {
+        let uc_acct = ix
+            .accounts
+            .user_collateral
+            .ok_or(TempoProgramError::MissingSettleAccounts)?;
+        crate::settle_money::release_order_reservation(
+            uc_acct,
+            program_id,
+            &quote_maker,
+            reserved,
+        )?;
     }
 
     {

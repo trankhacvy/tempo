@@ -603,6 +603,54 @@
                 },
                 "kind": "arrayTypeNode"
               }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "quoteIndexLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "reservedMarginLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "worstPriceLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
             }
           ],
           "kind": "structTypeNode"
@@ -1202,6 +1250,120 @@
                 "count": {
                   "kind": "fixedCountNode",
                   "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "paused",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "minOrderNotionalLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "maxOpenInterestLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 16
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "liquidationRewardFloorLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "liquidationCloseBufferBpsLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 2
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "pendingKind",
+              "type": {
+                "endian": "le",
+                "format": "u8",
+                "kind": "numberTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "pendingEffectiveSlotLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "pendingPayload",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 64
                 },
                 "item": {
                   "endian": "le",
@@ -1970,6 +2132,38 @@
       },
       {
         "kind": "definedTypeNode",
+        "name": "insuranceSeededEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "collateralMint",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "donor",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "amount",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
         "name": "marketInitializedEvent",
         "type": {
           "fields": [
@@ -2011,6 +2205,31 @@
               "type": {
                 "endian": "le",
                 "format": "u32",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        }
+      },
+      {
+        "kind": "definedTypeNode",
+        "name": "marketPauseChangedEvent",
+        "type": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "market",
+              "type": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "paused",
+              "type": {
+                "endian": "le",
+                "format": "u8",
                 "kind": "numberTypeNode"
               }
             }
@@ -3025,6 +3244,42 @@
           {
             "kind": "instructionArgumentNode",
             "name": "numSlabShards",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "minOrderNotional",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "maxOpenInterest",
+            "type": {
+              "endian": "le",
+              "format": "u128",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "liquidationRewardFloor",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "liquidationCloseBufferBps",
             "type": {
               "endian": "le",
               "format": "u16",
@@ -4762,33 +5017,8 @@
             "name": "market"
           },
           {
-            "defaultValue": {
-              "kind": "pdaValueNode",
-              "pda": {
-                "kind": "pdaLinkNode",
-                "name": "makerQuote"
-              },
-              "seeds": [
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "market",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "market"
-                  }
-                },
-                {
-                  "kind": "pdaSeedValueNode",
-                  "name": "maker",
-                  "value": {
-                    "kind": "accountValueNode",
-                    "name": "maker"
-                  }
-                }
-              ]
-            },
             "docs": [
-              "MakerQuote PDA to create"
+              "MakerQuote PDA to create (client resolves [b\"maker_quote\", market, maker, quote_index] — §4.9 multi-quote seeds)"
             ],
             "isSigner": false,
             "isWritable": true,
@@ -4860,6 +5090,15 @@
                 "kind": "numberTypeNode"
               },
               "kind": "arrayTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "quoteIndex",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
             }
           }
         ],
@@ -4975,6 +5214,15 @@
             "isWritable": true,
             "kind": "instructionAccountNode",
             "name": "makerQuote"
+          },
+          {
+            "docs": [
+              "The MAKER's mint-scoped collateral ledger (reservation delta-locked here)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
           }
         ],
         "arguments": [
@@ -5099,6 +5347,15 @@
             "isWritable": true,
             "kind": "instructionAccountNode",
             "name": "makerQuote"
+          },
+          {
+            "docs": [
+              "The MAKER's ledger (the standing reservation is released here)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
           }
         ],
         "arguments": [
@@ -6179,6 +6436,185 @@
         ],
         "kind": "instructionNode",
         "name": "resetShard"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Market authority"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "authority"
+          },
+          {
+            "docs": [
+              "Market to pause/resume"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 32
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "paused",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "setPause"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Anyone (signs the token transfer)"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "donor"
+          },
+          {
+            "docs": [
+              "Vault (insurance bookkeeping)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vault"
+          },
+          {
+            "docs": [
+              "Vault SPL token account"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "vaultTokenAccount"
+          },
+          {
+            "docs": [
+              "Donor SPL token account (same mint)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "donorTokenAccount"
+          },
+          {
+            "defaultValue": {
+              "kind": "publicKeyValueNode",
+              "publicKey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            "docs": [
+              "SPL token program"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tokenProgram"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 40
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "amount",
+            "type": {
+              "endian": "le",
+              "format": "u64",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "seedInsurance"
       }
     ],
     "kind": "programNode",
@@ -6276,6 +6712,15 @@
             "name": "maker",
             "type": {
               "kind": "publicKeyTypeNode"
+            }
+          },
+          {
+            "kind": "variablePdaSeedNode",
+            "name": "quoteIndex",
+            "type": {
+              "endian": "le",
+              "format": "u16",
+              "kind": "numberTypeNode"
             }
           }
         ]

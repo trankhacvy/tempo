@@ -25,6 +25,10 @@ pub const SNAPSHOTS_LEN: usize = MAX_LEVELS * SNAPSHOT_BYTES;
 /// never-folded level can never mint position (§1.6). `u64::MAX` is unreachable as
 /// a real bucket prefix (it would require ~1.8e19 base lots resting at one tick).
 pub const SNAPSHOT_UNFOLDED: u64 = u64::MAX;
+/// Max concurrent quotes per (market, maker) — bounds `quote_index`, the 4th PDA
+/// seed (known-issues §4.9: the old 3-seed set allowed exactly ONE ladder per
+/// maker per market, capping posted depth and blocking re-quotes mid-round).
+pub const MAX_QUOTES_PER_MAKER: u16 = 4;
 
 /// A maker's persistent parametric quote for one market (parametric maker book).
 ///
@@ -37,13 +41,16 @@ pub const SNAPSHOT_UNFOLDED: u64 = u64::MAX;
 /// size)) to keep the struct alignment 1 and Codama-friendly.
 ///
 /// # PDA Seeds
-/// `[b"maker_quote", market.as_ref(), maker.as_ref()]`
+/// `[b"maker_quote", market.as_ref(), maker.as_ref(), quote_index_le]`
+/// (`quote_index` ∈ `[0, MAX_QUOTES_PER_MAKER)` — a maker may run several
+/// concurrent ladders, §4.9.)
 #[derive(Clone, Debug, PartialEq, CodamaAccount)]
 #[codama(field("discriminator", number(u8), default_value = 8))]
 #[codama(discriminator(field = "discriminator"))]
 #[codama(seed(type = string(utf8), value = "maker_quote"))]
 #[codama(seed(name = "market", type = public_key))]
 #[codama(seed(name = "maker", type = public_key))]
+#[codama(seed(name = "quoteIndex", type = number(u16)))]
 #[repr(C)]
 pub struct MakerQuote {
     pub maker: Address,
@@ -85,11 +92,25 @@ pub struct MakerQuote {
     /// Per-level marginal-tick `cum_before` for ask levels (`AskSupply[tick]` before
     /// this quote's fold). See `bid_snapshots_le`.
     pub ask_snapshots_le: [u8; 64],
+    // --- v4 (plan.md §2.4): multi-quote seeds + quote-time margin ---
+    /// Which of the maker's concurrent quotes this is (`[0, MAX_QUOTES_PER_MAKER)`);
+    /// the 4th PDA seed (known-issues §4.9).
+    pub quote_index_le: [u8; 2],
+    /// STANDING worst-case margin locked in the maker's `UserCollateral` for this
+    /// ladder (missing-features §7.1). Recomputed (delta-locked) on every levels
+    /// write; released in full by `clear_maker_quote`. The ladder is persistent —
+    /// it re-folds at full size every round — so the reservation is a standing
+    /// lock, not per-round: an unbacked ladder can never fold into the histogram
+    /// and steer the clearing price.
+    pub reserved_margin_le: [u8; 8],
+    /// Window-top price snapshotted when the reservation was last computed —
+    /// mirrors `Order.worst_price` (stable across window recenters, DDR-3).
+    pub worst_price_le: [u8; 8],
 }
 
 assert_no_padding!(
     MakerQuote,
-    32 * 3 + 8 * 2 + 4 + 8 * 4 + 4 + LEVELS_LEN * 2 + SNAPSHOTS_LEN * 2
+    32 * 3 + 8 * 2 + 4 + 8 * 4 + 4 + LEVELS_LEN * 2 + SNAPSHOTS_LEN * 2 + 2 + 8 + 8
 );
 
 impl Discriminator for MakerQuote {
@@ -103,11 +124,17 @@ impl Versioned for MakerQuote {
     // v3: appended the per-level fold-snapshot regions (known-issues §1.6) — a
     // pre-v3 quote lacks them, so the version check forces a re-provision rather
     // than reading snapshots out of the (shorter) old account tail.
-    const VERSION: u8 = 3;
+    // v4 (plan.md §2.4): appended `quote_index` (now the 4th PDA seed — the
+    // ADDRESS of every quote changes, §4.9) + the quote-time margin fields
+    // `reserved_margin`/`worst_price` (§7.1). Old v3 quotes are simply orphaned
+    // at their old addresses: `clear_maker_quote` + `close_maker_quote` them
+    // (rent refunded) and re-init at the new addresses.
+    const VERSION: u8 = 4;
 }
 
 impl AccountSize for MakerQuote {
-    const DATA_LEN: usize = 32 * 3 + 8 * 2 + 4 + 8 * 4 + 4 + LEVELS_LEN * 2 + SNAPSHOTS_LEN * 2;
+    const DATA_LEN: usize =
+        32 * 3 + 8 * 2 + 4 + 8 * 4 + 4 + LEVELS_LEN * 2 + SNAPSHOTS_LEN * 2 + 2 + 8 + 8;
 }
 
 impl AccountDeserialize for MakerQuote {}
@@ -134,6 +161,9 @@ impl AccountSerialize for MakerQuote {
         data.extend_from_slice(&self.ask_levels_le);
         data.extend_from_slice(&self.bid_snapshots_le);
         data.extend_from_slice(&self.ask_snapshots_le);
+        data.extend_from_slice(&self.quote_index_le);
+        data.extend_from_slice(&self.reserved_margin_le);
+        data.extend_from_slice(&self.worst_price_le);
         data
     }
 }
@@ -143,7 +173,12 @@ impl PdaSeeds for MakerQuote {
 
     #[inline(always)]
     fn seeds(&self) -> Vec<&[u8]> {
-        vec![Self::PREFIX, self.market.as_ref(), self.maker.as_ref()]
+        vec![
+            Self::PREFIX,
+            self.market.as_ref(),
+            self.maker.as_ref(),
+            &self.quote_index_le,
+        ]
     }
 
     #[inline(always)]
@@ -152,6 +187,7 @@ impl PdaSeeds for MakerQuote {
             Seed::from(Self::PREFIX),
             Seed::from(self.market.as_ref()),
             Seed::from(self.maker.as_ref()),
+            Seed::from(self.quote_index_le.as_slice()),
             Seed::from(bump.as_slice()),
         ]
     }
@@ -187,6 +223,14 @@ impl MakerQuote {
         settled_auction_id_le,
         u64
     );
+    le_field!(quote_index, set_quote_index, quote_index_le, u16);
+    le_field!(
+        reserved_margin,
+        set_reserved_margin,
+        reserved_margin_le,
+        u64
+    );
+    le_field!(worst_price, set_worst_price, worst_price_le, u64);
 
     /// Read bid level `i` as `(offset_ticks, size)`.
     #[inline(always)]
@@ -261,6 +305,7 @@ impl MakerQuote {
         quote_id: u64,
         expiry_slots: u64,
         last_update_slot: u64,
+        quote_index: u16,
     ) -> Self {
         Self {
             maker,
@@ -283,6 +328,9 @@ impl MakerQuote {
             // settled before its first fold fills zero rather than reading stale 0s.
             bid_snapshots_le: [0xFFu8; SNAPSHOTS_LEN],
             ask_snapshots_le: [0xFFu8; SNAPSHOTS_LEN],
+            quote_index_le: quote_index.to_le_bytes(),
+            reserved_margin_le: 0u64.to_le_bytes(),
+            worst_price_le: 0u64.to_le_bytes(),
         }
     }
 }
@@ -337,6 +385,7 @@ mod tests {
             7,
             2,
             100,
+            1, // quote_index
         )
     }
 
@@ -358,7 +407,7 @@ mod tests {
         assert_eq!(bytes.len(), MakerQuote::LEN);
         assert_eq!(bytes[0], MakerQuote::DISCRIMINATOR);
         assert_eq!(bytes[1], MakerQuote::VERSION);
-        assert_eq!(MakerQuote::VERSION, 3);
+        assert_eq!(MakerQuote::VERSION, 4);
 
         let de = MakerQuote::from_bytes(&bytes).unwrap();
         assert_eq!(de.quote_id(), 7);
@@ -375,6 +424,21 @@ mod tests {
         assert_eq!(de.bid_snapshot(1), 250);
         assert_eq!(de.ask_snapshot(0), 0);
         assert_eq!(de.ask_snapshot(1), SNAPSHOT_UNFOLDED);
+        // v4 fields round-trip; a fresh quote carries no reservation.
+        assert_eq!(de.quote_index(), 1);
+        assert_eq!(de.reserved_margin(), 0);
+        assert_eq!(de.worst_price(), 0);
+    }
+
+    #[test]
+    fn test_quote_index_is_a_seed() {
+        // Two quotes differing only in quote_index must derive DIFFERENT PDAs
+        // (known-issues §4.9 — this is what allows concurrent ladders).
+        let a = quote(); // index 1
+        let mut b = quote();
+        b.set_quote_index(2);
+        assert_ne!(a.seeds()[3], b.seeds()[3]);
+        assert_eq!(a.seeds().len(), 4);
     }
 
     #[test]

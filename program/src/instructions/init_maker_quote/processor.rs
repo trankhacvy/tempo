@@ -37,6 +37,8 @@ pub fn process_init_maker_quote(
         }
         let market = Market::from_bytes_mut(&mut market_data)?;
         market.require_phase(AuctionPhase::Collect)?;
+        // Circuit breaker (missing-features §3.2): no new quotes while paused.
+        market.require_not_paused(Market::PAUSE_INTAKE)?;
         let qid = market.next_quote_id();
         market.set_next_quote_id(qid.checked_add(1).ok_or(TempoProgramError::MathOverflow)?);
         market.set_active_maker_quote_count(
@@ -57,6 +59,7 @@ pub fn process_init_maker_quote(
         quote_id,
         ix.data.expiry_slots,
         now,
+        ix.data.quote_index,
     );
     quote.validate_pda(
         ix.accounts.maker_quote,
@@ -66,7 +69,7 @@ pub fn process_init_maker_quote(
 
     let bump = [ix.data.maker_quote_bump];
     let seeds: Vec<Seed> = quote.seeds_with_bump(&bump);
-    let seeds_array: [Seed; 4] = seeds
+    let seeds_array: [Seed; 5] = seeds
         .try_into()
         .map_err(|_| ProgramError::InvalidArgument)?;
     create_pda_account(

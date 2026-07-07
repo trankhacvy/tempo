@@ -9,10 +9,10 @@ use crate::{
         process_initialize_market, process_liquidate, process_liquidate_cross,
         process_migrate_market, process_migrate_position, process_process_chunk,
         process_process_maker_quote, process_read_oracle, process_remove_position_from_margin,
-        process_reset_shard, process_settle_fill, process_settle_maker_quote,
-        process_start_auction, process_submit_order, process_update_funding,
-        process_update_maker_quote_levels, process_update_maker_quote_mid, process_withdraw,
-        process_withdraw_cross,
+        process_reset_shard, process_seed_insurance, process_set_pause, process_settle_fill,
+        process_settle_maker_quote, process_start_auction, process_submit_order,
+        process_update_funding, process_update_maker_quote_levels, process_update_maker_quote_mid,
+        process_withdraw, process_withdraw_cross,
     },
     traits::TempoInstructionDiscriminators,
 };
@@ -126,6 +126,12 @@ pub fn process_instruction(
         }
         TempoInstructionDiscriminators::ResetShard => {
             process_reset_shard(program_id, accounts, instruction_data)
+        }
+        TempoInstructionDiscriminators::SetPause => {
+            process_set_pause(program_id, accounts, instruction_data)
+        }
+        TempoInstructionDiscriminators::SeedInsurance => {
+            process_seed_insurance(program_id, accounts, instruction_data)
         }
         TempoInstructionDiscriminators::EmitEvent => process_emit_event(program_id, accounts),
     }
