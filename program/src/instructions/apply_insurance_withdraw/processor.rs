@@ -43,11 +43,22 @@ pub fn process_apply_insurance_withdraw(
         if now_slot < vault.pending_withdraw_slot() {
             return Err(TempoProgramError::PendingDelayNotElapsed.into());
         }
-        // HS-12: the recipient must hold the vault's mint.
+        // HS-12: the recipient must hold the vault's mint AND be owned by the
+        // vault authority. Apply is permissionless (any cranker may execute the
+        // staged withdraw so a keeper can), but the proposal records no
+        // destination, so without this an attacker could front-run the apply and
+        // redirect the authority's staged pool withdrawal to their own same-mint
+        // account (theft of insurance funds — the users' backing invariant would
+        // stay intact, so no gate would fire). Binding the destination to the
+        // authority's own token accounts closes that: the funds can only land
+        // where the (delay-gated) authority controls them.
         {
             let recipient = TokenAccount::from_account_view(ix.accounts.recipient_token_account)?;
             if *recipient.mint() != vault.collateral_mint {
                 return Err(TempoProgramError::InvalidCollateralAccount.into());
+            }
+            if *recipient.owner() != vault.authority {
+                return Err(TempoProgramError::InvalidAuthority.into());
             }
         }
         // Re-clamp to what the pool holds NOW, debit, clear the staging slot.

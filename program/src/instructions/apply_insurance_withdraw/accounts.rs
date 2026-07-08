@@ -9,15 +9,19 @@ use crate::{
 };
 
 /// Accounts for the ApplyInsuranceWithdraw instruction (permissionless after
-/// the delay; the recipient token account is the authority's choice, recorded
-/// at apply — the gate protects the USERS' backing, not the pool's destination).
+/// the delay). The `cranker` may be anyone (a keeper executes the staged
+/// withdraw), but the destination is NOT the cranker's choice: the processor
+/// requires `recipient_token_account` to be owned by `Vault.authority`, so a
+/// hostile cranker cannot redirect the pool withdrawal to itself. The gate
+/// protects the users' backing; the authority-owner check protects the pool's
+/// destination.
 ///
 /// # Account Layout
-/// 0. `[signer]` cranker
+/// 0. `[signer]` cranker (permissionless)
 /// 1. `[writable]` vault
 /// 2. `[]` vault_authority (signs the token transfer)
 /// 3. `[writable]` vault_token_account
-/// 4. `[writable]` recipient_token_account (same mint, HS-12)
+/// 4. `[writable]` recipient_token_account (same mint AND owned by Vault.authority)
 /// 5. `[]` token_program - pinned classic SPL Token
 /// 6. `[]` event_authority
 /// 7. `[]` tempo_program

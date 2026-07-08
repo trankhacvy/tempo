@@ -199,7 +199,10 @@ fn insurance_withdraw_is_staged_delayed_and_backed() {
     ctx.mint_to(&mint, &donor_ta, 800);
     ctx.seed_insurance(&donor, &vault_ta, &donor_ta, 800);
 
-    let recipient_ta = ctx.create_token_account(&mint, &donor.pubkey());
+    let vault_admin = ctx.vault_admin_keypair().expect("vault admin recorded");
+    // The destination must be OWNED BY THE VAULT AUTHORITY (security fix): apply
+    // is permissionless, so an attacker-owned recipient must be rejected.
+    let recipient_ta = ctx.create_token_account(&mint, &vault_admin.pubkey());
 
     // Nothing staged → apply is NoPendingUpdate.
     assert!(
@@ -214,7 +217,6 @@ fn insurance_withdraw_is_staged_delayed_and_backed() {
         "only the vault authority may propose"
     );
     // The vault authority (the init_vault admin) proposes 300.
-    let vault_admin = ctx.vault_admin_keypair().expect("vault admin recorded");
     ctx.try_propose_insurance_withdraw(&vault_admin, 300)
         .expect("propose");
     // Early apply → PendingDelayNotElapsed.
@@ -223,11 +225,33 @@ fn insurance_withdraw_is_staged_delayed_and_backed() {
             .is_err(),
         "apply before the delay must fail"
     );
-    // Post-delay: the PERMISSIONLESS apply pays the recipient.
     let now = ctx.current_slot();
     ctx.warp_slot(now + 3_001);
+
+    // SECURITY REGRESSION: a same-mint recipient NOT owned by the vault authority
+    // must be rejected, even post-delay — otherwise any cranker could front-run
+    // the apply and steal the staged pool withdrawal to their own account.
+    let attacker = ctx.new_funded_signer();
+    let attacker_ta = ctx.create_token_account(&mint, &attacker.pubkey());
+    assert!(
+        ctx.try_apply_insurance_withdraw(&vault_ta, &attacker_ta)
+            .is_err(),
+        "a recipient not owned by the vault authority must be rejected"
+    );
+    assert_eq!(
+        ctx.token_balance(&attacker_ta),
+        0,
+        "no tokens leaked to the attacker"
+    );
+    assert_eq!(
+        ctx.vault().pending_withdraw_amount,
+        300,
+        "the rejected apply left the staging intact"
+    );
+
+    // Post-delay, authority-owned recipient: the PERMISSIONLESS apply pays.
     ctx.try_apply_insurance_withdraw(&vault_ta, &recipient_ta)
-        .expect("post-delay apply");
+        .expect("post-delay apply to the authority-owned recipient");
     assert_eq!(ctx.token_balance(&recipient_ta), 300, "tokens moved");
     assert_eq!(ctx.vault().insurance_balance, 500, "pool debited");
     assert_eq!(ctx.vault().pending_withdraw_amount, 0, "staging cleared");
