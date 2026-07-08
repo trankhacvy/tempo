@@ -1617,7 +1617,19 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   regenerated & in sync (new closeMarket/closePosition files only) ·
   `git status program/src/clearing.rs` clean (never modified).
 
-- [ ] **P5.9 (OP) — Deploy + C2 go/no-go executed per the P5.1 decision record**
+- [x] **P5.9 (OP) — Deploy + C2 go/no-go executed per the P5.1 decision record**
+  **Done 2026-07-08:** program allocation extended +20,000 B (binary grew to
+  440,000 B), Phase-5 binary deployed, SHA-256 dump-compare exact
+  (`98d96f9d…87e9`). Post-deploy verification on the live market: 6 more
+  rounds rolled (auction 78→84), **zero** errors — including zero
+  `instruction send failed` warns, live-confirming the preflight-race
+  `benign()` fix; `update_funding` executed on the new binary against the
+  real Pyth feed's EMA (`last_funding_ts` 85s fresh, live index −2,594,340);
+  backing invariant exact to the unit (insurance 22,821,377,439 + users
+  2,999,977,178,622,561 = 3×10¹⁵ = vault tokens). **C2 go/no-go executed:
+  NO-GO** per `docs/bench/round_latency.md` — nothing further to build;
+  known-issues §2.14 carries the decision + the mechanical re-open trigger.
+  ~17.8 SOL remaining on the authority key.
 
 ---
 
