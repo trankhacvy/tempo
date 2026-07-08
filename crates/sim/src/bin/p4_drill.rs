@@ -267,16 +267,15 @@ async fn main() -> Result<(), SimError> {
     // Submit with a per-attempt fresh view: a fast roll can move the arm round
     // between the snapshot and the landing (`OrderAlreadyExpired`, 0x2e) — the
     // documented stale-snapshot race a real client retries through.
-    let mut arm = 0u64;
     let mut attempts = 0;
-    loop {
+    let arm = loop {
         attempts += 1;
         let mv = d
             .client
             .fetch_market(&market)
             .await
             .map_err(SimError::Sdk)?;
-        arm = ix::arm_round(&mv);
+        let arm = ix::arm_round(&mv);
         let price = d.low_price(3).await?;
         let ioc = ix::submit_ioc(
             &d.pdas,
@@ -292,7 +291,7 @@ async fn main() -> Result<(), SimError> {
         match d.client.send(&d.trader, &[ioc]).await {
             Ok(sig) => {
                 tracing::info!(%sig, arm, price, attempts, "p4 drill: IOC submitted (expires == arm)");
-                break;
+                break arm;
             }
             Err(e) if attempts < 6 && format!("{e:?}").contains("0x2e") => {
                 tracing::info!(
@@ -303,7 +302,7 @@ async fn main() -> Result<(), SimError> {
             }
             Err(e) => return Err(SimError::Sdk(e)),
         }
-    }
+    };
 
     let mine = d.my_orders().await?;
     let (ioc_id, _, expires) = *mine
