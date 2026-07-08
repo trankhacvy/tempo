@@ -90,6 +90,7 @@ const IX_APPLY_SET_ORACLE: u8 = 39;
 const IX_SEED_INSURANCE: u8 = 40;
 const IX_PROPOSE_INSURANCE_WITHDRAW: u8 = 41;
 const IX_APPLY_INSURANCE_WITHDRAW: u8 = 42;
+const IX_CANCEL_ALL_ORDERS: u8 = 43;
 
 /// One cross-margin member as supplied to `withdraw_cross` / `liquidate_cross`
 /// (known-issues §2.4): a `Live` member is a `(position, market, oracle)` triple;
@@ -314,6 +315,10 @@ pub struct OrderRecord {
     pub side: u8,
     pub is_maker: u8,
     pub status: u8,
+    /// Stage B expiry (0 = GTC); == arm_auction_id ⇒ IOC (P4.1).
+    pub expires_at_auction: u64,
+    /// Stage C1 arm round (first round the order may fold).
+    pub arm_auction_id: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -1041,6 +1046,43 @@ impl TestContext {
             data,
         };
         self.send(ix, &[reaper])
+    }
+
+    // -- instruction: CancelAllOrders (P4.3) ----------------------------------
+
+    /// Batch-cancel every still-Resting order `trader` owns in shard 0
+    /// (missing-features §2.7). Empty data; same account shape as cancel_order.
+    pub fn try_cancel_all_orders(
+        &mut self,
+        pdas: &MarketPdas,
+        trader: &Keypair,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let mut accounts = vec![
+            AccountMeta::new_readonly(trader.pubkey(), true),
+            AccountMeta::new_readonly(pdas.market, false),
+            AccountMeta::new(pdas.order_slab, false),
+            AccountMeta::new_readonly(self.event_authority, false),
+            AccountMeta::new_readonly(TEMPO_PROGRAM_ID, false),
+        ];
+        let collateral = self.collateral_pda(&trader.pubkey()).0;
+        if self.account_exists(&collateral) {
+            accounts.push(AccountMeta::new(collateral, false));
+        }
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts,
+            data: vec![IX_CANCEL_ALL_ORDERS],
+        };
+        self.send(ix, &[trader])
+    }
+
+    pub fn cancel_all_orders(
+        &mut self,
+        pdas: &MarketPdas,
+        trader: &Keypair,
+    ) -> TransactionMetadata {
+        self.try_cancel_all_orders(pdas, trader)
+            .expect("cancel_all_orders")
     }
 
     // -- instruction: ProcessChunk ------------------------------------------
@@ -3352,6 +3394,8 @@ impl TestContext {
                 side: s[64],
                 is_maker: s[65],
                 status,
+                expires_at_auction: read_u64(s, 96),
+                arm_auction_id: read_u64(s, 104),
             });
         }
         out

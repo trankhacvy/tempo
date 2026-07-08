@@ -67,6 +67,7 @@ import {
   getApplyInsuranceWithdrawInstruction,
   getApplyRiskUpdateInstruction,
   getApplySetOracleInstruction,
+  getCancelAllOrdersInstructionAsync,
   getCancelOrderInstructionAsync,
   getClearMakerQuoteInstruction,
   getCloseMakerQuoteInstruction,
@@ -110,6 +111,7 @@ import {
   parseApplyInsuranceWithdrawInstruction,
   parseApplyRiskUpdateInstruction,
   parseApplySetOracleInstruction,
+  parseCancelAllOrdersInstruction,
   parseCancelOrderInstruction,
   parseClearMakerQuoteInstruction,
   parseCloseMakerQuoteInstruction,
@@ -153,6 +155,7 @@ import {
   type ApplyInsuranceWithdrawInput,
   type ApplyRiskUpdateInput,
   type ApplySetOracleInput,
+  type CancelAllOrdersAsyncInput,
   type CancelOrderAsyncInput,
   type ClearMakerQuoteInput,
   type CloseMakerQuoteInput,
@@ -175,6 +178,7 @@ import {
   type ParsedApplyInsuranceWithdrawInstruction,
   type ParsedApplyRiskUpdateInstruction,
   type ParsedApplySetOracleInstruction,
+  type ParsedCancelAllOrdersInstruction,
   type ParsedCancelOrderInstruction,
   type ParsedClearMakerQuoteInstruction,
   type ParsedCloseMakerQuoteInstruction,
@@ -340,6 +344,7 @@ export enum TempoProgramInstruction {
   SeedInsurance,
   ProposeInsuranceWithdraw,
   ApplyInsuranceWithdraw,
+  CancelAllOrders,
 }
 
 export function identifyTempoProgramInstruction(
@@ -474,6 +479,9 @@ export function identifyTempoProgramInstruction(
   }
   if (containsBytes(data, getU8Encoder().encode(42), 0)) {
     return TempoProgramInstruction.ApplyInsuranceWithdraw;
+  }
+  if (containsBytes(data, getU8Encoder().encode(43), 0)) {
+    return TempoProgramInstruction.CancelAllOrders;
   }
   throw new SolanaError(
     SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
@@ -612,7 +620,10 @@ export type ParsedTempoProgramInstruction<
     } & ParsedProposeInsuranceWithdrawInstruction<TProgram>)
   | ({
       instructionType: TempoProgramInstruction.ApplyInsuranceWithdraw;
-    } & ParsedApplyInsuranceWithdrawInstruction<TProgram>);
+    } & ParsedApplyInsuranceWithdrawInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.CancelAllOrders;
+    } & ParsedCancelAllOrdersInstruction<TProgram>);
 
 export function parseTempoProgramInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
@@ -920,6 +931,13 @@ export function parseTempoProgramInstruction<TProgram extends string>(
         ...parseApplyInsuranceWithdrawInstruction(instruction),
       };
     }
+    case TempoProgramInstruction.CancelAllOrders: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.CancelAllOrders,
+        ...parseCancelAllOrdersInstruction(instruction),
+      };
+    }
     default:
       throw new SolanaError(
         SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
@@ -1125,6 +1143,10 @@ export type TempoProgramPluginInstructions = {
   applyInsuranceWithdraw: (
     input: ApplyInsuranceWithdrawInput,
   ) => ReturnType<typeof getApplyInsuranceWithdrawInstruction> &
+    SelfPlanAndSendFunctions;
+  cancelAllOrders: (
+    input: CancelAllOrdersAsyncInput,
+  ) => ReturnType<typeof getCancelAllOrdersInstructionAsync> &
     SelfPlanAndSendFunctions;
 };
 
@@ -1378,6 +1400,11 @@ export function tempoProgramProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getApplyInsuranceWithdrawInstruction(input),
+            ),
+          cancelAllOrders: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCancelAllOrdersInstructionAsync(input),
             ),
         },
         pdas: {

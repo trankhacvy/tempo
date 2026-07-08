@@ -379,6 +379,26 @@ whether round-processing overlap or OI-sharding (the `Market` OI write still ser
   `submit_order`. Also permissionlessly callable by anyone (not just the owner) once the
   order has expired — a "reaper" cleanup path; margin always returns to the original
   owner.
+- `cancel_all_orders` — owner-only batch cancel: one transaction removes every
+  still-resting order the signer owns in one shard and releases the summed margin
+  reservation (the market maker's "flatten now" button). Multi-shard cancel-all is a
+  client loop; reaping strangers' expired orders stays on `cancel_order`.
+
+**Order types — what maps to a batch auction and what doesn't.** The native order is a
+limit order with an optional auction-count expiry (`expires_at_auction`; `0` = GTC).
+Setting the expiry EQUAL to the order's arm round makes it **IOC** — it participates in
+exactly one auction and any remainder is consumed at settle instead of resting. A
+**market order** is SDK sugar: a buy priced at the tick-window top (a sell at the floor)
+is marketable against all in-window liquidity, and uniform-price clearing means the
+trader pays the cross, never their limit; `close_position` composes an opposite-side,
+reduce-only market order. Two classic types are **deliberately not built**: **FOK**
+(fill-or-kill) cannot coexist with pro-rata marginal-tick rationing — whether an order
+fully fills depends on every other order at its tick, so "kill unless whole" would break
+the telescoping-floor conservation that lets each user settle independently (fills would
+have to be recomputed when a FOK withdraws, reintroducing the sequencing dependence the
+histogram design exists to remove). And **post-only** already exists structurally: maker
+flow is the `MakerQuote` ladder book, which never takes; a slab order that "must not
+cross" is simply a maker quote.
 
 **Auction (permissionless, the three phases):**
 - `process_chunk` (Phase 1) — fold a bounded slice of one shard's resting orders into the

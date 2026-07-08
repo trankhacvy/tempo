@@ -89,6 +89,8 @@ pub enum TempoInstructionDiscriminators {
     ProposeInsuranceWithdraw = 41,
     /// Permissionless: apply a staged insurance withdrawal (backing-gated).
     ApplyInsuranceWithdraw = 42,
+    /// Owner: cancel every still-Resting order in one shard (§2.7 batch cancel).
+    CancelAllOrders = 43,
     /// Self-CPI event emission (carries event data in instruction data).
     EmitEvent = 228,
 }
@@ -141,6 +143,7 @@ impl TryFrom<u8> for TempoInstructionDiscriminators {
             40 => Ok(Self::SeedInsurance),
             41 => Ok(Self::ProposeInsuranceWithdraw),
             42 => Ok(Self::ApplyInsuranceWithdraw),
+            43 => Ok(Self::CancelAllOrders),
             228 => Ok(Self::EmitEvent),
             _ => Err(ProgramError::InvalidInstructionData),
         }

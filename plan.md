@@ -1478,30 +1478,52 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
 
 ### 9.5 Phase 4 — Trading UX
 
-- [ ] **P4.1 — IOC boundary change** (§5.1)
+- [x] **P4.1 — IOC boundary change** (§5.1)
   Submit guard `<= auction_id` → `< arm_auction_id`; doc comments in
   `submit_order/data.rs` + `definition.rs` updated.
-  **Done when:** tests show: `expires == arm` accepted, fills-or-consumes in exactly
-  one round (never rests); `expires < arm` rejected `Custom(46)`; mid-round IOC arms
-  and expires at `current+1`; reaper strict-`<` boundary unchanged — names shown.
+  **Done 2026-07-08:** `tests/ioc.rs` — `ioc_fills_what_crosses_and_never_rests`
+  (fills 12/20, remainder Consumed, leaves the book),
+  `ioc_that_misses_the_cross_releases_full_margin` (zero fill, locked → 0),
+  `mid_round_ioc_arms_and_expires_at_the_next_round` (arm = expires = current+1;
+  `expires == current` mid-round rejected `Custom(46)`); the updated
+  `resting_orders.rs::submit_of_already_expired_order_is_rejected` pins
+  `< arm` → `Custom(46)` / `== arm` → accepted; reaper strict-`<` unchanged
+  (`permissionless_reap_boundary_is_strict_less_than` untouched, green).
+  `OrderRecord` gained `expires_at_auction`/`arm_auction_id` for direct asserts.
 
-- [ ] **P4.2 — SDK order sugar** (§5.1)
-  `submitIoc` / `submitMarketOrder` (window-boundary price) / `closePosition`
-  (opposite-side, reduce-only market order).
-  **Done when:** `cargo test -p tempo-sdk` shows the three builders' tests green.
+- [x] **P4.2 — SDK order sugar** (§5.1)
+  `submit_ioc` / `submit_market_order` (window-boundary price) / `close_position`
+  (opposite-side, reduce-only market order) + `arm_round`/`window_top_price`
+  helpers in `crates/sdk/src/ix.rs` (MarketView-driven, no program change).
+  **Done 2026-07-08:** `cargo test -p tempo-sdk` 34 passed —
+  `test_submit_ioc_expires_at_the_arm_round`,
+  `test_submit_market_order_prices_at_the_window_boundary`,
+  `test_close_position_is_an_opposite_reduce_only_market_order` green.
 
-- [ ] **P4.3 — `CancelAllOrders` (43)** (§5.2)
-  Owner-only shard scan, summed single release, per-order events, header counters.
-  **Done when:** tests show: cancels only the signer's Resting orders; one summed
-  release equals Σ reserved; zero-order call succeeds as no-op; stranger's expired
-  order untouched — names shown.
+- [x] **P4.3 — `CancelAllOrders` (43)** (§5.2)
+  Owner-only shard scan, summed single release, per-order events, header counters;
+  SDK wrapper `cancel_all_orders` + regenerated Codama clients (TS + Rust).
+  **Done 2026-07-08:** `tests/cancel_all.rs` —
+  `cancels_only_the_signers_resting_orders` (B's orders + folded orders survive),
+  `one_summed_release_equals_total_reserved` (3 orders, Σ 44 released, balance
+  untouched, aggregate exact), `zero_order_cancel_all_is_a_noop_success`,
+  `strangers_expired_order_is_untouched` (reapable-via-cancel_order order
+  survives a stranger's batch cancel, margin stays locked). 4/4 green.
 
-- [ ] **P4.4 — Order-types design note** (§5.1)
-  `docs/system-design.md` note: FOK breaks telescoping-floor conservation;
-  post-only = the maker-quote book.
-  **Done when:** `grep -n "FOK" docs/system-design.md` hits the new note — shown.
+- [x] **P4.4 — Order-types design note** (§5.1)
+  `docs/system-design.md` §8 note: FOK breaks telescoping-floor conservation
+  (fill depends on every same-tick order → re-sequencing); post-only = the
+  maker-quote book; + `cancel_all_orders` bullet.
+  **Done 2026-07-08:** `grep -n "FOK" docs/system-design.md` → lines 394, 398.
 
-- [ ] **P4.5 — Phase 4 gate** — same seven checks as P1.11, all outputs shown.
+- [x] **P4.5 — Phase 4 gate**
+  **Done 2026-07-08:** `cargo fmt --all --check` exit 0 · program clippy
+  `-D warnings` clean · workspace clippy clean · host tests 218 passed
+  (program, 2 ignored) + 501 passed (workspace) · `cargo-build-sbf` success ·
+  integration 135 passed / 4 ignored (incl. ioc.rs 3 + cancel_all.rs 4) ·
+  clients regenerated & in sync (only the new `cancelAllOrders` files) ·
+  `git status program/src/clearing.rs` clean (never modified) · Kani 5/5
+  harnesses VERIFICATION SUCCESSFUL.
 
 - [ ] **P4.6 (OP) — Deploy (no re-provision)**
 

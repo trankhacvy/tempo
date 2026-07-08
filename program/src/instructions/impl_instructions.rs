@@ -7,6 +7,7 @@ use super::add_position_to_margin::{AddPositionToMarginAccounts, AddPositionToMa
 use super::apply_insurance_withdraw::{ApplyInsuranceWithdrawAccounts, ApplyInsuranceWithdrawData};
 use super::apply_risk_update::{ApplyRiskUpdateAccounts, ApplyRiskUpdateData};
 use super::apply_set_oracle::{ApplySetOracleAccounts, ApplySetOracleData};
+use super::cancel_all_orders::{CancelAllOrdersAccounts, CancelAllOrdersData};
 use super::cancel_order::{CancelOrderAccounts, CancelOrderData};
 use super::clear_maker_quote::{ClearMakerQuoteAccounts, ClearMakerQuoteData};
 use super::close_maker_quote::{CloseMakerQuoteAccounts, CloseMakerQuoteData};
@@ -61,6 +62,11 @@ define_instruction!(
 );
 define_instruction!(SubmitOrder, SubmitOrderAccounts, SubmitOrderData);
 define_instruction!(CancelOrder, CancelOrderAccounts, CancelOrderData);
+define_instruction!(
+    CancelAllOrders,
+    CancelAllOrdersAccounts,
+    CancelAllOrdersData
+);
 define_instruction!(ProcessChunk, ProcessChunkAccounts, ProcessChunkData);
 define_instruction!(
     ProcessMakerQuote,

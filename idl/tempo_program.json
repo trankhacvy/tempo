@@ -7614,6 +7614,107 @@
         ],
         "kind": "instructionNode",
         "name": "applyInsuranceWithdraw"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Order owner (only their orders cancel)"
+            ],
+            "isSigner": true,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "trader"
+          },
+          {
+            "docs": [
+              "Market the orders belong to. Read-only (Design Z): cancel writes only its own shard."
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "orderSlabHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "The one OrderSlab shard to scan (multi-shard = one tx per shard)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "orderSlab"
+          },
+          {
+            "docs": [
+              "Event authority PDA for CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "eventAuthority"
+          },
+          {
+            "docs": [
+              "Tempo program, for self-CPI event emission"
+            ],
+            "isSigner": false,
+            "isWritable": false,
+            "kind": "instructionAccountNode",
+            "name": "tempoProgram"
+          },
+          {
+            "docs": [
+              "(Optional) trader's collateral ledger; releases the summed reserved margin"
+            ],
+            "isOptional": true,
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "userCollateral"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 43
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "cancelAllOrders"
       }
     ],
     "kind": "programNode",

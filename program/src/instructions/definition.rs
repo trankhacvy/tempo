@@ -146,7 +146,10 @@ pub enum TempoProgramInstruction {
         shard_id: u16,
         /// Resting-order expiry (Stage B): 0 = good-till-cancelled; otherwise an absolute
         /// auction id at/after which the order stops resting (its leftover is consumed at
-        /// settle instead of re-armed). A client typically sets `current_auction_id + N`.
+        /// settle instead of re-armed). A client typically sets `current_auction_id + N`;
+        /// setting it EQUAL to the arm round (current auction id in Collect, current + 1
+        /// mid-round) makes the order immediate-or-cancel — one auction, never rests.
+        /// An expiry strictly before the arm round is rejected (OrderAlreadyExpired).
         expires_at_auction: u64,
     } = 1,
 
@@ -1090,6 +1093,45 @@ pub enum TempoProgramInstruction {
         docs = "Tempo program, for self-CPI event emission"
     ))]
     ApplyInsuranceWithdraw {} = 42,
+
+    /// Cancel EVERY still-resting order the signer owns in one shard, in one
+    /// transaction (missing-features §2.7 — the market maker's "flatten now"
+    /// button). Owner-path only (no reaper branch: reaping strangers' expired
+    /// orders stays on CancelOrder); the freed worst-case margin reservations
+    /// are released as ONE summed credit; one OrderCancelled event per order;
+    /// zero matches is a no-op success. Multi-shard cancel-all is a client
+    /// loop over shards.
+    #[codama(account(
+        name = "trader",
+        docs = "Order owner (only their orders cancel)",
+        signer
+    ))]
+    #[codama(account(
+        name = "market",
+        docs = "Market the orders belong to. Read-only (Design Z): cancel writes only its own shard."
+    ))]
+    #[codama(account(
+        name = "order_slab",
+        docs = "The one OrderSlab shard to scan (multi-shard = one tx per shard)",
+        writable,
+        default_value = pda("orderSlabHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "event_authority",
+        docs = "Event authority PDA for CPI event emission",
+        signer = false
+    ))]
+    #[codama(account(
+        name = "tempo_program",
+        docs = "Tempo program, for self-CPI event emission"
+    ))]
+    #[codama(account(
+        name = "user_collateral",
+        docs = "(Optional) trader's collateral ledger; releases the summed reserved margin",
+        writable,
+        optional
+    ))]
+    CancelAllOrders {} = 43,
 
     /// Invoked via CPI to emit event data in instruction args (prevents log truncation).
     #[codama(skip)]

@@ -494,9 +494,10 @@ fn permissionless_reap_boundary_is_strict_less_than() {
     );
 }
 
-/// DDR-3 Correction-2 item 4 (submit guard): `submit_order` rejects an order whose
-/// `expires_at_auction` is already reached at submit time (`!= 0 && <= current_auction_id`) —
-/// it could never fold or fill, so it must not rest as dead margin the reaper has to collect.
+/// DDR-3 Correction-2 item 4 (submit guard), P4.1 IOC boundary: `submit_order` rejects
+/// an order whose `expires_at_auction` is strictly BEFORE its arm round (`!= 0 &&
+/// < arm_auction_id`) — it could never fold or fill. Expiry EQUAL to the arm round is
+/// now legal (IOC, missing-features §2.3) — covered by `tests/ioc.rs`.
 #[test]
 fn submit_of_already_expired_order_is_rejected() {
     let mut ctx = TestContext::new();
@@ -516,24 +517,24 @@ fn submit_of_already_expired_order_is_rejected() {
     );
 
     let t = ctx.new_funded_signer();
-    // expiry == current_auction_id ⇒ already reached ⇒ rejected.
+    // expiry < arm (= current in Collect) ⇒ could never fold ⇒ rejected Custom(46).
+    let err = ctx
+        .try_submit_order_expiring(&pdas, &t, SIDE_BUY, 40, 5, cur - 1)
+        .expect_err("an order expiring before its arm round is rejected at submit");
     assert!(
-        ctx.try_submit_order_expiring(&pdas, &t, SIDE_BUY, 40, 5, cur)
-            .is_err(),
-        "an order expiring at the current auction id is rejected at submit"
+        format!("{:?}", err.err).contains("Custom(46)"),
+        "rejected with OrderAlreadyExpired (46), got {:?}",
+        err.err
     );
-    // expiry < current_auction_id ⇒ also rejected.
-    assert!(
-        ctx.try_submit_order_expiring(&pdas, &t, SIDE_BUY, 40, 5, cur - 1)
-            .is_err(),
-        "an order expiring before the current auction id is rejected at submit"
-    );
+    // expiry == arm ⇒ IOC ⇒ ACCEPTED (P4.1; one-round life is proven in tests/ioc.rs).
+    ctx.try_submit_order_expiring(&pdas, &t, SIDE_BUY, 40, 5, cur)
+        .expect("an IOC order (expiry == arm round) is accepted");
     // A future expiry (or GTC = 0) is accepted.
     let ok = ctx.try_submit_order_expiring(&pdas, &t, SIDE_BUY, 40, 5, cur + 1);
     assert!(ok.is_ok(), "a future expiry is accepted");
     assert_eq!(
         ctx.order_slab(&pdas).count,
-        1,
-        "only the valid order rested"
+        2,
+        "the IOC and the future-expiry order both rested"
     );
 }

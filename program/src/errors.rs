@@ -220,10 +220,11 @@ pub enum TempoProgramError {
     #[error("Shard id is out of range for this market")]
     ShardOutOfRange,
 
-    /// (46) A submitted order's `expires_at_auction` is already reached/passed at
-    /// submit time (`!= 0 && <= current_auction_id`) — it could never fold or fill,
+    /// (46) A submitted order's `expires_at_auction` is strictly before the round it
+    /// would first fold in (`!= 0 && < arm_auction_id`) — it could never fold or fill,
     /// so it is rejected up front (DDR-3 Correction-2 item 4) rather than resting as
-    /// dead margin the reaper must later collect.
+    /// dead margin the reaper must later collect. Expiry EQUAL to the arm round is
+    /// legal: that is an IOC order (one auction, never rests — missing-features §2.3).
     #[error("Order expiry is already reached at submit time")]
     OrderAlreadyExpired,
 

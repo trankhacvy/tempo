@@ -11,6 +11,7 @@ export * from "./addPositionToMargin";
 export * from "./applyInsuranceWithdraw";
 export * from "./applyRiskUpdate";
 export * from "./applySetOracle";
+export * from "./cancelAllOrders";
 export * from "./cancelOrder";
 export * from "./clearMakerQuote";
 export * from "./closeMakerQuote";

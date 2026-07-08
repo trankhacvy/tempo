@@ -27,7 +27,11 @@ use crate::{errors::TempoProgramError, state::OrderSide, traits::InstructionData
 ///   (the order rests until filled or cancelled). Otherwise an absolute auction id: the
 ///   order stops resting once `expires_at_auction <= current_auction_id` (its leftover is
 ///   `Consumed` at that round's settle instead of re-armed). A client sets e.g.
-///   `current_auction_id + 20` to bound how long the order squats a slab slot.
+///   `current_auction_id + 20` to bound how long the order squats a slab slot, or sets
+///   it EQUAL to the arm round (the current auction id in `Collect`, `current + 1`
+///   mid-round) for an IOC order: it participates in exactly one auction and any
+///   unfilled remainder is consumed there (missing-features §2.3). An expiry strictly
+///   before the arm round is rejected (`OrderAlreadyExpired`).
 pub struct SubmitOrderData {
     pub side: u8,
     pub price: u64,

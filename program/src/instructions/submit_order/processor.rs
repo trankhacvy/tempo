@@ -112,13 +112,15 @@ pub fn process_submit_order(
         return Err(TempoProgramError::ShardOutOfRange.into());
     }
 
-    // Reject an already-expired order (DDR-3 Correction-2 item 4): an order whose
-    // `expires_at_auction` is already reached at submit time can never fold or fill
-    // this round or any later one, so it would only rest as dead margin the reaper
-    // must collect. `0` means GTC (never expires). Uses the same `<=` boundary as
-    // `settle_fill`'s consume-after-fill check (the permissionless reaper uses strict
-    // `<`, but an order submitted AT its expiry auction is never entitled to fold).
-    if ix.data.expires_at_auction != 0 && ix.data.expires_at_auction <= auction_id {
+    // IOC (missing-features §2.3): `expires_at_auction == arm_auction_id` is legal —
+    // the order participates in exactly ONE auction (its arm round) and `settle_fill`
+    // consumes any remainder there (its `expires <= auction_id` boundary), so it never
+    // rests. Still rejected (DDR-3 Correction-2 item 4): an expiry strictly before the
+    // round the order would first fold in — it could never fill and would only rest as
+    // dead margin the reaper must collect. `0` means GTC (never expires). The
+    // permissionless reaper's strict-`<` boundary in `cancel_order` is untouched: an
+    // IOC becomes reapable from the round after its arm.
+    if ix.data.expires_at_auction != 0 && ix.data.expires_at_auction < arm_auction_id {
         return Err(TempoProgramError::OrderAlreadyExpired.into());
     }
 

@@ -272,6 +272,147 @@ pub fn cancel_order(
     })
 }
 
+/// CANCEL ALL (`cancel_all_orders`, disc 43 — missing-features §2.7): remove EVERY
+/// still-Resting order the signer owns in ONE shard (multi-shard cancel-all is a
+/// loop over `shard_id`). Owner path only — reaping strangers' expired orders stays
+/// on [`cancel_order`]. On a money-path market pass the trader's `user_collateral`
+/// so the summed reservation is released; zero matches is a no-op success.
+pub fn cancel_all_orders(
+    pdas: &MarketPdas,
+    trader: Pubkey,
+    shard_id: u16,
+    user_collateral: Option<Pubkey>,
+) -> Instruction {
+    CancelAllOrders {
+        trader,
+        market: pdas.market,
+        order_slab: pdas.slab_shard(shard_id),
+        event_authority: pdas.event_authority,
+        tempo_program: TEMPO_PROGRAM_ID,
+        user_collateral,
+    }
+    .instruction()
+}
+
+// --- Order sugar (P4.2, plan.md §5.1) ---------------------------------------
+//
+// Thin composition over `submit_order`: no program change, no new trust — just
+// the three shapes a trading client actually wants (IOC, market, close), each
+// derived from a fresh `MarketView` snapshot.
+
+/// Auction phase byte for `Collect` (`Market.phase == 0`).
+pub const PHASE_COLLECT: u8 = 0;
+
+/// The round an order submitted NOW will first fold in (its **arm round**):
+/// the current auction while the market is in `Collect`, else the next one
+/// (always-open submission, DDR-4). This is also the expiry that makes an
+/// order immediate-or-cancel (P4.1: `expires == arm` is one-auction life).
+pub fn arm_round(market: &crate::accounts::MarketView) -> u64 {
+    if market.phase == PHASE_COLLECT {
+        market.current_auction_id
+    } else {
+        market.current_auction_id.saturating_add(1)
+    }
+}
+
+/// Highest in-window price (the top tick). A buy at this price is marketable
+/// against ANY in-window supply; symmetric with `window_floor_price` for sells.
+pub fn window_top_price(market: &crate::accounts::MarketView) -> u64 {
+    market.window_floor_price.saturating_add(
+        market
+            .tick_size
+            .saturating_mul(market.num_ticks.saturating_sub(1) as u64),
+    )
+}
+
+/// IOC (`submit_order` with `expires_at_auction == arm_round`): participates in
+/// exactly ONE auction — fills what crosses, the remainder is consumed at that
+/// round's settle, and the full margin reservation comes back. `market` should
+/// be a FRESH `MarketView` snapshot (a stale phase only shifts the arm round by
+/// one; the program still accepts or rejects consistently with its own state).
+#[allow(clippy::too_many_arguments)]
+pub fn submit_ioc(
+    pdas: &MarketPdas,
+    trader: Pubkey,
+    market: &crate::accounts::MarketView,
+    side: u8,
+    price: u64,
+    quantity: u64,
+    reduce_only: bool,
+    shard_id: u16,
+    money: &SubmitMoney,
+) -> Instruction {
+    submit_order(
+        pdas,
+        trader,
+        side,
+        price,
+        quantity,
+        reduce_only,
+        shard_id,
+        arm_round(market),
+        money,
+    )
+}
+
+/// Market order: a buy priced at the window TOP / a sell at the window FLOOR
+/// crosses any available in-window liquidity — and because the auction clears at
+/// ONE uniform price, the trader never pays their limit, they pay the cross.
+/// IOC by construction (a market order that found no liquidity should not rest).
+#[allow(clippy::too_many_arguments)]
+pub fn submit_market_order(
+    pdas: &MarketPdas,
+    trader: Pubkey,
+    market: &crate::accounts::MarketView,
+    side: u8,
+    quantity: u64,
+    reduce_only: bool,
+    shard_id: u16,
+    money: &SubmitMoney,
+) -> Instruction {
+    let price = if side == 0 {
+        window_top_price(market)
+    } else {
+        market.window_floor_price
+    };
+    submit_ioc(
+        pdas,
+        trader,
+        market,
+        side,
+        price,
+        quantity,
+        reduce_only,
+        shard_id,
+        money,
+    )
+}
+
+/// Close (a slice of) a position: an opposite-side, **reduce-only** market
+/// order (missing-features §2.1 — the auction IS the venue; there is
+/// deliberately no close-against-vault-at-oracle path). `position_size` is the
+/// signed on-chain `Position.size`; `quantity` closes a slice (clamped to
+/// `|size|`), `None` closes the whole thing. Returns `None` when flat.
+pub fn close_position(
+    pdas: &MarketPdas,
+    trader: Pubkey,
+    market: &crate::accounts::MarketView,
+    position_size: i64,
+    quantity: Option<u64>,
+    shard_id: u16,
+    money: &SubmitMoney,
+) -> Option<Instruction> {
+    let abs = position_size.unsigned_abs();
+    if abs == 0 {
+        return None;
+    }
+    let qty = quantity.unwrap_or(abs).min(abs);
+    let side = if position_size > 0 { 1 } else { 0 }; // long → sell, short → buy
+    Some(submit_market_order(
+        pdas, trader, market, side, qty, true, shard_id, money,
+    ))
+}
+
 /// Roll to the next round (`start_auction`). `oracle` is the market's bound oracle
 /// (re-snaps the tick window); pass `MarketView::oracle`.
 pub fn start_auction(pdas: &MarketPdas, cranker: Pubkey, oracle: Pubkey) -> Instruction {
@@ -608,6 +749,125 @@ pub fn withdraw_cross(params: &WithdrawCrossParams, amount: u64, legs: &[CrossLe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounts::MarketView;
+
+    /// A Collect-phase market view: window [floor, floor + tick·(n−1)] = [100, 250].
+    fn view(phase: u8) -> MarketView {
+        MarketView {
+            phase,
+            current_auction_id: 7,
+            tick_size: 10,
+            num_ticks: 16,
+            window_floor_price: 100,
+            ..MarketView::default()
+        }
+    }
+
+    /// Wire offsets in submit_order data: [disc, side, price(8), qty(8),
+    /// reduce_only(1), shard(2), expires(8)].
+    fn decode_submit(ix: &Instruction) -> (u8, u64, u64, u8, u64) {
+        assert_eq!(ix.data[0], SUBMIT_ORDER_DISCRIMINATOR);
+        (
+            ix.data[1],
+            u64::from_le_bytes(ix.data[2..10].try_into().unwrap()),
+            u64::from_le_bytes(ix.data[10..18].try_into().unwrap()),
+            ix.data[18],
+            u64::from_le_bytes(ix.data[21..29].try_into().unwrap()),
+        )
+    }
+
+    #[test]
+    fn test_submit_ioc_expires_at_the_arm_round() {
+        let pdas = MarketPdas::derive(Pubkey::new_unique());
+        let t = Pubkey::new_unique();
+        // Collect: arm = current (7).
+        let ix = submit_ioc(
+            &pdas,
+            t,
+            &view(0),
+            1,
+            150,
+            5,
+            false,
+            0,
+            &SubmitMoney::default(),
+        );
+        let (side, price, qty, ro, expires) = decode_submit(&ix);
+        assert_eq!((side, price, qty, ro), (1, 150, 5, 0));
+        assert_eq!(expires, 7, "IOC in Collect expires at the current round");
+        // Mid-round (Accumulating): arm = current + 1.
+        let ix = submit_ioc(
+            &pdas,
+            t,
+            &view(1),
+            0,
+            150,
+            5,
+            false,
+            0,
+            &SubmitMoney::default(),
+        );
+        let (_, _, _, _, expires) = decode_submit(&ix);
+        assert_eq!(
+            expires, 8,
+            "a mid-round IOC arms and expires at current + 1"
+        );
+    }
+
+    #[test]
+    fn test_submit_market_order_prices_at_the_window_boundary() {
+        let pdas = MarketPdas::derive(Pubkey::new_unique());
+        let t = Pubkey::new_unique();
+        let v = view(0);
+        assert_eq!(window_top_price(&v), 250);
+        // A market BUY prices at the window top (marketable vs any supply)…
+        let buy = submit_market_order(&pdas, t, &v, 0, 3, false, 0, &SubmitMoney::default());
+        let (side, price, _, _, expires) = decode_submit(&buy);
+        assert_eq!((side, price), (0, 250));
+        assert_eq!(expires, 7, "market orders are IOC");
+        // …a market SELL at the window floor (marketable vs any demand).
+        let sell = submit_market_order(&pdas, t, &v, 1, 3, false, 0, &SubmitMoney::default());
+        let (side, price, _, _, _) = decode_submit(&sell);
+        assert_eq!((side, price), (1, 100));
+    }
+
+    #[test]
+    fn test_close_position_is_an_opposite_reduce_only_market_order() {
+        let pdas = MarketPdas::derive(Pubkey::new_unique());
+        let t = Pubkey::new_unique();
+        let v = view(0);
+        // Long 40 → close = SELL 40, reduce-only, floor-priced, IOC.
+        let ix = close_position(&pdas, t, &v, 40, None, 0, &SubmitMoney::default()).unwrap();
+        let (side, price, qty, ro, expires) = decode_submit(&ix);
+        assert_eq!((side, price, qty, ro, expires), (1, 100, 40, 1, 7));
+        // Short 25, close a 10-slice → BUY 10 at the top.
+        let ix = close_position(&pdas, t, &v, -25, Some(10), 0, &SubmitMoney::default()).unwrap();
+        let (side, price, qty, ro, _) = decode_submit(&ix);
+        assert_eq!((side, price, qty, ro), (0, 250, 10, 1));
+        // A slice larger than the position clamps to |size| (reduce-only anyway).
+        let ix = close_position(&pdas, t, &v, -25, Some(99), 0, &SubmitMoney::default()).unwrap();
+        let (_, _, qty, _, _) = decode_submit(&ix);
+        assert_eq!(qty, 25);
+        // Flat → nothing to close.
+        assert!(close_position(&pdas, t, &v, 0, None, 0, &SubmitMoney::default()).is_none());
+    }
+
+    #[test]
+    fn test_cancel_all_orders_wrapper() {
+        let pdas = MarketPdas::derive(Pubkey::new_unique());
+        let t = Pubkey::new_unique();
+        // Clearing-only: the trailing optional ledger is dropped → 5 accounts.
+        let bare = cancel_all_orders(&pdas, t, 0, None);
+        assert_eq!(bare.program_id, TEMPO_PROGRAM_ID);
+        assert_eq!(bare.data, vec![CANCEL_ALL_ORDERS_DISCRIMINATOR]);
+        assert_eq!(bare.accounts.len(), 5);
+        // Money path: ledger present and writable → 6.
+        let full = cancel_all_orders(&pdas, t, 1, Some(Pubkey::new_unique()));
+        assert_eq!(full.accounts.len(), 6);
+        assert!(full.accounts[5].is_writable);
+        // Shard selection routes to the right slab PDA.
+        assert_eq!(full.accounts[2].pubkey, pdas.slab_shard(1));
+    }
 
     #[test]
     fn test_process_chunk_targets_program() {

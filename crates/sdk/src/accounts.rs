@@ -22,7 +22,7 @@ const MARKET_DISCRIMINATOR: u8 = 1;
 /// fields, shifting every field after `tick_size` down 16 bytes (known-issues §2.1):
 /// the authoritative live-order count is `OrderSlabView.count` and the authoritative
 /// folded count is `HistogramView.accumulated_count`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MarketView {
     pub version: u8,
     pub current_auction_id: u64,
