@@ -25,90 +25,50 @@ and/or a devnet re-provision) · not started/unverified.
 
 ## Part A — Currently open
 
-This is the section that matters day to day. Part B below is resolved
-history, kept intentionally short.
+Five items remain. None is a bug in a normal-operation path: two are accepted
+limitations of the authority-only emergency/edge paths, one is a recorded
+design decision, one is a live-validation coverage gap, and one is a
+regenerate-the-vendored-bundle operational chore. Everything else has been
+fixed — see Part B.
 
 | Item | Area | Status |
 | --- | --- | --- |
-| 2.11 Ledger required to release a reservation on cancel/zero-fill settle | design | By-design; corrected below (the doc previously overstated when the ledger is required) |
-| 2.12 Devnet client bundle drift after the sharding layout bump | operational | Mostly resolved; one vendor bundle needs a regen check |
-| 2.13 Stage-B marketable-fill: not yet validated end-to-end on a live chain | design | Deferred — a real coverage gap |
-| 2.14 Stage-C2 (true round-processing overlap) not built | design | Decision recorded — see `docs/bench/round_latency.md` |
-| 2.15 Keeper doesn't open the next `Collect` early | design | **Closed (P5.2)** — early roll + resets pipelined with the settle tail |
-| 4.9 One `MakerQuote` PDA per maker | design | **Closed (Phase 2)** — `quote_index` PDA seed, up to 4 ladders per maker |
-| 4.10 Off-chain `benign()` error classifier uses string matching | design | **Closed (P5.3)** — structured code allowlist; string matcher demoted to transport fallback |
+| 2.12 Web vendor client bundle lags the on-chain layout | operational | Regen `apps/web/src/vendor/tempo-client.mjs` for the current Market v13 before any web-driven devnet run |
+| 2.13 Stage-B marketable-fill not yet validated on a LIVE chain | design | LiteSVM-covered (`marketable_fill.rs`); devnet scenario still pending |
+| 2.14 Stage-C2 (true round-processing overlap) not built | design | **Decided NO-GO** — recorded in `docs/bench/round_latency.md`; re-open trigger stated |
 | 5.1 `force_reset` strands reserved margin + orphans folded maker quotes | design | Accepted — authority-only emergency escape hatch; documented fund-destructive |
 | 5.2 Cross-liquidation can revert when the only closable leg is profitable | design | Accepted — liquidator picks member ordering; hard wedge only if every leg wins AND insurance is dry |
 
-### 2.11 Releasing a reservation on cancel/zero-fill settle requires the collateral ledger — [design]
+### 2.12 Web vendor client bundle can lag the on-chain layout — [operational]
 
-`cancel_order/processor.rs` requires the owner's `user_collateral` whenever
-the order being cancelled carries `reserved_margin > 0` — that part is exact.
+The generated clients (`clients/typescript/src/generated/`,
+`crates/sdk/src/generated/`) are regenerated in lockstep with every layout
+change and checked by CI. But `apps/web/src/vendor/tempo-client.mjs` is a
+**vendored bundle** that does not participate in the "clients-fresh" check, so
+it can silently lag — under-encoding `initialize_market` or decoding `Market`
+at stale offsets. The current on-chain layout is **Market v13**.
 
-For `settle_fill`, the actual gating condition is `release_amount > 0`
-(`processor.rs:294-298`), not `reserved_margin > 0` — a zero-fill order that
-simply re-rests into the next round releases nothing and needs no ledger
-account (`processor.rs:290-293`). The ledger is only required when a
-zero-fill order leaves the book entirely — expired, or force-consumed because
-it's `reduce_only` — since that's the only case that actually releases the
-reservation.
+**To close:** `pnpm generate-clients && pnpm bundle-client`, confirm the vendor
+bundle carries the current fields, and (durably) extend the CI clients-fresh
+job to also rebuild + diff the web vendor bundle so it can never drift again.
+The web UI is otherwise deferred, so this only blocks a web-driven devnet run.
 
-Not a wedge risk: a permissionless cranker always knows the order's owner and
-can attach the PDA-derived ledger account. A stale client that omits it
-simply gets `MissingSettleAccounts` and must add the account.
+### 2.13 Stage-B marketable-fill not yet validated on a LIVE chain — [design]
 
-**To close:** update any client/doc reference to say "the ledger is required
-whenever a settle releases a reservation (a fully-consuming settle), not on
-every zero-fill settle."
+A **coverage gap**, not a defect. When the oracle-anchored tick window
+recenters past a fixed-price resting order, `classify_resting_fold` folds a
+*marketable* order at the boundary tick so it fills (DDR-3). Both halves are
+now covered in LiteSVM — the passive-park half in `resting_orders.rs` and the
+**fill** half (recenter → fold-at-boundary → cross → settle at the clearing
+price, exact margin/position/OI) in `marketable_fill.rs`. What remains is a
+**devnet** scenario run against the deployed binary (LiteSVM cannot catch CU or
+account-limit surprises).
 
-**Closed (SDK):** `SettleMoney::for_order_owner` (`crates/sdk/src/ix.rs`) now
-derives and attaches the owner's mint-scoped ledger (+ position + vault)
-unconditionally on money-path markets — the accounts are deterministic PDAs that
-`submit_order` already required to exist, so a fully-consuming settle can never
-fail `MissingSettleAccounts` from a client omission. Covered by
-`settle_builder_always_attaches_ledger`.
+**To close:** a `crates/sim` scenario that recenters the window through a live
+resting order and confirms the fill on-chain. See DDR-3 in
+`docs/design-decisions.md`.
 
-### 2.12 Devnet client bundle drift after the sharding layout bump — [design] · operational
-
-`Market` is now **VERSION 11** and `InitializeMarketData::LEN` is **131
-bytes**. What changed: v10 added Stage-A sharding (`num_slab_shards: u16`
-appended to both the instruction data and `Market`, plus a
-`shards_pending`/`shards_ready` counter pair); v11 then removed
-`shards_pending` (Design Z — completeness is proven by `finalize_clear`
-scanning every shard live, not by a `Market`-level counter), keeping
-`shards_ready` for the roll gate. `InitializeMarket`'s byte length is
-unaffected by v11 — only `Market`'s own state layout shrank.
-
-Both `clients/typescript/src/generated/` and `crates/sdk/src/generated/`
-already reflect the sharded layout (generated the same day as the sharding
-merge). `apps/web/src/vendor/tempo-client.mjs` predates that merge and should
-be checked and regenerated before any devnet money-path run against the
-current layout.
-
-**To close:** `pnpm generate-clients && pnpm bundle-client`, confirm the web
-vendor bundle picks up the sharding fields, and re-provision any devnet
-market against the v11 layout (old accounts fail the version check by
-design — re-provision, not migrate).
-
-### 2.13 Stage-B marketable-fill is only unit-tested, never validated on a live chain — [design]
-
-Not a known defect — a **coverage gap** flagged during the DDR-3 code
-reviews. When the oracle-anchored tick window recenters past a fixed-price
-resting order, `classify_resting_fold` folds a *marketable* order at the
-boundary tick so it fills (DDR-3). The park/no-wedge half is fully tested
-end-to-end (LiteSVM: passive orders skip, don't block finalize, fold once the
-window returns). The **fill** half — a marketable order actually executing
-against a live counterparty after a recenter — is proven only at the unit
-level (`classify_resting_fold`'s tick correctness, and fold-then-settle with
-no counterparty); no integration test yet combines a recenter with an actual
-live counterparty fill.
-
-**To close:** run this end-to-end on devnet (the sharded-book design is on
-`main` now, not a separate feature branch): place a resting order, let the
-window move through its price, and confirm it fills at the clearing price
-with correct margin/position. See DDR-3 in `docs/design-decisions.md`.
-
-### 2.14 Stage-C2 (true round-processing overlap) not built — [design] — DECIDED: NO-GO (recorded)
+### 2.14 Stage-C2 (true round-processing overlap) not built — [design] — DECIDED: NO-GO
 
 Stage C1 (always-open submit) removed the *submit* dead-time, but round
 *processing* is still serial: one histogram, so round N+1 can't accumulate
@@ -126,37 +86,6 @@ book) would buy at best a -35 % cadence gain that keeper-side settle batching
 can match with zero on-chain risk. **Re-open trigger:** a loaded run showing
 the tail CU-bound (wall-clock tracking `Σ settle CU / 12M-per-block`, not
 `orders × confirm-latency / concurrency`) after keeper batching exists.
-
-### 2.15 Keeper does not open the next `Collect` early — [design] — CLOSED (P5.2)
-
-**Closed.** `engine::decide` now pipelines the roll with the settle tail: any
-shard whose own settle work is drained emits its `reset_shard` alongside the
-remaining settles (`Plan::Settle.resets`, fired concurrently in
-`actions::settle`), and once the market reports `shards_ready ==
-num_slab_shards` the roll is a single `start_auction` with no reset pass
-(`Plan::Roll.resets` empty — the early-roll fast path). Pure keeper change;
-covered by `engine::tests::{settle_pipelines_resets_for_drained_shards,
-early_roll_skips_the_reset_pass_when_all_shards_ready}`. The measured effect on
-round latency is part of `docs/bench/round_latency.md`.
-
-### 4.9 One MakerQuote PDA per maker — single-ladder limit — [design] — CLOSED (Phase 2)
-
-**Closed.** `MakerQuote` v4 appended `quote_index` as a fourth PDA seed
-(`[b"maker_quote", market, maker, quote_index_le]`, `MAX_QUOTES_PER_MAKER = 4`),
-so a maker can run up to four concurrent ladders and re-quote on a fresh index
-while another quote is folded mid-round. SDK `pda::maker_quote` and the ix
-builders take the index; the mm-bot pins index 0.
-
-### 4.10 `benign()` uses fragile string-matching — [design] — CLOSED (P5.3)
-
-**Closed.** `crates/sdk/src/retry.rs` now parses the numeric custom error code
-out of the transaction error (all four wire formats: preflight hex, Debug,
-JSON-RPC body, legacy Display) and classifies against the explicit
-`BENIGN_CODES` allowlist (3, 5, 9, 10, 16, 17, 25). A coded error NOT on the
-list is a REAL error — the old rule silently swallowed every "custom program
-error", including `InsuranceInsolvent`/`VaultInvariantViolated`. The substring
-matcher survives only for code-less transport races (AlreadyProcessed,
-blockhash expiry), with the format-drift regression tests retained.
 
 ### 5.1 `force_reset` strands reserved margin + orphans folded maker quotes — [design]
 
@@ -332,6 +261,60 @@ unused placeholders.
 - **4.8 MakerQuote sequence silently fell back to 0 on any RPC error**,
   causing a stale-sequence rejection loop. Now propagates the fetch error
   instead of defaulting.
+
+### 5. Lifecycle / scaling items closed during the plan
+
+- **2.11 The collateral ledger requirement on a releasing settle was
+  under-documented.** `SettleMoney::for_order_owner` (`crates/sdk/src/ix.rs`)
+  now derives and attaches the owner's mint-scoped ledger unconditionally on
+  money-path markets, so a fully-consuming settle can never fail
+  `MissingSettleAccounts` from a client omission
+  (`settle_builder_always_attaches_ledger`).
+- **2.15 Keeper opened the next `Collect` late (P5.2).** `engine::decide` now
+  pipelines the roll with the settle tail — drained shards `reset_shard`
+  concurrently with the remaining settles, and `shards_ready == num_slab_shards`
+  rolls with a single `start_auction` (no reset pass).
+- **4.9 One `MakerQuote` PDA per maker (Phase 2).** `quote_index` is now a
+  fourth PDA seed (`MAX_QUOTES_PER_MAKER = 4`), so a maker can run up to four
+  concurrent ladders.
+- **4.10 `benign()` used fragile string-matching (P5.3).**
+  `crates/sdk/src/retry.rs` now parses the numeric custom error code and matches
+  an explicit `BENIGN_CODES` allowlist; a coded error not on the list is a REAL
+  error (the old rule swallowed every "custom program error"). The substring
+  matcher survives only for code-less transport races.
+
+### 6. Adversarial-review fixes (post-plan)
+
+A five-dimension independent review of the whole plan diff. One HIGH from the
+money-path pass, one HIGH + three MEDIUM + one LOW from the on-chain passes;
+all fixed (or accepted-and-documented above as 5.1/5.2). The off-chain pass
+found no correctness bugs.
+
+- **[HIGH] Insurance-withdraw recipient theft.** `apply_insurance_withdraw` is
+  permissionless and the proposal stored no destination, so anyone could
+  front-run the authority's apply and redirect the staged pool withdrawal to
+  their own same-mint account (user backing stayed intact, so no gate fired).
+  Fixed: the recipient must now be owned by `Vault.authority`, so funds can only
+  land where the delay-gated authority controls them.
+- **[HIGH] Maker-quote settle completeness (Market v13).** `start_auction`
+  gated only on the taker slab; a folded-but-unsettled maker quote was orphaned
+  at roll, leaving the takers' matched side uncovered — a conservation break a
+  hostile maker could force. Fixed with `settled_maker_quote_count`, gated
+  symmetric to the taker settle gate (`review_fixes.rs`).
+- **[MEDIUM] `PAUSE_ROLL` was a no-op.** `start_auction` now checks
+  `require_not_paused(PAUSE_ROLL)`, so the documented wind-down control works.
+- **[MEDIUM] `crank_fee` was unbounded.** An insurance outflow settable
+  instantly via `update_market_params`, so a malicious authority could sweep the
+  pool in one finalize, bypassing the staged-withdraw delay. Bounded now
+  (`MAX_CRANK_FEE`) in the shared validator.
+- **[MEDIUM] Partial liquidation reverted on large accrued realized PnL.** The
+  code flushed ALL realized to the free ledger, leaving the isolated remainder
+  underwater though the account was healthy → un-liquidatable until a full
+  close. Fixed to flush only the closed slice and keep the pre-existing realized
+  backing the remainder (`partial_liquidation_survives_large_accrued_realized`).
+- **[LOW] `MAX_SLAB_SHARDS` 256 → 64.** `force_reset`/`close_market` dedup a
+  `u64` shard mask, so a shard id ≥ 64 made a market un-closeable (rent
+  stranded); the cap now matches the mask width.
 
 ### A note on a false alarm
 

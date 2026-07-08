@@ -1,18 +1,27 @@
 # Tempo — Missing Features
 
-This document lists functionality a production perps DEX needs that is **not yet
-built**. It is separate from `known-issues.md` (defects in code that already
-exists).
+This document tracks the trading/risk/admin functionality a production perps DEX
+needs on top of the clearing engine. It is separate from `known-issues.md`
+(defects/limitations in code that already exists).
 
-Context: the **matching and clearing engine is complete** (sharded order book,
-price histogram, three-phase clearing, dual auction, resting orders,
-always-open submission — `docs/plan.md`) and the **maker-quote book is real
-and end-to-end**. What is missing is the trading/risk/admin layer that turns
-a clearing engine into an operable exchange. Items are grouped by area; each notes
-where the gap lives in code.
+**Status: the backlog is complete.** The matching and clearing engine was
+already done (sharded order book, price histogram, three-phase clearing, dual
+auction, resting orders, always-open submission); the whole trading/risk/admin
+layer that turns it into an operable exchange has now been built across
+`plan.md` phases 0–5 and adversarially reviewed. Every numbered item below is
+**DONE** except two closed **by design**:
 
-Status tags: **DONE** (built) · **partial** (exists but incomplete) ·
-**absent** (nothing exists yet).
+- **§7.2 inventory / skew management** — the maker's off-chain job, not on-chain state.
+- **FOK / post-only order types** (part of §2.3) — FOK breaks the telescoping-floor
+  conservation; post-only *is* the maker-quote book (`system-design.md` §8).
+
+One thing stays **deliberately deferred** (a product decision, not a gap):
+**multi-mint collateral** — the system runs on a single collateral mint (USDC);
+the number of markets is unbounded but they share one ledger/vault (see
+`known-issues.md` §2.3 and §8 below). The residual limitations and coverage
+gaps of what *is* built live in `known-issues.md`.
+
+Status tags: **done** (built) · **won't build** (closed by design).
 
 ### Status at a glance
 
@@ -91,11 +100,13 @@ Validation lives in `initialize_market/data.rs` (`TryFrom`). It rejects the
 structural and fee params (`tick_size == 0`, `num_ticks ∉ (0, 256]`,
 `orders_per_auction_cap ∉ (0, 90]` (the 10,240-byte single-`CreateAccount` ceiling
 at `ORDER_LEN = 112` — `MAX_ORDERS_PER_AUCTION_CAP`), `|maker/taker_fee_bps| > 1000`,
-`integrator_share_bps > 10_000`, `max_price_move_bps_per_slot > 10_000`) and now
-the **risk** config: a market is either a no-money-path clearing benchmark (every
-risk bps zero) or a money market with `maintenance_margin_bps ∈ (0, 5000]`,
+`integrator_share_bps > 10_000`, `max_price_move_bps_per_slot > 10_000`,
+`crank_fee > MAX_CRANK_FEE`, `num_slab_shards ∉ (0, 64]`) and the **risk**
+config: a market is either a no-money-path clearing benchmark (every risk bps
+zero) or a money market with `maintenance_margin_bps ∈ (0, 5000]`,
 `initial_margin_bps ∈ [maintenance, 10000]`, and `liquidation_penalty_bps ≤ 5000`.
-`crank_fee` / `soft_stale_slots` stay unbounded (harmless). The oracle account is
+`crank_fee` is bounded (adversarial-review fix — it is an instant, authority-set
+insurance outflow); `soft_stale_slots` stays unbounded (harmless). The oracle account is
 not hard-checked against `oracle_feed_id` at init (by design — a market may be
 provisioned before its Pyth feed is warm; the feed is verified on every later read).
 

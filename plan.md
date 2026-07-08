@@ -1,7 +1,7 @@
 # Tempo — Implementation Plan: All Open Issues & Missing Features
 
 **Date:** 2026-07-07
-**Scope:** every open item in `docs/known-issues.md` (Part A) and every absent/partial item in `docs/missing-features.md`, per the analysis in `docs/issues-and-features-analysis.md`.
+**Scope:** every open item in `docs/known-issues.md` (Part A) and every absent/partial item in `docs/missing-features.md`.
 **Grounding:** all snippets below are written against the actual code on `main` (Market v11, OrderSlab v6, MakerQuote v3, Vault v2, 32 instructions, 47 error codes). File/line references were verified by reading the sources.
 
 ---
