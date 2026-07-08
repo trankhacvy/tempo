@@ -41,6 +41,7 @@ fn market_view() -> MarketView {
         initial_margin_bps: 600,
         max_position_notional: 1_000_000,
         num_slab_shards: 1,
+        shards_ready: 0,
     }
 }
 

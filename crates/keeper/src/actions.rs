@@ -89,12 +89,27 @@ fn settle_money(ctx: &KeeperCtx, trader: &Pubkey, has_position: bool) -> SettleM
 }
 
 /// SETTLE: pull each accumulated order's fill (bounded concurrency), then settle
-/// each folded-not-settled maker quote (serial; small N).
-pub async fn settle(ctx: &KeeperCtx, orders: Vec<SlabOrder>, quotes: Vec<Pubkey>) {
+/// each folded-not-settled maker quote (serial; small N). `resets` (P5.2) is the
+/// shards whose own settle work is already drained — their `reset_shard`s fire
+/// CONCURRENTLY with the settle stream, so the roll tail overlaps the settle tail
+/// instead of running after it. A reset that races a re-emitted shard is the
+/// benign on-chain `AuctionIdMismatch`.
+pub async fn settle(
+    ctx: &KeeperCtx,
+    orders: Vec<SlabOrder>,
+    quotes: Vec<Pubkey>,
+    resets: Vec<u16>,
+) {
     let cranker = ctx.cranker.pubkey();
     let started = std::time::Instant::now();
-    stream::iter(orders)
-        .for_each_concurrent(ctx.settle_concurrency, |order| async move {
+    let resets_fut = stream::iter(resets).for_each_concurrent(ctx.settle_concurrency, {
+        |shard_id| async move {
+            let ix = ix::reset_shard(&ctx.pdas, cranker, shard_id);
+            send_one(ctx, &[ix], "reset_shard").await;
+        }
+    });
+    let settle_fut =
+        stream::iter(orders).for_each_concurrent(ctx.settle_concurrency, |order| async move {
             // Attach the owner's position only if it actually exists on-chain (known-issues
             // §2.16): a zero-fill order whose owner has no position settles position-free,
             // and passing an uninitialized position PDA would revert "Invalid account owner"
@@ -120,8 +135,10 @@ pub async fn settle(ctx: &KeeperCtx, orders: Vec<SlabOrder>, quotes: Vec<Pubkey>
                 &money,
             );
             send_one(ctx, &[ix], "settle_fill").await;
-        })
-        .await;
+        });
+    // The pipelining itself (P5.2): drained-shard resets land while other shards'
+    // fills are still settling.
+    futures::join!(settle_fut, resets_fut);
     metrics::histogram!("keeper_settle_latency_seconds").record(started.elapsed().as_secs_f64());
 
     for quote in quotes {
@@ -204,17 +221,21 @@ pub async fn reap(ctx: &KeeperCtx, round: u64, num_slab_shards: u16) {
         .await;
 }
 
-/// ROLL: drain+re-arm EVERY shard, then open the next round (only reached when the slab
-/// is empty + quotes settled). Stage A: `start_auction` gates on every shard being reset
-/// (`shards_ready == num_slab_shards`), so every `reset_shard` must run before it. Resetting
-/// an already-reset shard is a benign idempotent no-op (a dropped reset simply retries next
-/// tick), so re-emitting all shards each roll is safe.
-pub async fn roll(ctx: &KeeperCtx, oracle: Pubkey, num_slab_shards: u16) {
+/// ROLL: reset whatever shards still need it, then open the next round (only reached
+/// when the slab is empty + quotes settled). Stage A: `start_auction` gates on every
+/// shard being reset (`shards_ready == num_slab_shards`). P5.2 (early roll): most
+/// resets already landed pipelined with the settle tail, so `resets` is usually
+/// EMPTY here and the roll is a single `start_auction`; when some remain they fire
+/// bounded-concurrent (not serial round-trips). A reset that races another cranker
+/// is a benign `AuctionIdMismatch` (a dropped one simply retries next tick).
+pub async fn roll(ctx: &KeeperCtx, oracle: Pubkey, resets: Vec<u16>) {
     let cranker = ctx.cranker.pubkey();
-    for shard_id in 0..num_slab_shards {
-        let reset = ix::reset_shard(&ctx.pdas, cranker, shard_id);
-        send_one(ctx, &[reset], "reset_shard").await;
-    }
+    stream::iter(resets)
+        .for_each_concurrent(ctx.settle_concurrency, |shard_id| async move {
+            let reset = ix::reset_shard(&ctx.pdas, cranker, shard_id);
+            send_one(ctx, &[reset], "reset_shard").await;
+        })
+        .await;
     let ix = ix::start_auction(&ctx.pdas, cranker, oracle);
     send_one(ctx, &[ix], "start_auction").await;
 }

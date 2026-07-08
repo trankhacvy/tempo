@@ -5,31 +5,87 @@
 //! the reference market maker classify through this one tested function so the
 //! D3 (replica-safe) behaviour cannot drift between services.
 //!
-//! String matching (`is_race_error`) maps to `TempoProgramError` variants:
-//!   "custom program error" / "custom error" → any on-chain custom error code
-//!   "already"             → AlreadyConsumed, AlreadyProcessed
-//!   "wrong phase"         → AuctionWrongPhase
-//!   "not found"           → OrderNotFound, AccountNotFound
+//! P5.3 (known-issues §4.10): classification is now **structured** — the on-chain
+//! custom error CODE is parsed out of the transaction error and matched against
+//! the explicit [`BENIGN_CODES`] allowlist. A custom error whose code is NOT on
+//! the list is a REAL error (it used to be silently swallowed by the old
+//! "any custom program error is benign" substring rule — an `InsuranceInsolvent`
+//! or `VaultInvariantViolated` must surface, not be classified as a race). The
+//! substring matcher survives only as the fallback for CODE-LESS transport
+//! errors (blockhash expiry, `AlreadyProcessed`, node-behind races).
 //!
 //! Monitor `keeper_tx_total{result="error"}` after deploy: an unexpected spike
-//! means a benign race string was missed and should be added to `is_race_error`.
+//! means a benign race code was missed and should be added to `BENIGN_CODES`.
 
 use crate::error::SdkError;
 
-// TODO(known-issues §4.10): replace string matching with numeric error-code matching
-// once the program stabilises its error table and exposes structured codes that the
-// SDK can match without parsing the error message string.
-fn is_race_error(msg: &str) -> bool {
+/// Crank races that mean "someone else did the work first" (or "the state moved
+/// on") — skip/retry-next-tick, never back off, never alert. Codes are
+/// `TempoProgramError` discriminants; keep in sync with `program/src/errors.rs`.
+pub const BENIGN_CODES: &[u32] = &[
+    3,  // AuctionWrongPhase      — phase advanced under us
+    5,  // OrderNotFound          — settled/cancelled/reaped first
+    9,  // AuctionNotComplete     — crank raced the completeness gate
+    10, // OrderAlreadyAccumulated — another cranker folded it first
+    16, // AuctionIdMismatch      — round rolled under us (incl. a re-emitted reset_shard)
+    17, // InvalidOrderStatus     — order raced to a later status
+    25, // NotLiquidatable        — liquidation raced (position healed / already closed)
+];
+
+/// Extract the on-chain custom error code from a stringified
+/// `TransactionError`, across the formats the RPC stack actually produces:
+///   "custom program error: 0x2e"   (Display of `InstructionError::Custom`, preflight logs)
+///   "Custom(46)"                   (Debug form)
+///   {"Custom":46}                  (JSON-RPC error body)
+///   "custom error: 46"             (legacy client Display)
+/// Returns `None` for a code-less (transport-level) error.
+fn custom_code(msg: &str) -> Option<u32> {
     let m = msg.to_ascii_lowercase();
-    m.contains("custom program error")
-        || m.contains("custom error")
-        || m.contains("already")
+    let parse_at = |rest: &str, radix: u32| -> Option<u32> {
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+        u32::from_str_radix(&digits, radix).ok()
+    };
+    if let Some(i) = m.find("custom program error: 0x") {
+        return parse_at(&m[i + "custom program error: 0x".len()..], 16);
+    }
+    if let Some(i) = m.find("\"custom\":") {
+        return parse_at(&m[i + "\"custom\":".len()..], 10);
+    }
+    if let Some(i) = m.find("custom(") {
+        return parse_at(&m[i + "custom(".len()..], 10);
+    }
+    if let Some(i) = m.find("custom error: ") {
+        return parse_at(&m[i + "custom error: ".len()..], 10);
+    }
+    None
+}
+
+/// Code-less fallback: transport/runtime races with no custom code. Kept
+/// narrow — these strings come from the Solana runtime, not this program.
+///   "already"     → AlreadyProcessed (another replica landed the identical tx)
+///   "wrong phase" → phase-guard messages surfaced without a code
+///   "not found"   → account/order raced away
+///   "blockhash"   → blockhash expired mid-confirm (rebuild + resend next tick)
+fn is_transport_race(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    m.contains("already")
         || m.contains("wrong phase")
         || m.contains("not found")
+        || m.contains("blockhash not found")
+}
+
+fn is_race_error(msg: &str) -> bool {
+    match custom_code(msg) {
+        // Structured path: a coded program error is benign IFF allowlisted.
+        Some(code) => BENIGN_CODES.contains(&code),
+        // Code-less path: the narrow transport-race fallback.
+        None => is_transport_race(msg),
+    }
 }
 
 /// `true` when `e` is a benign program/transaction race (ignore it), `false`
-/// when it is a connectivity or instruction-build error the caller should back off on.
+/// when it is a real program error, connectivity failure, or instruction-build
+/// error the caller should surface/back off on.
 pub fn benign(e: &SdkError) -> bool {
     match e {
         SdkError::Common(tempo_common::CommonError::TxFailed { err, .. }) => is_race_error(err),
@@ -43,46 +99,90 @@ mod tests {
     use super::*;
     use tempo_common::CommonError;
 
+    fn tx_failed(err: &str) -> SdkError {
+        SdkError::Common(CommonError::TxFailed {
+            sig: "s".into(),
+            err: err.into(),
+        })
+    }
+
+    #[test]
+    fn benign_allowlists_each_race_code() {
+        // Every allowlisted code classifies benign in every wire format.
+        for &code in BENIGN_CODES {
+            assert!(
+                benign(&tx_failed(&format!(
+                    "Error processing Instruction 0: custom program error: {code:#x}"
+                ))),
+                "hex form, code {code}"
+            );
+            assert!(
+                benign(&tx_failed(&format!("InstructionError(0, Custom({code}))"))),
+                "debug form, code {code}"
+            );
+            assert!(
+                benign(&SdkError::Common(CommonError::Rpc(format!(
+                    "{{\"InstructionError\":[0,{{\"Custom\":{code}}}]}}"
+                )))),
+                "json form, code {code}"
+            );
+        }
+    }
+
+    #[test]
+    fn benign_rejects_non_allowlisted_codes_as_real() {
+        // The whole point of P5.3: a REAL program error must surface even though
+        // it is a "custom program error" string the old matcher swallowed.
+        for code in [33u32, 51, 2, 46, 50] {
+            // InsuranceInsolvent(33), VaultInvariantViolated(51), MarketPaused(2),
+            // OrderAlreadyExpired(46), OpenInterestCapExceeded(50)
+            assert!(
+                !benign(&tx_failed(&format!(
+                    "Error processing Instruction 0: custom program error: {code:#x}"
+                ))),
+                "code {code} must be a real error"
+            );
+        }
+    }
+
     #[test]
     fn benign_classifies_custom_program_error_in_tx_failed() {
-        assert!(benign(&SdkError::Common(CommonError::TxFailed {
-            sig: "s".into(),
-            err: "Error processing Instruction 0: custom program error: 0x6".into(),
-        })));
-        assert!(benign(&SdkError::Common(CommonError::TxFailed {
-            sig: "s".into(),
-            err: "Custom error: 6".into(),
-        })));
+        // Format-drift regression (kept from the string-matcher era): the exact
+        // preflight/Display strings the RPC stack produces for an allowlisted code.
+        assert!(benign(&tx_failed(
+            "Error processing Instruction 0: custom program error: 0x5"
+        )));
+        assert!(benign(&tx_failed("Custom error: 25")));
     }
 
     #[test]
     fn benign_classifies_program_error_string() {
         assert!(benign(&SdkError::Common(CommonError::Rpc(
-            "Transaction simulation failed: custom program error: 0x1".into()
+            "Transaction simulation failed: custom program error: 0x3".into()
         ))));
+        // Code-less transport race: another replica landed the identical tx.
         assert!(benign(&SdkError::Common(CommonError::Rpc(
             "AlreadyProcessed".into()
         ))));
     }
 
     #[test]
-    fn benign_rejects_instruction_build_errors() {
-        assert!(!benign(&SdkError::Common(CommonError::TxFailed {
-            sig: "s".into(),
-            err: "Error processing Instruction 0: incorrect program id for instruction".into(),
-        })));
-        assert!(!benign(&SdkError::Common(CommonError::TxFailed {
-            sig: "s".into(),
-            err: "Error processing Instruction 0: invalid account data".into(),
-        })));
+    fn benign_transport_fallback_stays_narrow() {
+        // Code-less strings the fallback still classifies as races…
+        assert!(benign(&tx_failed("Blockhash not found")));
+        assert!(benign(&tx_failed("order not found in slab")));
+        // …and code-less strings it must NOT swallow.
+        assert!(!benign(&tx_failed(
+            "Error processing Instruction 0: incorrect program id for instruction"
+        )));
+        assert!(!benign(&tx_failed(
+            "Error processing Instruction 0: invalid account data"
+        )));
     }
 
     #[test]
     fn benign_unknown_string_is_not_benign() {
-        assert!(!benign(&SdkError::Common(CommonError::TxFailed {
-            sig: "s".into(),
-            err: "some completely unexpected error".into(),
-        })));
+        assert!(!benign(&tx_failed("some completely unexpected error")));
     }
 
     #[test]
@@ -94,5 +194,20 @@ mod tests {
             "sig".into()
         ))));
         assert!(!benign(&SdkError::Decode("bad".into())));
+    }
+
+    #[test]
+    fn custom_code_parses_all_wire_formats() {
+        assert_eq!(
+            custom_code("Error processing Instruction 1: custom program error: 0x2e"),
+            Some(46)
+        );
+        assert_eq!(custom_code("InstructionError(0, Custom(17))"), Some(17));
+        assert_eq!(
+            custom_code("{\"InstructionError\":[0,{\"Custom\":9}]}"),
+            Some(9)
+        );
+        assert_eq!(custom_code("Custom error: 25"), Some(25));
+        assert_eq!(custom_code("Blockhash not found"), None);
     }
 }

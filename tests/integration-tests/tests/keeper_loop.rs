@@ -87,7 +87,7 @@ fn keeper_drives_full_round() {
             Plan::Discover => {
                 ctx.finalize_clear(&pdas);
             }
-            Plan::Settle { orders, quotes } => {
+            Plan::Settle { orders, quotes, .. } => {
                 saw_settle = true;
                 for o in orders {
                     ctx.settle_fill(&pdas, o.order_id);

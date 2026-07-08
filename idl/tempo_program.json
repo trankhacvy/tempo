@@ -7715,6 +7715,135 @@
         ],
         "kind": "instructionNode",
         "name": "cancelAllOrders"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Position owner; receives the reclaimed rent"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "owner"
+          },
+          {
+            "docs": [
+              "The flat Position PDA to close"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "position"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 44
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "closePosition"
+      },
+      {
+        "accounts": [
+          {
+            "docs": [
+              "Market authority; receives all reclaimed rent"
+            ],
+            "isSigner": true,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "authority"
+          },
+          {
+            "docs": [
+              "Market to close (closed last)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "market"
+          },
+          {
+            "defaultValue": {
+              "kind": "pdaValueNode",
+              "pda": {
+                "kind": "pdaLinkNode",
+                "name": "auctionHistogramHeader"
+              },
+              "seeds": [
+                {
+                  "kind": "pdaSeedValueNode",
+                  "name": "market",
+                  "value": {
+                    "kind": "accountValueNode",
+                    "name": "market"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              "The market's AuctionHistogram (closed)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "histogram"
+          },
+          {
+            "docs": [
+              "The market's ClearingResult (closed)"
+            ],
+            "isSigner": false,
+            "isWritable": true,
+            "kind": "instructionAccountNode",
+            "name": "clearingResult"
+          }
+        ],
+        "arguments": [
+          {
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 45
+            },
+            "defaultValueStrategy": "omitted",
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "endian": "le",
+              "format": "u8",
+              "kind": "numberTypeNode"
+            }
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "kind": "instructionNode",
+        "name": "closeMarket"
       }
     ],
     "kind": "programNode",

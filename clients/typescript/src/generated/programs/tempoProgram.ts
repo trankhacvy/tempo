@@ -71,6 +71,8 @@ import {
   getCancelOrderInstructionAsync,
   getClearMakerQuoteInstruction,
   getCloseMakerQuoteInstruction,
+  getCloseMarketInstructionAsync,
+  getClosePositionInstruction,
   getDepositInstruction,
   getFinalizeClearInstructionAsync,
   getForceResetInstructionAsync,
@@ -115,6 +117,8 @@ import {
   parseCancelOrderInstruction,
   parseClearMakerQuoteInstruction,
   parseCloseMakerQuoteInstruction,
+  parseCloseMarketInstruction,
+  parseClosePositionInstruction,
   parseDepositInstruction,
   parseFinalizeClearInstruction,
   parseForceResetInstruction,
@@ -159,6 +163,8 @@ import {
   type CancelOrderAsyncInput,
   type ClearMakerQuoteInput,
   type CloseMakerQuoteInput,
+  type CloseMarketAsyncInput,
+  type ClosePositionInput,
   type DepositInput,
   type FinalizeClearAsyncInput,
   type ForceResetAsyncInput,
@@ -182,6 +188,8 @@ import {
   type ParsedCancelOrderInstruction,
   type ParsedClearMakerQuoteInstruction,
   type ParsedCloseMakerQuoteInstruction,
+  type ParsedCloseMarketInstruction,
+  type ParsedClosePositionInstruction,
   type ParsedDepositInstruction,
   type ParsedFinalizeClearInstruction,
   type ParsedForceResetInstruction,
@@ -345,6 +353,8 @@ export enum TempoProgramInstruction {
   ProposeInsuranceWithdraw,
   ApplyInsuranceWithdraw,
   CancelAllOrders,
+  ClosePosition,
+  CloseMarket,
 }
 
 export function identifyTempoProgramInstruction(
@@ -482,6 +492,12 @@ export function identifyTempoProgramInstruction(
   }
   if (containsBytes(data, getU8Encoder().encode(43), 0)) {
     return TempoProgramInstruction.CancelAllOrders;
+  }
+  if (containsBytes(data, getU8Encoder().encode(44), 0)) {
+    return TempoProgramInstruction.ClosePosition;
+  }
+  if (containsBytes(data, getU8Encoder().encode(45), 0)) {
+    return TempoProgramInstruction.CloseMarket;
   }
   throw new SolanaError(
     SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
@@ -623,7 +639,13 @@ export type ParsedTempoProgramInstruction<
     } & ParsedApplyInsuranceWithdrawInstruction<TProgram>)
   | ({
       instructionType: TempoProgramInstruction.CancelAllOrders;
-    } & ParsedCancelAllOrdersInstruction<TProgram>);
+    } & ParsedCancelAllOrdersInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.ClosePosition;
+    } & ParsedClosePositionInstruction<TProgram>)
+  | ({
+      instructionType: TempoProgramInstruction.CloseMarket;
+    } & ParsedCloseMarketInstruction<TProgram>);
 
 export function parseTempoProgramInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
@@ -938,6 +960,20 @@ export function parseTempoProgramInstruction<TProgram extends string>(
         ...parseCancelAllOrdersInstruction(instruction),
       };
     }
+    case TempoProgramInstruction.ClosePosition: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.ClosePosition,
+        ...parseClosePositionInstruction(instruction),
+      };
+    }
+    case TempoProgramInstruction.CloseMarket: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: TempoProgramInstruction.CloseMarket,
+        ...parseCloseMarketInstruction(instruction),
+      };
+    }
     default:
       throw new SolanaError(
         SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
@@ -1147,6 +1183,14 @@ export type TempoProgramPluginInstructions = {
   cancelAllOrders: (
     input: CancelAllOrdersAsyncInput,
   ) => ReturnType<typeof getCancelAllOrdersInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  closePosition: (
+    input: ClosePositionInput,
+  ) => ReturnType<typeof getClosePositionInstruction> &
+    SelfPlanAndSendFunctions;
+  closeMarket: (
+    input: CloseMarketAsyncInput,
+  ) => ReturnType<typeof getCloseMarketInstructionAsync> &
     SelfPlanAndSendFunctions;
 };
 
@@ -1405,6 +1449,16 @@ export function tempoProgramProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getCancelAllOrdersInstructionAsync(input),
+            ),
+          closePosition: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getClosePositionInstruction(input),
+            ),
+          closeMarket: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCloseMarketInstructionAsync(input),
             ),
         },
         pdas: {

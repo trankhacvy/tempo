@@ -160,3 +160,46 @@ fn effective_price_brake_walks_by_cap() {
         "effective price catches up over many slots"
     );
 }
+
+/// P5.4 (missing-features §5.1): the funding rate's INDEX side is the oracle
+/// EMA, not spot. With mark == spot the spot-priced gap is zero, so the index
+/// only moves if the program reads the divergent EMA. Solvency's use of raw
+/// spot is pinned separately (`oracle::test_solvency_mark_prefers_fresh_raw_oracle`
+/// + the divergent-ema reader unit tests in both the program and tempo-math).
+#[test]
+fn funding_rate_prices_off_the_ema_not_spot() {
+    let mut ctx = TestContext::new();
+    let oracle = solana_sdk::pubkey::Pubkey::new_unique();
+    ctx.set_clock_ts(1_700_000_000);
+    let pdas = ctx.init_market_with_oracle(10, 16, 64, oracle);
+
+    // A cleared round at 40 records the last-fill prices that feed the mark.
+    let buyer = ctx.new_funded_signer();
+    let seller = ctx.new_funded_signer();
+    ctx.post_maker_order(&pdas, &buyer, SIDE_BUY, 40, 50);
+    let sell_id = ctx.submit_order(&pdas, &seller, SIDE_SELL, 40, 50);
+    ctx.process_chunk(&pdas, 0, 64);
+    ctx.process_maker_quote(&pdas, &buyer.pubkey());
+    ctx.finalize_clear(&pdas);
+    ctx.settle_maker_quote_clearing(&pdas, &buyer.pubkey());
+    let _ = ctx.settle_fill(&pdas, sell_id);
+
+    // Control: spot 40, NO ema (fallback → index side = spot 40 = mark 40 →
+    // zero gap → the index does not move).
+    ctx.set_oracle_with_ema(&oracle, 40, -8, 0);
+    ctx.update_funding(&pdas, &oracle);
+    let (idx_control, _) = ctx.market_funding(&pdas);
+    assert_eq!(idx_control, 0, "spot == mark → zero rate → index unmoved");
+
+    // Divergent EMA: spot stays 40 (mark 40, band centered on spot), EMA 38.
+    // If funding still priced off spot the gap would remain zero; reading the
+    // EMA makes the gap (40 − 38) > 0 → the index must advance.
+    ctx.set_clock_ts(1_700_003_600); // one full funding interval later
+    ctx.set_oracle_with_ema(&oracle, 40, -8, 38);
+    ctx.update_funding(&pdas, &oracle);
+    let (idx_ema, _) = ctx.market_funding(&pdas);
+    assert!(
+        idx_ema > 0,
+        "divergent EMA moved the funding index (spot alone could not), got {idx_ema}"
+    );
+}

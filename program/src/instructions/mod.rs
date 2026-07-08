@@ -7,6 +7,8 @@ pub mod cancel_all_orders;
 pub mod cancel_order;
 pub mod clear_maker_quote;
 pub mod close_maker_quote;
+pub mod close_market;
+pub mod close_position;
 pub mod definition;
 pub mod deposit;
 pub mod emit_event;
@@ -56,6 +58,8 @@ pub use cancel_all_orders::*;
 pub use cancel_order::*;
 pub use clear_maker_quote::*;
 pub use close_maker_quote::*;
+pub use close_market::*;
+pub use close_position::*;
 #[cfg(feature = "idl")]
 pub use definition::*;
 pub use deposit::*;

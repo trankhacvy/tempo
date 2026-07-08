@@ -33,10 +33,10 @@ history, kept intentionally short.
 | 2.11 Ledger required to release a reservation on cancel/zero-fill settle | design | By-design; corrected below (the doc previously overstated when the ledger is required) |
 | 2.12 Devnet client bundle drift after the sharding layout bump | operational | Mostly resolved; one vendor bundle needs a regen check |
 | 2.13 Stage-B marketable-fill: not yet validated end-to-end on a live chain | design | Deferred — a real coverage gap |
-| 2.14 Stage-C2 (true round-processing overlap) not built | design | Deferred — gated on a benchmark |
-| 2.15 Keeper doesn't open the next `Collect` early | design | Deferred — scheduling optimization only |
-| 4.9 One `MakerQuote` PDA per maker | design | Deferred — needs a program change |
-| 4.10 Off-chain `benign()` error classifier uses string matching | design | Accepted limitation |
+| 2.14 Stage-C2 (true round-processing overlap) not built | design | Decision recorded — see `docs/bench/round_latency.md` |
+| 2.15 Keeper doesn't open the next `Collect` early | design | **Closed (P5.2)** — early roll + resets pipelined with the settle tail |
+| 4.9 One `MakerQuote` PDA per maker | design | **Closed (Phase 2)** — `quote_index` PDA seed, up to 4 ladders per maker |
+| 4.10 Off-chain `benign()` error classifier uses string matching | design | **Closed (P5.3)** — structured code allowlist; string matcher demoted to transport fallback |
 
 ### 2.11 Releasing a reservation on cancel/zero-fill settle requires the collateral ledger — [design]
 
@@ -122,36 +122,36 @@ throughput but doesn't yet answer that specific question.
 **To close:** run the O(ticks)/throughput benchmark; if C1 is the bottleneck,
 implement C2 per `docs/plan.md §4.2`.
 
-### 2.15 Keeper does not open the next `Collect` early — [design]
+### 2.15 Keeper does not open the next `Collect` early — [design] — CLOSED (P5.2)
 
-Plan task C1.6: the keeper could schedule the next `Collect` to open as soon
-as `Discovered`/`Settling` begins rather than after full settlement,
-shortening the round gap. A keeper scheduling change only
-(`crates/keeper`); correctness does not depend on it, and C1 already lets
-users submit at any time.
+**Closed.** `engine::decide` now pipelines the roll with the settle tail: any
+shard whose own settle work is drained emits its `reset_shard` alongside the
+remaining settles (`Plan::Settle.resets`, fired concurrently in
+`actions::settle`), and once the market reports `shards_ready ==
+num_slab_shards` the roll is a single `start_auction` with no reset pass
+(`Plan::Roll.resets` empty — the early-roll fast path). Pure keeper change;
+covered by `engine::tests::{settle_pipelines_resets_for_drained_shards,
+early_roll_skips_the_reset_pass_when_all_shards_ready}`. The measured effect on
+round latency is part of `docs/bench/round_latency.md`.
 
-**To close:** adjust the keeper cadence once C1 latency is measured (pairs
-naturally with the §2.14 benchmark).
+### 4.9 One MakerQuote PDA per maker — single-ladder limit — [design] — CLOSED (Phase 2)
 
-### 4.9 One MakerQuote PDA per maker — single-ladder limit — [design]
+**Closed.** `MakerQuote` v4 appended `quote_index` as a fourth PDA seed
+(`[b"maker_quote", market, maker, quote_index_le]`, `MAX_QUOTES_PER_MAKER = 4`),
+so a maker can run up to four concurrent ladders and re-quote on a fresh index
+while another quote is folded mid-round. SDK `pda::maker_quote` and the ix
+builders take the index; the mm-bot pins index 0.
 
-PDA seeds are `[b"maker_quote", market, maker]` — one active quote per maker
-per market. The mm-bot cannot widen its posted depth by running two ladders,
-and if the single quote is folded mid-round the bot cannot re-quote until
-`clear_maker_quote` + next round. A multi-level PDA (e.g. an added
-`quote_id` seed) would allow multiple concurrent quotes per maker. Interim
-workaround documented in `ops/README.md` and `crates/sdk/src/pda.rs`.
-Requires a program change; deferred.
+### 4.10 `benign()` uses fragile string-matching — [design] — CLOSED (P5.3)
 
-### 4.10 `benign()` uses fragile string-matching — [design]
-
-`crates/sdk/src/retry.rs` classifies errors by matching substrings ("custom
-program error", "already", "wrong phase", "not found") in the RPC error
-string. If Solana or an RPC provider changes the error message format, the
-classifier silently changes behavior. The durable fix is for the program to
-surface structured, numeric error codes the SDK can match on directly; until
-then this is an accepted, documented fragility, with a regression test in
-place to catch format drift.
+**Closed.** `crates/sdk/src/retry.rs` now parses the numeric custom error code
+out of the transaction error (all four wire formats: preflight hex, Debug,
+JSON-RPC body, legacy Display) and classifies against the explicit
+`BENIGN_CODES` allowlist (3, 5, 9, 10, 16, 17, 25). A coded error NOT on the
+list is a REAL error — the old rule silently swallowed every "custom program
+error", including `InsuranceInsolvent`/`VaultInvariantViolated`. The substring
+matcher survives only for code-less transport races (AlreadyProcessed,
+blockhash expiry), with the format-drift regression tests retained.
 
 ---
 

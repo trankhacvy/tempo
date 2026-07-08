@@ -43,6 +43,10 @@ pub struct MarketView {
     pub max_position_notional: u128,
     /// Number of OrderSlab shards (Stage A). 1 when the field is absent (pre-shard account).
     pub num_slab_shards: u16,
+    /// Shards already reset for the next round (the roll-side aggregate; Design Z).
+    /// `== num_slab_shards` means `start_auction` can fire immediately — the keeper's
+    /// early-roll signal (P5.2). 0 when the field is absent.
+    pub shards_ready: u16,
 }
 
 impl MarketView {
@@ -86,6 +90,11 @@ impl MarketView {
         } else {
             1
         };
+        let shards_ready = if data.len() >= 406 {
+            u16_at(data, 404)
+        } else {
+            0
+        };
         Ok(Self {
             version: data[1],
             current_auction_id: u64_at(data, 2),
@@ -105,6 +114,7 @@ impl MarketView {
             initial_margin_bps,
             max_position_notional,
             num_slab_shards,
+            shards_ready,
         })
     }
 

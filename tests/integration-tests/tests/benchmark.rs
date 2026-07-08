@@ -133,6 +133,77 @@ fn measure_settle_cu() -> u64 {
     ctx.settle_fill(&pdas, buy).0.compute_units_consumed
 }
 
+/// Measure reset_shard + start_auction CU (the roll tail — P5.1).
+fn measure_reset_and_roll_cu() -> (u64, u64) {
+    let mut ctx = TestContext::new();
+    let pdas = ctx.init_market(1, 256, 16);
+    ctx.process_chunk(&pdas, 0, 16);
+    ctx.finalize_clear(&pdas);
+    let reset = ctx
+        .try_reset_shard(&pdas, 0)
+        .expect("reset")
+        .compute_units_consumed;
+    let roll = ctx
+        .try_start_auction(&pdas)
+        .expect("roll")
+        .compute_units_consumed;
+    (reset, roll)
+}
+
+/// P5.1 — the ROUND-TAIL model (docs/bench/round_latency.md): per-phase tx
+/// counts and Σ CU for one full round at the dev-default 16 shards × 90 orders,
+/// from measured per-instruction CU. This is the deterministic half of the C2
+/// (double-buffered histogram) decision; the wall-clock half comes from the
+/// devnet orchestrator run recorded in the same report.
+#[test]
+#[ignore = "benchmark; run with --ignored --nocapture"]
+fn benchmark_round_tail_model() {
+    const SHARDS: u64 = 16;
+    const ORDERS: u64 = SHARDS * SLAB_CAP as u64; // 1,440
+
+    let submit_cu = measure_submit_cu(SLAB_CAP - 1);
+    let chunk_cu = measure_chunk_cu(SLAB_CAP);
+    let finalize_cu = measure_finalize_sharded_cu(SHARDS as u16);
+    let settle_cu = measure_settle_cu();
+    let (reset_cu, roll_cu) = measure_reset_and_roll_cu();
+
+    let phases: [(&str, u64, u64); 6] = [
+        ("intake (submit_order)", ORDERS, submit_cu),
+        ("accumulate (process_chunk ×shards)", SHARDS, chunk_cu),
+        ("discover (finalize_clear)", 1, finalize_cu),
+        ("settle (settle_fill ×orders)", ORDERS, settle_cu),
+        ("reset (reset_shard ×shards)", SHARDS, reset_cu),
+        ("roll (start_auction)", 1, roll_cu),
+    ];
+
+    println!(
+        "\n# Round-tail model — 16 shards × {} orders/shard",
+        SLAB_CAP
+    );
+    println!("| phase | txs | CU/tx | Σ CU |");
+    println!("|---|---|---|---|");
+    for (name, txs, cu) in &phases {
+        println!("| {} | {} | {} | {} |", name, txs, cu, txs * cu);
+    }
+    let settle_total = ORDERS * settle_cu;
+    let reset_total = SHARDS * reset_cu;
+    let tail = settle_total + reset_total + roll_cu;
+    println!(
+        "\nserial tail (settle+reset+roll): {} txs, Σ {} CU ≈ {:.1} Market-write blocks",
+        ORDERS + SHARDS + 1,
+        tail,
+        tail as f64 / ACCOUNT_BLOCK_CU as f64
+    );
+    println!(
+        "collect window: {} slots — the tail C2 would overlap is ~{:.1} blocks of Market-locked work",
+        2, // COLLECT_WINDOW_SLOTS
+        tail as f64 / ACCOUNT_BLOCK_CU as f64
+    );
+
+    assert!(reset_cu < TX_CU_LIMIT && roll_cu < TX_CU_LIMIT);
+    assert!(settle_cu > 0 && reset_cu > 0 && roll_cu > 0);
+}
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

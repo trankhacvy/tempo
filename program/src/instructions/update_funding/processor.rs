@@ -71,6 +71,7 @@ pub fn process_update_funding(
 
     // §5.2 naming honesty: this is the FUNDING mark (banded clearing mid) —
     // solvency prices off the raw oracle via `solvency_mark`, deliberately NOT this.
+    // The band stays anchored on RAW spot (the manipulation rail).
     let funding_mark = compute_mark_price(last_bid, last_ask, price.price_1e8, MARK_BAND_BPS)?;
 
     // Elapsed-time fraction of one funding interval, in bps (capped at one period).
@@ -78,9 +79,13 @@ pub fn process_update_funding(
     let period_fraction_bps =
         (elapsed.saturating_mul(10_000) / FUNDING_INTERVAL_SECS).min(10_000) as u32;
 
+    // P5.4 (missing-features §5.1): the INDEX side of the funding gap is the
+    // oracle EMA (the noise rail — one manipulated print barely moves it), while
+    // the band above stays on spot and solvency stays on raw spot entirely.
+    // `ema_price_1e8` falls back to spot when the feed carries no EMA.
     let rate = period_funding_rate(
         funding_mark,
-        price.price_1e8,
+        price.ema_price_1e8,
         period_fraction_bps,
         MAX_FUNDING_RATE,
     )?;

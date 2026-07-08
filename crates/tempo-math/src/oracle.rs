@@ -34,6 +34,9 @@ pub struct OraclePrice {
     pub publish_time: i64,
     /// `price` normalized to fixed 1e8 units (positive).
     pub price_1e8: u64,
+    /// Pyth's EMA price normalized to 1e8; falls back to `price_1e8` when the
+    /// feed carries no EMA (P5.4 — funding's index side; solvency stays on spot).
+    pub ema_price_1e8: u64,
 }
 
 impl OraclePrice {
@@ -98,6 +101,15 @@ pub fn read_price(
 
     let price_1e8 = normalize_1e8(price, exponent)?;
 
+    // EMA price (P5.4): `ema_price` (i64) at base+68; MIN_LEN covers base+84 for
+    // both verification levels. Non-positive EMA → fall back to spot.
+    let ema_price = i64::from_le_bytes(data[base + 68..base + 76].try_into().unwrap());
+    let ema_price_1e8 = if ema_price > 0 {
+        normalize_1e8(ema_price, exponent)?
+    } else {
+        price_1e8
+    };
+
     Ok(OraclePrice {
         feed_id,
         price,
@@ -105,6 +117,7 @@ pub fn read_price(
         exponent,
         publish_time,
         price_1e8,
+        ema_price_1e8,
     })
 }
 
@@ -177,7 +190,13 @@ pub fn solvency_mark(
 mod tests {
     use super::*;
 
-    fn synthetic(feed_id: &[u8; 32], price: i64, exponent: i32, publish_time: i64) -> Vec<u8> {
+    fn synthetic_with_ema(
+        feed_id: &[u8; 32],
+        price: i64,
+        exponent: i32,
+        publish_time: i64,
+        ema: i64,
+    ) -> Vec<u8> {
         let mut d = vec![0u8; MIN_LEN];
         d[VL_OFFSET] = 1; // Full
         let base = VL_OFFSET + 1;
@@ -186,7 +205,12 @@ mod tests {
         d[base + 40..base + 48].copy_from_slice(&7_500_000u64.to_le_bytes());
         d[base + 48..base + 52].copy_from_slice(&exponent.to_le_bytes());
         d[base + 52..base + 60].copy_from_slice(&publish_time.to_le_bytes());
+        d[base + 68..base + 76].copy_from_slice(&ema.to_le_bytes());
         d
+    }
+
+    fn synthetic(feed_id: &[u8; 32], price: i64, exponent: i32, publish_time: i64) -> Vec<u8> {
+        synthetic_with_ema(feed_id, price, exponent, publish_time, 0)
     }
 
     #[test]
@@ -196,6 +220,23 @@ mod tests {
         assert_eq!(p.price, 17_176_900_000);
         assert_eq!(p.exponent, -8);
         assert_eq!(p.price_1e8, 17_176_900_000);
+        assert_eq!(
+            p.ema_price_1e8, p.price_1e8,
+            "zero/unset EMA falls back to spot"
+        );
+    }
+
+    #[test]
+    fn test_reads_divergent_ema() {
+        let d = synthetic_with_ema(&SOL_USD_FEED_ID, 100_00000000, -8, 1_000_000, 95_00000000);
+        let p = read_price(&d, &SOL_USD_FEED_ID, 1_000_010, 60).unwrap();
+        assert_eq!(p.price_1e8, 100_00000000);
+        assert_eq!(p.ema_price_1e8, 95_00000000);
+
+        let d = synthetic_with_ema(&SOL_USD_FEED_ID, 1_000_000, -6, 1_000_000, 950_000);
+        let p = read_price(&d, &SOL_USD_FEED_ID, 1_000_010, 60).unwrap();
+        assert_eq!(p.price_1e8, 100_000_000);
+        assert_eq!(p.ema_price_1e8, 95_000_000);
     }
 
     #[test]
@@ -250,6 +291,7 @@ mod tests {
             exponent: -8,
             publish_time: 0,
             price_1e8: 17_176_900_000,
+            ema_price_1e8: 17_176_900_000,
         };
         assert!(tight.confidence_bps() < 10);
         assert!(tight.require_confidence(DEFAULT_MAX_CONF_BPS).is_ok());

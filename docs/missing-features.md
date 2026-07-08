@@ -19,26 +19,26 @@ Status tags: **DONE** (built) · **partial** (exists but incomplete) ·
 | Item                                              | Status        | Note                                                                                  |
 | ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
 | 1.1 collateral reservation at submit              | done        | `Order.reserved_margin`; rejected at submit (`InsufficientCollateral`)                |
-| 1.2 position cap + initial-margin buffer          | partial     | `initial_margin_bps` + `max_position_notional` done; **max-OI cap still absent**       |
+| 1.2 position cap + initial-margin buffer          | done        | `initial_margin_bps` + `max_position_notional` + per-side `max_open_interest` soft cap (increment-gated at submit, never blocks de-risking) |
 | 1.3 `initialize_market` param validation          | done        | structural + fee + risk-config bounds in `data.rs` `TryFrom`                          |
-| 2.1 close / reduce-position instruction           | absent      | only exit is an opposing order into the next auction                                  |
+| 2.1 close / reduce-position instruction           | done        | SDK `close_position` (opposite-side reduce-only market order — the auction IS the venue); `ClosePosition` (44) reclaims a flat position's rent |
 | 2.2 reduce-only flag                              | done        | forces `Consumed` at settle; reserves FULL worst-case margin (DDR-3 Correction-2)     |
-| 2.3 order types beyond resting limit              | partial     | GTC/GTT expiry (`expires_at_auction`) shipped with resting orders; still no market / IOC / FOK / post-only |
+| 2.3 order types beyond resting limit              | done        | GTC/GTT expiry + IOC (`expires == arm round`) + market orders (SDK, window-boundary price); FOK/post-only deliberately not built (system-design §8) |
 | 2.4 partial-fill carry-over                       | done        | resting orders (Stage B): unfilled/partial remainder re-arms `Resting` and carries to the next round        |
 | 2.5 remove-from-group for cross margin            | done        | `RemovePositionFromMargin` (disc 28) + compacting `remove_member`                     |
-| 2.6 minimum order size / notional                 | absent      | only `quantity != 0`; dust flooding possible                                          |
-| 2.7 cancel-all / batch cancel / expiry            | absent      | only single-order `cancel_order`                                                      |
-| 3.1 update-market / set-risk-params               | absent      | params fixed at init (only `migrate_market` rewrites brake/stale-window)              |
-| 3.2 pause / halt / resume                         | absent      | `MarketPaused` error exists but is referenced nowhere                                 |
-| 3.3 set-oracle / repoint feed                     | absent      | oracle bound once at init                                                             |
-| 3.4 close-market / delist / authority transfer    | absent      | markets can't be wound down; no authority transfer                                    |
-| 4.1 insurance seed / withdraw                     | absent      | no admin seed/harvest; only outflow is `finalize_clear` crank fee                     |
-| 4.2 insurance segregation                         | partial     | bookkeeping `u64` shares the vault token account; invariant tested off-chain only     |
-| 5.1 EMA / TWAP                                     | absent      | spot price only; Pyth `ema_price` ignored                                             |
-| 5.2 unified mark price                            | partial     | funding = clearing midpoint, liquidation = raw oracle — two definitions               |
-| 6.1 partial liquidation                           | absent      | `liquidate` zeroes the whole position                                                 |
-| 6.2 keeper-reward floor                           | partial     | penalty caps to equity; most cranks unincentivized                                    |
-| 7.1 maker collateral check at quote time          | absent      | unbacked ladders can move the clearing price + drain insurance                        |
+| 2.6 minimum order size / notional                 | done        | `min_order_notional` (`OrderBelowMinimum`, hot-updatable)                             |
+| 2.7 cancel-all / batch cancel / expiry            | done        | `CancelAllOrders` (43): owner-only per-shard batch cancel, one summed release         |
+| 3.1 update-market / set-risk-params               | done        | `UpdateMarketParams` (33, hot) + staged `Propose/ApplyRiskUpdate` (34/35, 3k-slot delay) |
+| 3.2 pause / halt / resume                         | done        | `SetPause` (32): intake/roll bitflags; exits never pause                              |
+| 3.3 set-oracle / repoint feed                     | done        | staged `Propose/ApplySetOracle` (38/39), paused-only + delay-gated                    |
+| 3.4 close-market / delist / authority transfer    | done        | `CloseMarket` (45, quiescence-gated) + `ClosePosition` (44) + `Propose/AcceptAuthorityTransfer` (36/37) |
+| 4.1 insurance seed / withdraw                     | done        | permissionless `SeedInsurance` (40) + staged, backing-gated `Propose/ApplyInsuranceWithdraw` (41/42) |
+| 4.2 insurance segregation                         | done        | on-chain `total_user_balance` aggregate + fail-closed `VaultInvariantViolated` gate at every token outflow |
+| 5.1 EMA / TWAP                                     | done        | funding's index side reads Pyth `ema_price` (spot fallback); solvency stays on raw spot |
+| 5.2 unified mark price                            | done        | resolved as *two named prices by design*: `funding_mark` (banded mid) vs `solvency_price` (raw oracle) — risk-model "two prices" section |
+| 6.1 partial liquidation                           | done        | minimal-slice close (closed-form `partial_close_qty`, Kani-verified); insolvent → full close |
+| 6.2 keeper-reward floor                           | done        | `liquidation_reward_floor` tops the equity-capped penalty up from insurance (pool-capped) |
+| 7.1 maker collateral check at quote time          | done        | standing ladder reservation (`MakerQuote.reserved_margin`, worst-price margined)      |
 | 7.2 inventory / skew management                   | won't build | closed by design — static quote; re-quoting is the maker's off-chain job              |
 
 ---
@@ -79,10 +79,11 @@ on its liquidation line; its inverse is the market's implicit max leverage.
 `max_position_notional` (Market v8, `0 = disabled`) caps a single position's
 worst-case resulting notional, enforced at submit (`PositionLimitExceeded`).
 
-Still **absent**: a *max open-interest* cap. OI (`oi_long`/`oi_short`) is tracked
-but not bounded. Unlike per-position checks it is a global aggregate, so an
-airtight cap needs OI-headroom reservation parallel to the margin one (or a soft
-check) — a clean follow-up, not a wedge risk.
+The *max open-interest* cap is now DONE (`max_open_interest`, Market v12,
+hot-updatable): a **soft** per-side cap checked at submit against the order's OI
+*increment* (`qty` when same-side, `qty − |position|` on a flip), so it can be
+raced past by in-flight orders but can never block de-risking — a pure reduce
+always passes, even over the cap (`partial_liquidation.rs::oi_cap_blocks_increase_never_derisking`).
 
 ### 1.3 `initialize_market` parameter validation — DONE
 
@@ -102,11 +103,16 @@ provisioned before its Pyth feed is warm; the feed is verified on every later re
 
 ## 2. Position management (user-facing)
 
-### 2.1 No close / reduce-position instruction — absent
+### 2.1 Close / reduce-position — DONE (SDK composition + rent reclaim)
 
-The only way to exit is to submit an opposing order into the next auction and
-wait for a cross. If the book is one-sided you are stuck. There is no
-direct user-initiated close/flatten at oracle mark.
+The exit *is* an opposing order — deliberately: the auction is the venue, and
+there is no close-against-vault-at-oracle path (it would need a counterparty of
+last resort). What shipped: the SDK's `close_position` composes an
+opposite-side, **reduce-only market order** (window-boundary price + IOC), so
+"flatten now" is one call that crosses any available liquidity at the uniform
+clearing price; and `ClosePosition` (disc 44) closes a FLAT, drained, isolated
+position account and refunds its rent (`close_lifecycle.rs`). A one-sided book
+still means waiting for liquidity — that is the mechanism, not a gap.
 
 ### 2.2 Reduce-only flag — DONE (settle-consume scope; reserves FULL margin)
 
@@ -124,16 +130,20 @@ it open a *collateralized* position. The flag's sole remaining job is forcing
 carry across rounds into exposure the market gapped it into. Covered by
 `tests/integration-tests/tests/pretrade_safety.rs::reduce_only_reserves_full_margin_no_discount`.
 
-### 2.3 No order types beyond a resting limit — partial
+### 2.3 Order types — DONE (limit/GTC/GTT/IOC/market; FOK & post-only by design)
 
-`submit_order` now takes an `expires_at_auction` field (0 = good-till-cancelled,
-else an absolute round id — Stage B, `docs/plan.md` §3.1/§3.2): a resting order
-carries forward round after round (see §2.4) until it fully fills, is cancelled,
-or expires, at which point it leaves the book and is permissionlessly reapable
-(`cancel_order`, margin always returns to the owner). This closes the "no
-time-in-force" half of this gap. Still **absent**: order *types* — no market /
-IOC / FOK / post-only. Every order is still a single-shot-per-round limit price;
-what changed is that an unfilled one no longer has to be resubmitted by hand.
+`submit_order` takes an `expires_at_auction` field (0 = good-till-cancelled,
+else an absolute round id — Stage B): a resting order carries forward round
+after round (see §2.4) until it fully fills, is cancelled, or expires, at which
+point it is permissionlessly reapable (`cancel_order`, margin always returns to
+the owner). **IOC** is the boundary case made legal by P4.1: `expires ==
+arm_round` means exactly one auction — the remainder consumes at settle, never
+rests (`tests/ioc.rs`). **Market orders** are SDK sugar (`submit_market_order`):
+a buy at the window top / sell at the floor is marketable against all in-window
+liquidity, and uniform-price clearing means the trader pays the cross, never
+their limit. **FOK and post-only are deliberately not built** — FOK breaks the
+telescoping-floor conservation under pro-rata rationing, and post-only already
+exists structurally as the maker-quote book (`docs/system-design.md` §8).
 
 ### 2.4 Partial fills carry over across rounds — DONE (resting orders, Stage B)
 
@@ -169,110 +179,153 @@ member array and **decrements** `position_count` — so the set is neither appen
 nor monotonic, and a churned group is never permanently full. Covered by
 `test_remove_member_compacts_and_frees_slot`. (See `known-issues.md` §2.4.)
 
-### 2.6 No minimum order size / notional — absent
+### 2.6 Minimum order size / notional — DONE
 
-The only quantity check is `quantity != 0` (`submit_order/data.rs`). Dust-order
-flooding is possible.
+`Market.min_order_notional` (v12, `0 = disabled`, hot-updatable via
+`update_market_params`): `submit_order` rejects `quantity·price` below it with
+`OrderBelowMinimum` (29) — a plain u128 comparison, no division. Partial
+liquidation reuses it as the dust floor (a remainder below it full-closes).
 
-### 2.7 No cancel-all / batch cancel / stale-order expiry — absent
+### 2.7 Cancel-all / batch cancel / stale-order expiry — DONE
 
-Only single-order `cancel_order` exists.
+`CancelAllOrders` (disc 43): one transaction removes every still-`Resting`
+order the signer owns in one shard, releases the summed reservation as ONE
+credit, and emits per-order `OrderCancelled` events; zero matches is a no-op
+success (multi-shard = a client loop; `tests/cancel_all.rs`). Owner-path only:
+reaping strangers' expired orders stays on single `cancel_order`, keeping the
+strict-`<` reap boundary in one place. Stale-order expiry itself is
+`expires_at_auction` + the keeper's reap duty (§2.3).
 
 ---
 
 ## 3. Admin / lifecycle (the program is an engine, not yet operable)
 
-### 3.1 No update-market / set-risk-params — absent
+### 3.1 Update-market / set-risk-params — DONE (hot + staged)
 
-Margins, fees, the price brake, and the stale window are set once at
-`initialize_market` and never changeable by a live-market instruction.
-`market.authority` is checked only in `force_reset` and `migrate_market` (the latter
-re-sets the brake + stale-window during the one-time v4→v5 in-place upgrade,
-`migrate_market/processor.rs:97-98` — a migration path, not a retune). No admin can
-retune a live market.
+Two speeds by blast radius: `UpdateMarketParams` (disc 33) retunes the
+operationally-hot, low-blast-radius params immediately (fees, crank fee, min
+notional, OI cap, reward floor); the solvency-relevant risk params (margins,
+penalty, brake, stale window, close buffer) go through the staged
+`ProposeRiskUpdate`/`ApplyRiskUpdate` pair (34/35): authority proposes, ANYONE
+may apply after `RISK_UPDATE_DELAY_SLOTS` (3,000 slots) — the delay is enforced
+by consensus, not trust. Both share `initialize_market`'s validators so a
+retune can never set values init would reject (`admin_lifecycle.rs`).
 
-### 3.2 No pause / halt / resume — absent
+### 3.2 Pause / halt / resume — DONE
 
-`TempoProgramError::MarketPaused` exists but is referenced nowhere; there is no
-paused flag and no instruction checks one. Dead error marking an unbuilt
-circuit-breaker.
+`SetPause` (disc 32) writes `Market.paused` bitflags: `PAUSE_INTAKE` blocks
+`submit_order` + maker-quote writes, `PAUSE_ROLL` blocks `start_auction` (the
+market winds down to a quiescent end-state). **Exits never pause**: cancel,
+settle, withdraw, liquidate all keep working — a pause can trap no one
+(`tests/pause.rs`). `MarketPaused` (2) is now a real, wired error.
 
-### 3.3 No set-oracle / repoint feed — absent
+### 3.3 Set-oracle / repoint feed — DONE (staged, paused-only)
 
-The oracle is bound once at init. If a Pyth feed is deprecated, the market cannot
-be moved.
+`ProposeSetOracle`/`ApplySetOracle` (38/39): the authority stages a new oracle
+account + feed id; the permissionless apply runs only after the delay AND while
+the market is fully paused and quiescent — a feed repoint mid-round could move
+the window under live orders (`admin_lifecycle.rs`).
 
-### 3.4 No close-market / delist, no authority transfer — absent
+### 3.4 Close-market / delist / authority transfer — DONE
 
-Markets cannot be wound down or rent reclaimed; market `authority` has no
-transfer instruction.
+`Propose/AcceptAuthorityTransfer` (36/37) is the two-step handoff (the staged
+new authority must sign to accept — a typo'd key can never take a market).
+`ClosePosition` (44) refunds a flat position's rent; `CloseMarket` (45) winds
+down a fully quiescent market — paused, post-clearing, every shard reset and
+empty, zero OI, zero active quotes, else `MarketNotQuiescent` (49) — closing
+every shard, the histogram, the clearing result, and the market itself, rent to
+the authority (`close_lifecycle.rs`). Draining OI is operational (pause intake,
+let closes/funding/liquidation run); there is deliberately no force-close.
 
 ---
 
 ## 4. Treasury / insurance
 
-### 4.1 Insurance fund cannot be seeded or withdrawn — absent
+### 4.1 Insurance seed / withdraw — DONE
 
-`set_insurance_balance` is called only inside settle/liquidate/finalize
-conservation. No admin can bootstrap the pool or harvest accrued fees. The only
-outflow is the flat per-clear `crank_fee` paid to the cranker
-(`finalize_clear/processor.rs:216-217`); there is no admin seed/harvest path and no
-withdrawal fee, so **protocol fees beyond that crank reward are economically
-trapped** in `insurance_balance`.
+`SeedInsurance` (disc 40) is a **permissionless donation**: anyone can move
+tokens into the pool (this also fixed the real devnet bootstrap deadlock — a
+zero-fee fresh market's first profitable settle failed `InsuranceInsolvent`
+forever until the pool held one unit). The outflow is the program's ONLY
+authority-controlled token exit and is double-gated:
+`ProposeInsuranceWithdraw`/`ApplyInsuranceWithdraw` (41/42) — vault-authority
+propose, delay, then a permissionless apply that re-clamps to the current pool
+and runs the §4.2 fail-closed backing gate post-debit pre-transfer
+(`treasury.rs`, `partial_liquidation.rs::insurance_withdraw_is_staged_delayed_and_backed`).
 
-### 4.2 Insurance is not segregated — partial
+### 4.2 Insurance segregation — DONE (on-chain backing aggregate)
 
-`Vault.insurance_balance` is a bookkeeping `u64` sharing the one vault token
-account with user balances; the backing invariant
-(`vault_token ≥ Σ balances + insurance`) is enforced only by host tests, not
-on-chain.
+`Vault.total_user_balance` (v3) mirrors every user-balance mutation, so the
+backing invariant `vault_token ≥ Σ balances + insurance` is now checkable — and
+CHECKED — on-chain: every token outflow (withdraw, cross-withdraw, insurance
+withdraw) passes the fail-closed `VaultInvariantViolated` (51) gate. Drift
+stops money leaving; it never wedges rounds
+(`treasury.rs::corrupted_backing_blocks_withdrawals_fail_closed`; live devnet
+runs verify the sum exact to the unit).
 
 ---
 
 ## 5. Pricing / oracle
 
-### 5.1 Spot price only — no EMA/TWAP — absent
+### 5.1 EMA for funding — DONE (P5.4)
 
-`oracle.rs` parses spot price/conf/exponent/publish_time and ignores Pyth's
-`ema_price`. Funding and liquidation mark off the single latest print (modulated
-only by the per-slot brake).
+`read_price` now parses Pyth's `ema_price` (`OraclePrice.ema_price_1e8`, spot
+fallback when the feed carries none) and `update_funding` prices the **index
+side** of the funding gap off it — the noise rail (one manipulated print barely
+moves the EMA), while the mark band stays anchored on raw spot (the
+manipulation rail). **Solvency deliberately stays on raw spot** — a lagging EMA
+in a crash would recreate the §2.2 anti-liquidation bug. Mirrored in
+`tempo-math::oracle` with the same goldens
+(`funding.rs::funding_rate_prices_off_the_ema_not_spot`).
 
-### 5.2 Inconsistent mark price — partial
+### 5.2 Mark price — DONE (two named prices by design)
 
-Funding marks off the last-clearing-price midpoint (`update_funding/processor.rs:72`,
-banded around the oracle); liquidation marks off the **raw** confidence-checked oracle
-via `oracle::solvency_mark` (`liquidate/processor.rs:76-95`). Two different definitions
-of "mark" for the two core risk functions. (Liquidation used to price off the braked
-`effective_price`; that was fixed in `known-issues.md` §2.2 — the braked value is now
-only the soft-stale fallback.)
+Resolved as *naming honesty*, not unification: funding uses `funding_mark`
+(banded clearing mid — smooth, manipulation-resistant) and
+liquidation/withdraw use `solvency_price` (raw confidence-checked oracle —
+never lagged, so a crash liquidates on time). The two serve different failure
+modes and unifying them would reintroduce one of the §2.2 bugs; the risk-model
+"two prices, two names" section documents the reasoning.
 
 ---
 
 ## 6. Liquidation depth
 
-### 6.1 No partial liquidation — absent
+### 6.1 Partial liquidation — DONE
 
-`liquidate/processor.rs:212` zeroes the whole position. A 1%-underwater position
-is fully closed. Real engines liquidate the minimum to restore margin.
+A mildly-underwater position loses only the minimal slice: `partial_close_qty`
+(`margin.rs`, closed-form, integer-only, Kani-verified panic-free +
+20k-iteration health/minimality fuzz) computes the smallest close restoring
+equity ≥ maintenance·(1 + `liquidation_close_buffer_bps`); both `liquidate` and
+`liquidate_cross` share it (the cross path feeds combined equity/maintenance).
+Conservative fallbacks everywhere: insolvent, disabled (buffer 0),
+penalty-eats-the-gain, dust remainder (< `min_order_notional`), or overflow →
+the pre-existing full close. The remainder keeps FULL collateral (the realized
+loss flushes to the ledger) and a `LiquidationNoProgress` (34) backstop makes
+"still unhealthy after a partial" loud (`partial_liquidation.rs`).
 
-### 6.2 No keeper-reward floor — partial
+### 6.2 Keeper-reward floor — DONE
 
-The liquidation penalty caps to tiny equity (`margin.rs:121`), so liquidating a
-near-zero-equity position can net the liquidator ~0 while still costing gas.
-Cranks for `process_chunk`/`settle_fill`/`update_funding`/`start_auction` are
-otherwise unincentivized; only `finalize_clear` pays a flat `crank_fee`.
+`liquidation_reward_floor` (v12, hot-updatable): when the equity-capped penalty
+comes in below the floor, insurance tops the liquidator up to it — capped at
+the pool (conserving, fail-soft), the `finalize_clear` crank-fee shape.
+Griefing-safe by construction: a liquidation only executes when equity <
+maintenance, a condition an attacker cannot manufacture for free
+(`partial_liquidation.rs::reward_floor_tops_up_a_tiny_penalty`).
 
 ---
 
 ## 7. Maker-book hardening
 
-### 7.1 No maker collateral check at quote time — absent
+### 7.1 Maker collateral check at quote time — DONE (standing ladder reservation)
 
-`init_maker_quote` / `update_maker_quote_levels` take no collateral account and
-write arbitrary `size`. A maker can post a huge ladder with zero collateral; it
-folds into the histogram and moves the clearing price for everyone, then an
-under-margined fill produces a shortfall absorbed by insurance at settle. This is
-both a price-manipulation and an insurance-drain vector.
+`update_maker_quote_levels` (and the maker settle/clear path) now carries the
+maker's collateral ledger: posting a ladder locks its worst-case initial margin
+(`MakerQuote.reserved_margin`, margined against a fixed `worst_price` snapshot),
+a re-quote re-reserves the delta, `settle_maker_quote` swaps reservation for
+position margin, and `clear_maker_quote` releases the standing lock. An
+unbacked ladder is rejected before it can fold into the histogram, closing both
+the price-manipulation and insurance-drain vectors (`maker_margin.rs`, 6 tests).
 
 ### 7.2 No inventory / skew management — CLOSED: won't build (by design)
 
@@ -285,21 +338,15 @@ placeholder hook was removed in MakerQuote v2 — see `known-issues.md` §3.)
 
 ---
 
-## 8. Suggested build order
+## 8. Suggested build order — COMPLETE
 
-1. ~~**Pre-trade safety** (§1)~~ — **DONE**: collateral reservation at submit,
-   initial-margin buffer + per-position notional cap, full `initialize_market`
-   validation, reduce-only (Market v8 / OrderSlab v3). Remaining sub-item: a
-   max-open-interest cap (§1.2).
-2. **Position management** (§2.1, §2.6, §2.7) — explicit close/reduce
-   instruction + minimum order size + batch cancel (reduce-only §2.2,
-   cross-margin remove-from-group §2.5, and partial-fill carry-over §2.4 are
-   done; §2.3 order-type TIF/expiry is done, order *types* beyond a resting
-   limit remain absent).
-3. **Admin lifecycle** (§3) — update-params, pause, set-oracle.
-4. **Treasury** (§4) — insurance seed/withdraw + protocol-fee withdrawal.
-5. **Depth & pricing** (§5, §6) — partial liquidation, unified mark, EMA/TWAP.
-6. **Maker hardening** (§7.1) — quote-time margin.
+Every numbered area above is now **done** (or explicitly closed as won't-build:
+§7.2 inventory management, FOK/post-only order types). The build ran as planned
+across `plan.md` phases 0–5: pre-trade safety (§1) → maker hardening +
+admin/treasury (§3, §4, §7.1) → risk depth (§6, §1.2) → trading UX (§2) →
+pricing polish (§5). What remains for this doc's successor is tracked in
+`known-issues.md` (residual defects/limitations) and `plan.md` §9 (the
+benchmark-gated C2 decision).
 
 > Deliberately deferred (a design decision, not a loose end): multi-mint
 > collateral support. Revisit only with an explicit decision on per-mint ledgers.

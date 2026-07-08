@@ -91,6 +91,8 @@ const IX_SEED_INSURANCE: u8 = 40;
 const IX_PROPOSE_INSURANCE_WITHDRAW: u8 = 41;
 const IX_APPLY_INSURANCE_WITHDRAW: u8 = 42;
 const IX_CANCEL_ALL_ORDERS: u8 = 43;
+const IX_CLOSE_POSITION: u8 = 44;
+const IX_CLOSE_MARKET: u8 = 45;
 
 /// One cross-margin member as supplied to `withdraw_cross` / `liquidate_cross`
 /// (known-issues §2.4): a `Live` member is a `(position, market, oracle)` triple;
@@ -709,7 +711,7 @@ impl TestContext {
     // -- instruction: ResetShard (Stage A sharding) -------------------------
 
     /// Compact + re-arm one settled shard for the next round (permissionless).
-    fn reset_shard(&mut self, pdas: &MarketPdas, shard_id: u16) {
+    pub fn reset_shard(&mut self, pdas: &MarketPdas, shard_id: u16) {
         self.try_reset_shard(pdas, shard_id).expect("reset_shard");
     }
 
@@ -731,6 +733,55 @@ impl TestContext {
             data: vec![IX_RESET_SHARD],
         };
         self.send(ix, &[])
+    }
+
+    // -- instruction: ClosePosition / CloseMarket (P5.5/P5.6, §3.4) ---------
+
+    /// Close a flat, drained Position PDA, rent to the owner (disc 44).
+    pub fn try_close_position(
+        &mut self,
+        pdas: &MarketPdas,
+        owner: &Keypair,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let (position, _) = self.position_pda(pdas, &owner.pubkey());
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(owner.pubkey(), true),
+                AccountMeta::new(position, false),
+            ],
+            data: vec![IX_CLOSE_POSITION],
+        };
+        self.send(ix, &[owner])
+    }
+
+    /// Wind down a quiescent market: close every shard + histogram + clearing +
+    /// market, rent to the authority (disc 45).
+    pub fn try_close_market(
+        &mut self,
+        pdas: &MarketPdas,
+        authority: &Keypair,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let mut accounts = vec![
+            AccountMeta::new(authority.pubkey(), true),
+            AccountMeta::new(pdas.market, false),
+            AccountMeta::new(pdas.histogram, false),
+            AccountMeta::new(pdas.clearing, false),
+        ];
+        for shard_id in 0..pdas.num_slab_shards {
+            accounts.push(AccountMeta::new(pdas.slab_shard(shard_id).0, false));
+        }
+        let ix = Instruction {
+            program_id: TEMPO_PROGRAM_ID,
+            accounts,
+            data: vec![IX_CLOSE_MARKET],
+        };
+        self.send(ix, &[authority])
+    }
+
+    /// Lamports currently on `key` (0 when the account does not exist).
+    pub fn lamports(&self, key: &Pubkey) -> u64 {
+        self.svm.get_account(key).map(|a| a.lamports).unwrap_or(0)
     }
 
     // -- instruction: SubmitOrder -------------------------------------------
@@ -2754,6 +2805,17 @@ impl TestContext {
     /// Like `set_oracle` but with an explicit confidence interval (raw price
     /// units) — used to exercise the M7 confidence gate.
     pub fn set_oracle_with_conf(&mut self, oracle: &Pubkey, price: i64, exponent: i32, conf: u64) {
+        // EMA slot left at 0 → the program falls back to spot (pre-P5.4 behavior).
+        self.set_oracle_full(oracle, price, exponent, conf, 0);
+    }
+
+    /// Like `set_oracle` but with a divergent EMA (raw units, same exponent) —
+    /// exercises the P5.4 funding-off-EMA path. `ema = 0` = no EMA (spot fallback).
+    pub fn set_oracle_with_ema(&mut self, oracle: &Pubkey, price: i64, exponent: i32, ema: i64) {
+        self.set_oracle_full(oracle, price, exponent, 0, ema);
+    }
+
+    fn set_oracle_full(&mut self, oracle: &Pubkey, price: i64, exponent: i32, conf: u64, ema: i64) {
         const MIN_LEN: usize = 134;
         const VL_OFFSET: usize = 40;
         let now_ts = self.svm.get_sysvar::<Clock>().unix_timestamp;
@@ -2766,6 +2828,7 @@ impl TestContext {
         data[base + 40..base + 48].copy_from_slice(&conf.to_le_bytes()); // conf 81..89
         data[base + 48..base + 52].copy_from_slice(&exponent.to_le_bytes()); // 89..93
         data[base + 52..base + 60].copy_from_slice(&now_ts.to_le_bytes()); // publish_time 93..101
+        data[base + 68..base + 76].copy_from_slice(&ema.to_le_bytes()); // ema_price 109..117
 
         let lamports = self.svm.minimum_balance_for_rent_exemption(data.len());
         let account = Account {

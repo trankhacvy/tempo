@@ -1133,6 +1133,45 @@ pub enum TempoProgramInstruction {
     ))]
     CancelAllOrders {} = 43,
 
+    /// Close a FLAT, fully drained Position PDA and refund its rent to the
+    /// owner (missing-features §3.4). Rejected unless size == 0, collateral == 0,
+    /// realized_pnl == 0, and the position is isolated (a cross-group member
+    /// must RemovePositionFromMargin first).
+    #[codama(account(
+        name = "owner",
+        docs = "Position owner; receives the reclaimed rent",
+        signer,
+        writable
+    ))]
+    #[codama(account(name = "position", docs = "The flat Position PDA to close", writable))]
+    ClosePosition {} = 44,
+
+    /// Wind down a fully QUIESCENT market: close every shard, the histogram,
+    /// the clearing result, and the market itself, refunding all rent to the
+    /// authority (missing-features §3.4). Gated on: fully paused, post-clearing
+    /// phase with every shard reset, zero open interest both sides, zero active
+    /// maker quotes, and every shard empty — else MarketNotQuiescent. Takes ALL
+    /// shards as trailing accounts (force_reset-style count + dedup).
+    #[codama(account(
+        name = "authority",
+        docs = "Market authority; receives all reclaimed rent",
+        signer,
+        writable
+    ))]
+    #[codama(account(name = "market", docs = "Market to close (closed last)", writable))]
+    #[codama(account(
+        name = "histogram",
+        docs = "The market's AuctionHistogram (closed)",
+        writable,
+        default_value = pda("auctionHistogramHeader", [seed("market", account("market"))])
+    ))]
+    #[codama(account(
+        name = "clearing_result",
+        docs = "The market's ClearingResult (closed)",
+        writable
+    ))]
+    CloseMarket {} = 45,
+
     /// Invoked via CPI to emit event data in instruction args (prevents log truncation).
     #[codama(skip)]
     #[codama(account(name = "event_authority", signer))]

@@ -15,6 +15,8 @@ export * from "./cancelAllOrders";
 export * from "./cancelOrder";
 export * from "./clearMakerQuote";
 export * from "./closeMakerQuote";
+export * from "./closeMarket";
+export * from "./closePosition";
 export * from "./deposit";
 export * from "./finalizeClear";
 export * from "./forceReset";

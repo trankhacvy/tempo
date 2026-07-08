@@ -148,6 +148,31 @@ impl MarketSnapshot {
             .collect()
     }
 
+    /// P5.2 (early roll / pipelined resets): the shards that can take a
+    /// `reset_shard` right now — every shard with NO order still `Accumulated`
+    /// (its settle work is drained; the on-chain per-shard scan re-checks this
+    /// authoritatively). Emitted during Settle so resets run CONCURRENTLY with
+    /// the other shards' settle tail, and during Roll for whatever remains.
+    /// Returns empty once the market reports `shards_ready == num_slab_shards` —
+    /// the early-roll signal (`start_auction` needs no reset pass). We only know
+    /// the ready COUNT (not which shards), so an already-reset shard may be
+    /// re-emitted: the on-chain exactly-once guard makes that a benign
+    /// `AuctionIdMismatch` crank race.
+    pub fn resettable_shards(&self) -> Vec<u16> {
+        let n = self.market.num_slab_shards.max(1);
+        if self.market.shards_ready >= n {
+            return Vec::new();
+        }
+        (0..n)
+            .filter(|&sid| {
+                !self
+                    .slab
+                    .iter()
+                    .any(|o| o.shard_id == sid && o.status == STATUS_ACCUMULATED)
+            })
+            .collect()
+    }
+
     /// A hash of the fields that advance with clearing progress (round, phase,
     /// accumulated/folded counts, live slot count). Used by the freeze watchdog to
     /// detect "no progress in N slots". PERF-1 removed the market's accumulated-order

@@ -59,6 +59,13 @@ pub struct OraclePrice {
     pub publish_time: i64,
     /// `price` normalized to fixed 1e8 units (positive).
     pub price_1e8: u64,
+    /// Pyth's exponentially-weighted average price, normalized to 1e8 (P5.4,
+    /// missing-features §5.1). Falls back to `price_1e8` when the feed's EMA is
+    /// missing/non-positive, so it is always a usable price. FUNDING reads this
+    /// (the noise rail — a single manipulated print moves the EMA far less than
+    /// spot); SOLVENCY deliberately stays on the raw spot `price_1e8` (a lagging
+    /// EMA in a crash would be the §2.2 anti-liquidation bug reborn).
+    pub ema_price_1e8: u64,
 }
 
 impl OraclePrice {
@@ -136,6 +143,17 @@ pub fn read_price(
 
     let price_1e8 = normalize_1e8(price, exponent)?;
 
+    // EMA price (P5.4): borsh layout continues `prev_publish_time` at base+60,
+    // `ema_price` (i64) at base+68, `ema_conf` at base+76. MIN_LEN (134) already
+    // covers base+84 for both verification levels, so no extra length check.
+    // Non-positive EMA (unset feed) → fall back to spot; same 1e8 normalization.
+    let ema_price = i64::from_le_bytes(data[base + 68..base + 76].try_into().unwrap());
+    let ema_price_1e8 = if ema_price > 0 {
+        normalize_1e8(ema_price, exponent)?
+    } else {
+        price_1e8
+    };
+
     Ok(OraclePrice {
         feed_id,
         price,
@@ -143,6 +161,7 @@ pub fn read_price(
         exponent,
         publish_time,
         price_1e8,
+        ema_price_1e8,
     })
 }
 
@@ -240,12 +259,14 @@ mod tests {
     use super::*;
     use alloc::vec;
 
-    /// Build a synthetic Full-verification `PriceUpdateV2` buffer.
-    fn synthetic(
+    /// Build a synthetic Full-verification `PriceUpdateV2` buffer. The EMA slot
+    /// (base+68) carries `ema`; pass 0 to exercise the spot fallback.
+    fn synthetic_with_ema(
         feed_id: &[u8; 32],
         price: i64,
         exponent: i32,
         publish_time: i64,
+        ema: i64,
     ) -> alloc::vec::Vec<u8> {
         let mut d = vec![0u8; MIN_LEN];
         d[VL_OFFSET] = 1; // Full
@@ -255,7 +276,18 @@ mod tests {
         d[base + 40..base + 48].copy_from_slice(&7_500_000u64.to_le_bytes()); // conf
         d[base + 48..base + 52].copy_from_slice(&exponent.to_le_bytes());
         d[base + 52..base + 60].copy_from_slice(&publish_time.to_le_bytes());
+        d[base + 68..base + 76].copy_from_slice(&ema.to_le_bytes());
         d
+    }
+
+    /// Synthetic buffer with the EMA slot left at 0 (the fallback path).
+    fn synthetic(
+        feed_id: &[u8; 32],
+        price: i64,
+        exponent: i32,
+        publish_time: i64,
+    ) -> alloc::vec::Vec<u8> {
+        synthetic_with_ema(feed_id, price, exponent, publish_time, 0)
     }
 
     #[test]
@@ -266,6 +298,26 @@ mod tests {
         assert_eq!(p.price, 17_176_900_000);
         assert_eq!(p.exponent, -8);
         assert_eq!(p.price_1e8, 17_176_900_000); // expo -8 → already 1e8
+        assert_eq!(
+            p.ema_price_1e8, p.price_1e8,
+            "zero/unset EMA falls back to spot"
+        );
+    }
+
+    #[test]
+    fn test_reads_divergent_ema() {
+        // Spot 100, EMA 95 (expo -8): funding's index side reads the EMA,
+        // normalized the same way; spot is untouched (P5.4).
+        let d = synthetic_with_ema(&SOL_USD_FEED_ID, 100_00000000, -8, 1_000_000, 95_00000000);
+        let p = read_price(&d, &SOL_USD_FEED_ID, 1_000_010, 60).unwrap();
+        assert_eq!(p.price_1e8, 100_00000000);
+        assert_eq!(p.ema_price_1e8, 95_00000000);
+
+        // Same divergence at another exponent normalizes identically.
+        let d = synthetic_with_ema(&SOL_USD_FEED_ID, 1_000_000, -6, 1_000_000, 950_000);
+        let p = read_price(&d, &SOL_USD_FEED_ID, 1_000_010, 60).unwrap();
+        assert_eq!(p.price_1e8, 100_000_000);
+        assert_eq!(p.ema_price_1e8, 95_000_000);
     }
 
     #[test]
@@ -344,6 +396,7 @@ mod tests {
             exponent: -8,
             publish_time: 0,
             price_1e8: 17_176_900_000,
+            ema_price_1e8: 17_176_900_000,
         };
         assert!(tight.confidence_bps() < 10);
         assert!(tight.require_confidence(DEFAULT_MAX_CONF_BPS).is_ok());

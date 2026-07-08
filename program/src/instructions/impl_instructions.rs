@@ -11,6 +11,8 @@ use super::cancel_all_orders::{CancelAllOrdersAccounts, CancelAllOrdersData};
 use super::cancel_order::{CancelOrderAccounts, CancelOrderData};
 use super::clear_maker_quote::{ClearMakerQuoteAccounts, ClearMakerQuoteData};
 use super::close_maker_quote::{CloseMakerQuoteAccounts, CloseMakerQuoteData};
+use super::close_market::{CloseMarketAccounts, CloseMarketData};
+use super::close_position::{ClosePositionAccounts, ClosePositionData};
 use super::deposit::{DepositAccounts, DepositData};
 use super::finalize_clear::{FinalizeClearAccounts, FinalizeClearData};
 use super::force_reset::{ForceResetAccounts, ForceResetData};
@@ -67,6 +69,8 @@ define_instruction!(
     CancelAllOrdersAccounts,
     CancelAllOrdersData
 );
+define_instruction!(ClosePosition, ClosePositionAccounts, ClosePositionData);
+define_instruction!(CloseMarket, CloseMarketAccounts, CloseMarketData);
 define_instruction!(ProcessChunk, ProcessChunkAccounts, ProcessChunkData);
 define_instruction!(
     ProcessMakerQuote,

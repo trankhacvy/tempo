@@ -91,6 +91,10 @@ pub enum TempoInstructionDiscriminators {
     ApplyInsuranceWithdraw = 42,
     /// Owner: cancel every still-Resting order in one shard (§2.7 batch cancel).
     CancelAllOrders = 43,
+    /// Owner: close a flat, drained Position PDA and reclaim its rent (§3.4).
+    ClosePosition = 44,
+    /// Authority: wind down a fully quiescent market, reclaiming every PDA's rent (§3.4).
+    CloseMarket = 45,
     /// Self-CPI event emission (carries event data in instruction data).
     EmitEvent = 228,
 }
@@ -144,6 +148,8 @@ impl TryFrom<u8> for TempoInstructionDiscriminators {
             41 => Ok(Self::ProposeInsuranceWithdraw),
             42 => Ok(Self::ApplyInsuranceWithdraw),
             43 => Ok(Self::CancelAllOrders),
+            44 => Ok(Self::ClosePosition),
+            45 => Ok(Self::CloseMarket),
             228 => Ok(Self::EmitEvent),
             _ => Err(ProgramError::InvalidInstructionData),
         }
