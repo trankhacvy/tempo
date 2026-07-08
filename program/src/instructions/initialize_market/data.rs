@@ -29,10 +29,23 @@ const _: () = assert!(
     "a max-cap OrderSlab shard must fit one CPI CreateAccount (10_240 bytes)"
 );
 /// Upper bound on `num_slab_shards` (Stage A sharding). A market has this many
-/// `OrderSlab` shards (created one-per-tx by `init_shard`). Bounded so a caller can't
-/// force an unbounded number of completeness-aggregate slots; 256 shards × ~90 orders
-/// ≈ 23k orders/round is already far past the throughput target.
-pub const MAX_SLAB_SHARDS: u16 = 256;
+/// `OrderSlab` shards (created one-per-tx by `init_shard`). Capped at 64 because
+/// `force_reset` and `close_market` dedup the shard set with a `u64` bit-mask
+/// (`1u64 << shard_id`), so a market with a shard id ≥ 64 could never be
+/// force-reset or closed (rent stranded). 64 × 90 ≈ 5,760 orders/round is already
+/// far past the throughput target, and the per-tx account limit (~60) binds first
+/// anyway. (Adversarial-review fix: was 256, which the u64 mask can't cover.)
+pub const MAX_SLAB_SHARDS: u16 = 64;
+
+/// Upper bound on `crank_fee` — the flat per-`finalize_clear` reward paid to the
+/// cranker FROM the insurance pool. Bounded (adversarial-review fix) so it can't
+/// be weaponized as an instant insurance drain: it is settable immediately via
+/// `update_market_params` (no delay, unlike the staged `insurance_withdraw`), so
+/// an unbounded value let a market authority who also cranks finalize sweep the
+/// pool into its own ledger, bypassing the delay that exists to give users an
+/// exit window. A coarse anti-weaponization cap, not an economic tuning limit;
+/// `finalize_clear` additionally floors the payment at the current pool balance.
+pub const MAX_CRANK_FEE: u64 = 1_000_000_000;
 
 /// Upper bound on `maintenance_margin_bps` (50%). A maintenance margin above half
 /// the notional is economically nonsensical for a perp (sub-2× max leverage).
@@ -50,11 +63,17 @@ pub fn validate_fee_config(
     maker_fee_bps: i16,
     taker_fee_bps: i16,
     integrator_share_bps: u16,
+    crank_fee: u64,
 ) -> Result<(), ProgramError> {
     if maker_fee_bps.unsigned_abs() > 1000 || taker_fee_bps.unsigned_abs() > 1000 {
         return Err(TempoProgramError::MarketConfigOutOfRange.into());
     }
     if integrator_share_bps > 10_000 {
+        return Err(TempoProgramError::MarketConfigOutOfRange.into());
+    }
+    // Bound the insurance-funded crank reward (see MAX_CRANK_FEE) so it can't be
+    // set to an amount that sweeps the pool in one finalize.
+    if crank_fee > MAX_CRANK_FEE {
         return Err(TempoProgramError::MarketConfigOutOfRange.into());
     }
     Ok(())
@@ -217,7 +236,12 @@ impl<'a> TryFrom<&'a [u8]> for InitializeMarketData {
         // `apply_risk_update` (plan.md §3.2), so the init and live-update paths
         // can never accept different configs. The soft-stale window stays
         // unbounded by construction; `max_position_notional` is an opaque cap.
-        validate_fee_config(maker_fee_bps, taker_fee_bps, integrator_share_bps)?;
+        validate_fee_config(
+            maker_fee_bps,
+            taker_fee_bps,
+            integrator_share_bps,
+            crank_fee,
+        )?;
         validate_brake_config(max_price_move_bps_per_slot)?;
         validate_risk_config(
             maintenance_margin_bps,

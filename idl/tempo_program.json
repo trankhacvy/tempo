@@ -1372,6 +1372,22 @@
                 },
                 "kind": "arrayTypeNode"
               }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "settledMakerQuoteCountLe",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 8
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
             }
           ],
           "kind": "structTypeNode"

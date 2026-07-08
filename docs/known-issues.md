@@ -37,6 +37,8 @@ history, kept intentionally short.
 | 2.15 Keeper doesn't open the next `Collect` early | design | **Closed (P5.2)** — early roll + resets pipelined with the settle tail |
 | 4.9 One `MakerQuote` PDA per maker | design | **Closed (Phase 2)** — `quote_index` PDA seed, up to 4 ladders per maker |
 | 4.10 Off-chain `benign()` error classifier uses string matching | design | **Closed (P5.3)** — structured code allowlist; string matcher demoted to transport fallback |
+| 5.1 `force_reset` strands reserved margin + orphans folded maker quotes | design | Accepted — authority-only emergency escape hatch; documented fund-destructive |
+| 5.2 Cross-liquidation can revert when the only closable leg is profitable | design | Accepted — liquidator picks member ordering; hard wedge only if every leg wins AND insurance is dry |
 
 ### 2.11 Releasing a reservation on cancel/zero-fill settle requires the collateral ledger — [design]
 
@@ -155,6 +157,36 @@ list is a REAL error — the old rule silently swallowed every "custom program
 error", including `InsuranceInsolvent`/`VaultInvariantViolated`. The substring
 matcher survives only for code-less transport races (AlreadyProcessed,
 blockhash expiry), with the format-drift regression tests retained.
+
+### 5.1 `force_reset` strands reserved margin + orphans folded maker quotes — [design]
+
+Surfaced in the adversarial review. `force_reset` (authority-only, disc 15) is
+the emergency escape hatch for a genuinely wedged round: it force-zeroes every
+shard's slot region and re-opens `Collect`. It does **not** release any order's
+`reserved_margin` back to `UserCollateral.locked`, so an order that was
+`Resting` with a live reservation is erased with no accounting release — the
+owner's locked collateral is stranded (there is no order left to `cancel_order`
+against). Symmetrically, it zeroes the histogram without requiring folded maker
+quotes to settle, orphaning their counter-positions. Both are inherent to the
+"nuke a stuck round" semantics; the instruction is authority-gated and
+documented "NOT a normal path." **Accepted** as a fund-destructive last resort;
+a future version could summed-release reservations (it would need every affected
+ledger passed as accounts). The normal roll path is fully safe — the v13
+maker-quote settle gate and the per-order reservation accounting cover it.
+
+### 5.2 Cross-liquidation can revert when the only closable leg is profitable — [design]
+
+Surfaced in the adversarial review. `liquidate_cross` closes the *first
+non-flat* supplied member. Closing a winning leg realizes a positive PnL, which
+`conserve_and_socialize` draws from insurance — returning `InsuranceInsolvent`
+if the pool is short. An account can be combined-unhealthy with *every* leg
+profitable (high leverage: `Σ maintenance > equity` despite gains), so if the
+pool is also dry, every member ordering reverts and the account is temporarily
+un-liquidatable. **Accepted** (LOW): the liquidator supplies the member
+ordering and can almost always pick a losing leg first; a hard wedge needs the
+rare conjunction of an all-winning underwater book AND an empty insurance pool.
+Fund-conserving (reverts, no bad settle). A future version could pick the
+worst leg on-chain rather than trusting caller ordering.
 
 ---
 

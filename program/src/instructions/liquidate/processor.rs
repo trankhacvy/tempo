@@ -356,10 +356,11 @@ fn liquidate_partial(
 
     // 1. Realize the closed slice into the position. No flip is possible
     //    (close_qty < |size|), so apply_fill only reduces + realizes.
-    let (new_signed, realized_flush, release_delta, new_collateral) = {
+    let (new_signed, realized_flush, retained_realized, release_delta, new_collateral) = {
         let mut acct = *ix.accounts.position;
         let mut pos_data = acct.try_borrow_mut()?;
         let position = crate::state::Position::from_bytes_mut(&mut pos_data)?;
+        let realized_before = position.realized_pnl();
         let is_buy_close = a.size_signed < 0; // closing a short buys
         position.apply_fill(
             is_buy_close,
@@ -369,17 +370,33 @@ fn liquidate_partial(
             a.social_short,
         )?;
         let new_signed = position.size() as i128;
-        let realized_flush = position.realized_pnl();
-        position.set_realized_pnl(0);
+        // Flush ONLY the closed slice's realized PnL to the ledger; KEEP the
+        // pre-existing realized (e.g. accrued funding) IN the position so it
+        // continues backing the isolated remainder (adversarial-review fix).
+        // Flushing ALL of it (the prior behaviour) moved that cushion to the free
+        // ledger, so a position with large accrued positive realized was left
+        // underwater in ISOLATION even though the ACCOUNT was healthy — the
+        // progress backstop below then reverted, making the position
+        // un-liquidatable until price fell far enough for a full close. The
+        // retained realized flushes on the eventual normal close, exactly as for a
+        // non-liquidated holder, so conservation is preserved (only the timing of
+        // the draw moves).
+        let realized_after = position.realized_pnl();
+        let realized_flush = realized_after.saturating_sub(realized_before);
+        position.set_realized_pnl(realized_before);
         // KEEP the full locked collateral on the remainder (conservative): the
-        // realized loss slice flushes to the LEDGER below, so shrinking the
-        // position's collateral to the initial target would leave the position
-        // itself (collateral + unrealized) below maintenance even though the
-        // ACCOUNT is healthy — the exact trap the progress backstop caught in
-        // testing. The owner reclaims the excess on close/normal settles.
+        // closed slice flushed to the LEDGER, so shrinking the position's
+        // collateral to the initial target would leave it below maintenance even
+        // when the account is healthy. The owner reclaims the excess on close.
         let release_delta = 0u64;
         let new_collateral = a.collateral;
-        (new_signed, realized_flush, release_delta, new_collateral)
+        (
+            new_signed,
+            realized_flush,
+            realized_before,
+            release_delta,
+            new_collateral,
+        )
     };
 
     // 2. Owner ledger: release the freed margin slice, flush the realized
@@ -444,9 +461,12 @@ fn liquidate_partial(
 
     // 5. Progress backstop (wires the reserved LiquidationNoProgress): the
     //    remainder must be healthy at plain maintenance.
+    // Health of the ISOLATED remainder, including the realized cushion we kept in
+    // the position (not the flushed closed slice) — this is what backs the
+    // remainder now that partial-close conserves the pre-existing realized.
     let equity_after = equity(
         new_collateral,
-        0,
+        retained_realized,
         unrealized_pnl(new_signed, a.entry, a.mark),
     );
     let maint_after = maintenance_margin(new_signed, a.mark, a.maintenance_bps);

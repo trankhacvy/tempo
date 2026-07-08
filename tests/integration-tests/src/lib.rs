@@ -3395,6 +3395,16 @@ impl TestContext {
         self.svm.set_account(vault, acct).expect("corrupt vault");
     }
 
+    /// Test-only: seed a position's `realized_pnl` directly (Position layout:
+    /// realized_pnl at b-offset 88), to exercise the accrued-funding cushion
+    /// path without driving a full funding cycle.
+    pub fn set_position_realized_pnl(&mut self, position: &Pubkey, realized_pnl: i128) {
+        let mut acct = self.svm.get_account(position).expect("position exists");
+        let off = PREFIX + 88;
+        acct.data[off..off + 16].copy_from_slice(&realized_pnl.to_le_bytes());
+        self.svm.set_account(*position, acct).expect("set realized");
+    }
+
     /// §3.4 property: the vault's `total_user_balance` aggregate must equal the
     /// scanned Σ of the given owners' ledger balances (the host CAN scan; the
     /// chain can't — that asymmetry is why the aggregate exists).

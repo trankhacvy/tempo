@@ -34,7 +34,16 @@ pub fn process_start_auction(
     let ix = StartAuction::try_from((_instruction_data, accounts))?;
 
     // --- validate phase + capture params ---
-    let (num_ticks, auction_id, oracle_key, feed_id, num_slab_shards, shards_ready) = {
+    let (
+        num_ticks,
+        auction_id,
+        oracle_key,
+        feed_id,
+        num_slab_shards,
+        shards_ready,
+        folded_quotes,
+        settled_quotes,
+    ) = {
         let market_data = ix.accounts.market.try_borrow()?;
         let market = Market::from_account(&market_data, ix.accounts.market, program_id)?;
         // Roll from Settling (the normal path) or from Discovered when the book was
@@ -46,6 +55,12 @@ pub fn process_start_auction(
         if phase != AuctionPhase::Settling && phase != AuctionPhase::Discovered {
             return Err(TempoProgramError::AuctionWrongPhase.into());
         }
+        // Circuit breaker (missing-features §3.2): PAUSE_ROLL winds the market down
+        // to a quiescent state by refusing to open the next round. Without this the
+        // documented pause bit is a no-op and anyone could roll a market the
+        // authority is trying to halt (griefing close_market / apply_set_oracle,
+        // which both require and hold quiescence).
+        market.require_not_paused(Market::PAUSE_ROLL)?;
         (
             market.num_ticks(),
             market.current_auction_id(),
@@ -53,6 +68,8 @@ pub fn process_start_auction(
             market.oracle_feed_id,
             market.num_slab_shards(),
             market.shards_ready(),
+            market.folded_maker_quote_count(),
+            market.settled_maker_quote_count(),
         )
     };
 
@@ -61,6 +78,17 @@ pub fn process_start_auction(
     // and increments `shards_ready`. The freeze model holds until they are ALL ready, so
     // a new round cannot open on a partially-settled book (clearing-protocol §4).
     if shards_ready != num_slab_shards {
+        return Err(TempoProgramError::AuctionNotComplete.into());
+    }
+
+    // Maker-quote settle completeness (v13, adversarial-review fix): every maker
+    // quote folded this round steered the clearing price and matched takers, so
+    // its counter-position MUST be booked (`settle_maker_quote`) before the round
+    // rolls. Symmetric to the taker `all_accumulated_orders_settled` gate above.
+    // Without it a hostile maker could fold liquidity, let takers settle, crank
+    // every reset_shard, then roll — orphaning its own settle and leaving the
+    // takers' side unmatched (a conservation break socialized to insurance).
+    if settled_quotes != folded_quotes {
         return Err(TempoProgramError::AuctionNotComplete.into());
     }
 

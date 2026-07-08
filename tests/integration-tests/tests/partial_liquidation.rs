@@ -111,6 +111,47 @@ fn partial_close_restores_health_and_leaves_the_remainder() {
     assert_eq!(ctx.market(&pdas).oi_long, 62);
 }
 
+/// Adversarial-review regression: a position with a LARGE accrued positive
+/// realized PnL (e.g. from funding) that is under maintenance must PARTIAL-close,
+/// not revert. The prior code flushed ALL realized to the free ledger, leaving the
+/// isolated remainder underwater even though the account was healthy → the
+/// progress backstop reverted → the position was un-liquidatable until it fell far
+/// enough for a full close. The fix keeps the pre-existing realized in the position.
+#[test]
+fn partial_liquidation_survives_large_accrued_realized() {
+    let (mut ctx, pdas, oracle, _vault_ta, _mint, owner, liquidator, _seller) =
+        open_long_100_at_30();
+
+    // Seed a large positive realized cushion (as sustained favorable funding would).
+    let (owner_pos, _) = ctx.position_pda(&pdas, &owner.pubkey());
+    ctx.set_position_realized_pnl(&owner_pos, 2115);
+
+    // Mark crashes to 6 (an 80% drop from entry 30): unrealized = (6−30)·100 =
+    // −2400. equity = 300 + 2115 − 2400 = 15 < maint (100·6·5% = 30) → liquidatable,
+    // but equity > 0 → PARTIAL. Under the old flush-all behaviour the backstop would
+    // see the isolated remainder at 300 + 0 − (24·36) = −564 and REVERT.
+    ctx.set_oracle(&oracle, 6, -8);
+    ctx.liquidate(&pdas, &oracle, &liquidator, &owner.pubkey());
+
+    let p = ctx.position(&owner_pos);
+    assert!(
+        p.size > 0 && p.size < 100,
+        "position partially closed, not reverted or fully closed (size {})",
+        p.size
+    );
+    assert_eq!(
+        p.realized_pnl, 2115,
+        "the pre-existing realized cushion stayed IN the position"
+    );
+
+    // The remainder is healthy: a second attempt is NotLiquidatable.
+    assert!(
+        ctx.try_liquidate(&pdas, &oracle, &liquidator, &owner.pubkey())
+            .is_err(),
+        "the partially-closed position is healthy again"
+    );
+}
+
 /// An INSOLVENT position still full-closes (the partial formula returns None on
 /// equity ≤ 0) — the pre-partial behaviour is untouched where it matters.
 #[test]

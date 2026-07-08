@@ -186,11 +186,27 @@ pub fn process_settle_maker_quote(
             .ok_or(TempoProgramError::MathOverflow)?;
     }
 
-    // --- mark settled-this-round ---
+    // --- mark settled-this-round + bump the roll-gate counter ---
+    // The early `settled_auction_id == auction_id` guard above makes this
+    // exactly-once per quote per round, so the counter can't double-count. It
+    // MUST bump even on a zero-fill settle (the early return below), else
+    // `settled_maker_quote_count < folded_maker_quote_count` and the round
+    // wedges at `start_auction` (v13 roll gate).
     {
         let mut q_account = *ix.accounts.maker_quote;
         let mut q_data = q_account.try_borrow_mut()?;
         MakerQuote::from_bytes_mut(&mut q_data)?.set_settled_auction_id(auction_id);
+    }
+    {
+        let mut market_account = *ix.accounts.market;
+        let mut market_data = market_account.try_borrow_mut()?;
+        let market = Market::from_bytes_mut(&mut market_data)?;
+        market.set_settled_maker_quote_count(
+            market
+                .settled_maker_quote_count()
+                .checked_add(1)
+                .ok_or(TempoProgramError::MathOverflow)?,
+        );
     }
 
     if total_bid_fill == 0 && total_ask_fill == 0 {

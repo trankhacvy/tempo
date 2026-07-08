@@ -91,6 +91,7 @@ export type Market = {
   pendingKind: number;
   pendingEffectiveSlotLe: Array<number>;
   pendingPayload: Array<number>;
+  settledMakerQuoteCountLe: Array<number>;
 };
 
 export type MarketArgs = {
@@ -142,6 +143,7 @@ export type MarketArgs = {
   pendingKind: number;
   pendingEffectiveSlotLe: Array<number>;
   pendingPayload: Array<number>;
+  settledMakerQuoteCountLe: Array<number>;
 };
 
 /** Gets the encoder for {@link MarketArgs} account data. */
@@ -205,6 +207,10 @@ export function getMarketEncoder(): FixedSizeEncoder<MarketArgs> {
       ["pendingKind", getU8Encoder()],
       ["pendingEffectiveSlotLe", getArrayEncoder(getU8Encoder(), { size: 8 })],
       ["pendingPayload", getArrayEncoder(getU8Encoder(), { size: 64 })],
+      [
+        "settledMakerQuoteCountLe",
+        getArrayEncoder(getU8Encoder(), { size: 8 }),
+      ],
     ]),
     (value) => ({
       ...value,
@@ -267,6 +273,7 @@ export function getMarketDecoder(): FixedSizeDecoder<Market> {
     ["pendingKind", getU8Decoder()],
     ["pendingEffectiveSlotLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
     ["pendingPayload", getArrayDecoder(getU8Decoder(), { size: 64 })],
+    ["settledMakerQuoteCountLe", getArrayDecoder(getU8Decoder(), { size: 8 })],
   ]);
 }
 

@@ -59,6 +59,7 @@ pub struct Market {
     pub pending_kind: u8,
     pub pending_effective_slot_le: [u8; 8],
     pub pending_payload: [u8; 64],
+    pub settled_maker_quote_count_le: [u8; 8],
 }
 
 pub const MARKET_DISCRIMINATOR: u8 = 1;

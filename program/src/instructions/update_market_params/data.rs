@@ -50,7 +50,12 @@ impl<'a> TryFrom<&'a [u8]> for UpdateMarketParamsData {
         let liquidation_reward_floor = u64::from_le_bytes(data[64..72].try_into().unwrap());
 
         // ONE source of truth with initialize_market (plan.md §3.2).
-        validate_fee_config(maker_fee_bps, taker_fee_bps, integrator_share_bps)?;
+        validate_fee_config(
+            maker_fee_bps,
+            taker_fee_bps,
+            integrator_share_bps,
+            crank_fee,
+        )?;
         validate_brake_config(max_price_move_bps_per_slot)?;
 
         Ok(Self {

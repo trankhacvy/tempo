@@ -198,6 +198,17 @@ pub struct Market {
     /// penalty, close_buffer); Oracle = new oracle Address (32) + new feed id
     /// (32); Authority = new authority Address (32), rest zero.
     pub pending_payload: [u8; 64],
+    // --- maker-quote settle completeness (VERSION 13; appended, offsets stable) ---
+    /// Maker quotes SETTLED this round. The roll (`start_auction`) gates on
+    /// `settled_maker_quote_count == folded_maker_quote_count`, symmetric to the
+    /// taker slab's `all_accumulated_orders_settled` gate: a folded maker quote
+    /// steered the clearing price and matched takers, so its counter-position MUST
+    /// be booked (`settle_maker_quote`) before the round rolls — otherwise the
+    /// histogram is zeroed and the quote orphaned, leaving the takers' side
+    /// unmatched (a conservation break a hostile maker could force by cranking the
+    /// roll while skipping its own settle). Incremented by `settle_maker_quote`,
+    /// reset to 0 at roll alongside `folded_maker_quote_count`.
+    pub settled_maker_quote_count_le: [u8; 8],
 }
 
 assert_no_padding!(
@@ -238,6 +249,7 @@ assert_no_padding!(
         + 1
         + 8
         + 64
+        + 8
 );
 
 impl Discriminator for Market {
@@ -292,7 +304,12 @@ impl Versioned for Market {
     // prefix-compatible for readers, but the account is sized by `DATA_LEN`, so a
     // pre-v12 market is shorter and must be re-provisioned (the version bump
     // fails it loudly).
-    const VERSION: u8 = 12;
+    //
+    // v13 (adversarial-review fix): appended `settled_maker_quote_count` so the
+    // roll gates on every folded maker quote having settled (symmetric to the
+    // taker slab's settle gate) — closing a conservation hole where a folded
+    // quote could be orphaned at roll. Append-only; pre-v13 markets re-provision.
+    const VERSION: u8 = 13;
 }
 
 impl AccountSize for Market {
@@ -331,7 +348,8 @@ impl AccountSize for Market {
         + 2
         + 1
         + 8
-        + 64;
+        + 64
+        + 8;
 }
 
 impl AccountDeserialize for Market {}
@@ -387,6 +405,7 @@ impl AccountSerialize for Market {
         data.push(self.pending_kind);
         data.extend_from_slice(&self.pending_effective_slot_le);
         data.extend_from_slice(&self.pending_payload);
+        data.extend_from_slice(&self.settled_maker_quote_count_le);
         data
     }
 }
@@ -491,6 +510,12 @@ impl Market {
         folded_maker_quote_count,
         set_folded_maker_quote_count,
         folded_maker_quote_count_le,
+        u64
+    );
+    le_field!(
+        settled_maker_quote_count,
+        set_settled_maker_quote_count,
+        settled_maker_quote_count_le,
         u64
     );
     le_field!(oi_long, set_oi_long, oi_long_le, u128);
@@ -850,6 +875,7 @@ impl Market {
             pending_kind: 0,
             pending_effective_slot_le: 0u64.to_le_bytes(),
             pending_payload: [0u8; 64],
+            settled_maker_quote_count_le: 0u64.to_le_bytes(),
         }
     }
 
@@ -1105,7 +1131,7 @@ mod tests {
         assert_eq!(de.collateral_mint, m.collateral_mint);
         // v12 append block round-trips; a fresh market is unpaused with no
         // staged change.
-        assert_eq!(Market::VERSION, 12);
+        assert_eq!(Market::VERSION, 13);
         assert_eq!(de.paused, 0);
         assert_eq!(de.min_order_notional(), 1_000);
         assert_eq!(de.max_open_interest(), 5_000_000);
@@ -1113,6 +1139,8 @@ mod tests {
         assert_eq!(de.liquidation_close_buffer_bps(), 200);
         assert_eq!(de.pending_kind, 0);
         assert_eq!(de.pending_effective_slot(), 0);
+        // v13 maker-quote settle counter round-trips (fresh = 0).
+        assert_eq!(de.settled_maker_quote_count(), 0);
         assert_eq!(de.pending_payload, [0u8; 64]);
     }
 

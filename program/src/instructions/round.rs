@@ -57,9 +57,10 @@ pub fn reset_round_to_collect(
         let mut market_data = market_account.try_borrow_mut()?;
         let market = Market::from_bytes_mut(&mut market_data)?;
         market.set_current_auction_id(next_id);
-        // Per-round maker-quote fold counter resets; the active count persists
-        // (quotes survive across rounds, unlike the ephemeral slab).
+        // Per-round maker-quote fold + settle counters reset; the active count
+        // persists (quotes survive across rounds, unlike the ephemeral slab).
         market.set_folded_maker_quote_count(0);
+        market.set_settled_maker_quote_count(0);
         // Stage A: reset the roll gate for the new round. `shards_ready` resets to 0 — every
         // shard must be `reset_shard`'d again before the next roll. (Design Z / DDR-1: there is
         // no `shards_pending` completeness counter anymore; finalize scans all shards directly.)
