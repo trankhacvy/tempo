@@ -1525,7 +1525,19 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
   `git status program/src/clearing.rs` clean (never modified) · Kani 5/5
   harnesses VERIFICATION SUCCESSFUL.
 
-- [ ] **P4.6 (OP) — Deploy (no re-provision)**
+- [x] **P4.6 (OP) — Deploy (no re-provision)**
+  **Done 2026-07-08:** deployed (430,952 B fits the 433,272 B allocation — no
+  extend), SHA-256 dump-compare exact (`f1a19aaf…06a5`). Live drill on the
+  Phase-2/3 market (`DQi8…zdLd`, keeper+mm rolling, no re-provision) via the
+  new `tempo-sim-p4-drill` bin: **cancel_all** flattened leftovers, then
+  released Σ reserved EXACTLY back to baseline and no-op'd on an empty book;
+  **IOC** exercised all three live outcomes across runs — filled-at-the-cross
+  & consumed (run 2), stale-arm-round retry `0x2e` (run 3, the documented
+  snapshot race), and window-moved PASSIVE → reclaimed whole via
+  `cancel_order` (run 4, DDR-3 path). Market rolled auction 14→28 on the new
+  binary, zero program errors, zero 0x21; backing invariant exact to the
+  unit (insurance 5,560,711,870 + users 2,999,994,439,288,130 = 3×10¹⁵ =
+  vault tokens).
 
 ---
 
