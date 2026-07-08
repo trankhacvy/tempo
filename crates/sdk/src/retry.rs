@@ -90,6 +90,11 @@ pub fn benign(e: &SdkError) -> bool {
     match e {
         SdkError::Common(tempo_common::CommonError::TxFailed { err, .. }) => is_race_error(err),
         SdkError::Common(tempo_common::CommonError::Rpc(m)) => is_race_error(m),
+        // A race can be caught at PREFLIGHT too (the simulation runs the program
+        // and returns the same coded error a landed tx would) — e.g. the P5.2
+        // keeper re-emitting reset_shard for an already-reset shard fails
+        // simulation with AuctionIdMismatch(0x10). Same classification rules.
+        SdkError::Common(tempo_common::CommonError::SimulationFailed(m)) => is_race_error(m),
         _ => false,
     }
 }
@@ -183,6 +188,25 @@ mod tests {
     #[test]
     fn benign_unknown_string_is_not_benign() {
         assert!(!benign(&tx_failed("some completely unexpected error")));
+    }
+
+    #[test]
+    fn benign_classifies_preflight_simulation_races() {
+        // The exact live shape from the P5.2 devnet run: a re-emitted
+        // reset_shard rejected at preflight with AuctionIdMismatch (0x10).
+        assert!(benign(&SdkError::Common(CommonError::SimulationFailed(
+            "RPC response error -32002: Transaction simulation failed: \
+             Error processing Instruction 0: custom program error: 0x10"
+                .into()
+        ))));
+        // A REAL coded error at preflight still surfaces.
+        assert!(!benign(&SdkError::Common(CommonError::SimulationFailed(
+            "Transaction simulation failed: custom program error: 0x21".into()
+        ))));
+        // A code-less simulation failure (build error) is not a race.
+        assert!(!benign(&SdkError::Common(CommonError::SimulationFailed(
+            "invalid account data for instruction".into()
+        ))));
     }
 
     #[test]

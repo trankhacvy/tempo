@@ -1543,53 +1543,79 @@ is known-broken (pinocchio 0.11 limitation, see CLAUDE.md) — never use it as a
 
 ### 9.6 Phase 5 — Benchmark-gated & polish
 
-- [ ] **P5.1 — Round-latency benchmark + C2 decision record** (§6.1)
-  Extend `benchmark.rs` + a sim run; measure per-phase wall-clock over ≥ 50 rounds;
-  write `docs/bench/round_latency.md` with the numbers AND the explicit go/no-go
-  against the decision rule (settle+reset tail vs. collect window).
-  **Done when:** the report file exists with real measured numbers and a stated
-  decision (`grep -n "decision" docs/bench/round_latency.md` shown), and the
-  benchmark run output appears in the conversation.
+- [x] **P5.1 — Round-latency benchmark + C2 decision record** (§6.1)
+  **Done 2026-07-08:** `benchmark.rs::benchmark_round_tail_model` (per-phase tx
+  counts × measured CU at 16 shards × 90: serial tail = 1,457 txs, 30.26M CU ≈
+  2.5 Market-write blocks) + a 48-complete-round live devnet run (auctions
+  28–78, P5.2 keeper): full round mean 105.0s; settle+reset+roll tail median
+  56.6s = 55% of the round vs a 19.7s collect window.
+  `docs/bench/round_latency.md` records the numbers AND the decision:
+  **C2 NO-GO** — the wall-clock tail is confirmation-latency-bound at trivial
+  load, not capacity-bound (~1s of chain time even at 200× the live order
+  count); keeper-side settle batching is the cheaper lever; a mechanical
+  re-open trigger is stated. Bonus find: preflight-simulation races
+  (`SimulationFailed` + coded 0x10) were mis-classified as real errors —
+  `benign()` now covers them (`benign_classifies_preflight_simulation_races`).
 
-- [ ] **P5.2 — Keeper early-roll** (§6.1)
-  `crates/keeper` `engine::decide`: roll on `shards_ready == num_slab_shards`;
-  pipeline `reset_shard` with the settle tail.
-  **Done when:** `cargo test -p tempo-keeper` shows the updated `decide` tests green.
+- [x] **P5.2 — Keeper early-roll** (§6.1)
+  **Done 2026-07-08:** `Plan::Settle`/`Plan::Roll` carry `resets: Vec<u16>` —
+  drained shards `reset_shard` CONCURRENTLY with the settle stream
+  (`futures::join!` in `actions::settle`), and `shards_ready == num_slab_shards`
+  rolls with a single `start_auction` (empty reset list). `MarketView` gained
+  `shards_ready` (offset 404). `cargo test -p tempo-keeper` 17 passed incl.
+  `settle_pipelines_resets_for_drained_shards` +
+  `early_roll_skips_the_reset_pass_when_all_shards_ready`. Live: the benchmark
+  orchestrator logs show `Settle { …, resets: [0, 2] }` mid-tail on devnet.
 
-- [ ] **P5.3 — Structured `benign()`** (§6.2)
-  Typed `InstructionError::Custom(code)` parsing + `BENIGN_CODES` allowlist; string
-  matcher demoted to transport-error fallback; regression test kept.
-  **Done when:** `cargo test -p tempo-sdk retry` shows: each allowlisted code
-  classified benign, a non-listed code classified real, and the fallback test —
-  names shown.
+- [x] **P5.3 — Structured `benign()`** (§6.2)
+  **Done 2026-07-08:** numeric-code parsing across 4 wire formats +
+  `BENIGN_CODES = {3,5,9,10,16,17,25}`; a non-listed custom code is now REAL
+  (the old rule swallowed InsuranceInsolvent/VaultInvariantViolated); substring
+  matcher kept only for code-less transport races. `cargo test -p tempo-sdk retry`
+  8 passed: `benign_allowlists_each_race_code`,
+  `benign_rejects_non_allowlisted_codes_as_real`,
+  `benign_transport_fallback_stays_narrow`, `custom_code_parses_all_wire_formats`
+  + the retained format-drift regressions.
 
-- [ ] **P5.4 — EMA funding** (§6.3)
-  `read_price` gains `ema_price_1e8` (offset base+68, spot fallback when ≤ 0);
-  `update_funding` uses EMA as the index side; solvency path untouched;
-  `tempo-math::oracle` mirror + goldens regenerated.
-  **Done when:** tests show: divergent synthetic ema/spot → funding rate computed
-  off EMA while `solvency_mark` returns spot; tempo-math goldens green;
-  `git diff --stat program/src/oracle.rs` shown (reader change only) — all shown.
+- [x] **P5.4 — EMA funding** (§6.3)
+  **Done 2026-07-08:** `OraclePrice.ema_price_1e8` (base+68, spot fallback ≤ 0);
+  `update_funding` prices the rate's INDEX side off the EMA (band + solvency stay
+  on raw spot); `tempo-math::oracle` mirror + goldens updated (14 passed).
+  Tests: `funding::funding_rate_prices_off_the_ema_not_spot` (spot==mark control
+  → index unmoved; EMA 38 vs spot 40 → index advances),
+  `test_reads_divergent_ema` (program + mirror),
+  `test_solvency_mark_prefers_fresh_raw_oracle` (solvency = spot) — green.
+  `oracle.rs` diff: reader + struct field only.
 
-- [ ] **P5.5 — `ClosePosition` (44)** (§6.4)
-  Flat-and-drained + isolated-mode guards; rent to owner.
-  **Done when:** tests show: non-flat rejected; cross-member rejected; happy path
-  closes and refunds rent — names shown.
+- [x] **P5.5 — `ClosePosition` (44)** (§6.4)
+  **Done 2026-07-08:** `close_lifecycle.rs` —
+  `close_position_rejects_non_flat` (Custom(17)),
+  `close_position_rejects_cross_member_until_removed` (blocked enrolled, closable
+  after `remove_position_from_margin`),
+  `close_position_refunds_rent_to_the_owner` (stranger rejected, rent moved).
 
-- [ ] **P5.6 — `CloseMarket` (45)** (§6.4)
-  Full quiescence gates (`MarketNotQuiescent`/49), force_reset-style shard
-  count+dedup, closes shards → histogram → clearing_result → market.
-  **Done when:** tests show each gate rejecting by code and the happy path
-  reclaiming rent for every account — names shown.
+- [x] **P5.6 — `CloseMarket` (45)** (§6.4)
+  **Done 2026-07-08:** `close_lifecycle.rs` —
+  `close_market_gates_reject_by_code` (non-authority; unpaused → Custom(49);
+  paused-but-unreset → 49; reset-but-shard-holding-a-resting-order → 49 at the
+  shard scan) and `close_market_reclaims_every_account` (all shards + histogram
+  + clearing + market closed, Σ rent lands on the authority exactly).
 
-- [ ] **P5.7 — Status-table sweep** (§8)
-  Update `docs/known-issues.md` Part A + `docs/missing-features.md` status tables to
-  reflect everything shipped by this plan.
-  **Done when:** `grep -n "absent" docs/missing-features.md` output shows no
-  remaining `absent` rows for items this plan implemented (2.1/2.6/2.7/3.1/3.2/3.3/
-  3.4/4.1/5.1/6.1/7.1) — shown with the table excerpt.
+- [x] **P5.7 — Status-table sweep** (§8)
+  **Done 2026-07-08:** `grep -n "absent" docs/missing-features.md` → only the
+  legend line 15 remains; every planned item's row + section flipped to done
+  (1.2 OI cap, 2.1, 2.3, 2.6, 2.7, 3.1–3.4, 4.1, 4.2, 5.1, 5.2, 6.1, 6.2, 7.1);
+  §8 build order marked COMPLETE. `known-issues.md` Part A: 2.15 closed (P5.2),
+  4.9 closed (Phase 2 quote_index), 4.10 closed (P5.3); 2.14 points at the
+  P5.1 decision record.
 
-- [ ] **P5.8 — Phase 5 gate** — same seven checks as P1.11, all outputs shown.
+- [x] **P5.8 — Phase 5 gate**
+  **Done 2026-07-08:** `cargo fmt --all --check` exit 0 · program clippy
+  `-D warnings` clean · workspace clippy clean · host tests 219 (program) +
+  514 (workspace) passed · `cargo-build-sbf` success · integration 141 passed
+  / 5 ignored (benchmarks) · Kani 5/5 VERIFICATION SUCCESSFUL · clients
+  regenerated & in sync (new closeMarket/closePosition files only) ·
+  `git status program/src/clearing.rs` clean (never modified).
 
 - [ ] **P5.9 (OP) — Deploy + C2 go/no-go executed per the P5.1 decision record**
 

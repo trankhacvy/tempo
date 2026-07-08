@@ -106,21 +106,24 @@ live counterparty fill.
 window move through its price, and confirm it fills at the clearing price
 with correct margin/position. See DDR-3 in `docs/design-decisions.md`.
 
-### 2.14 Stage-C2 (true round-processing overlap) not built — [design]
+### 2.14 Stage-C2 (true round-processing overlap) not built — [design] — DECIDED: NO-GO (recorded)
 
 Stage C1 (always-open submit) removed the *submit* dead-time, but round
 *processing* is still serial: one histogram, so round N+1 can't accumulate
 while round N settles. C2 would double-buffer the histogram + `ClearingResult`
-by round parity (`docs/plan.md §4.2`) for true overlap.
+by round parity for true overlap.
 
-Deliberately not built: C2 runs two live rounds over one durable book — the
-riskiest change in the whole scaling effort. The plan explicitly gates it
-behind a benchmark proving C1 + Stage-A parallel settle is
-throughput-insufficient. `docs/bench/cu_report.md` measures Stage-A
-throughput but doesn't yet answer that specific question.
-
-**To close:** run the O(ticks)/throughput benchmark; if C1 is the bottleneck,
-implement C2 per `docs/plan.md §4.2`.
+**The benchmark ran (P5.1) and the decision is recorded in
+`docs/bench/round_latency.md`: do not build C2 now.** Over 48 live devnet
+rounds the settle+reset+roll tail is 55 % of the ~105 s round — but the CU
+model shows that even at 1,440 orders/round the whole tail is ~2.5
+Market-write blocks (~1 s of chain capacity): the measured tail is
+per-transaction **confirmation latency at trivial load**, not throughput. C2
+(the riskiest change in the scaling plan — two live rounds over one durable
+book) would buy at best a -35 % cadence gain that keeper-side settle batching
+can match with zero on-chain risk. **Re-open trigger:** a loaded run showing
+the tail CU-bound (wall-clock tracking `Σ settle CU / 12M-per-block`, not
+`orders × confirm-latency / concurrency`) after keeper batching exists.
 
 ### 2.15 Keeper does not open the next `Collect` early — [design] — CLOSED (P5.2)
 
